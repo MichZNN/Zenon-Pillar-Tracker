@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#151515">
+  <title>Zenon Pillar Tracker</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16x16.png">
+  <link rel="icon" href="/static/icons/favicon.ico">
+  <link rel="manifest" href="/static/icons/site.webmanifest">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div>
+        <p class="eyebrow">Network of Momentum</p>
+        <h1>Zenon Pillar Tracker</h1>
+      </div>
+      <div id="health-badge" class="health-badge unknown">Checking...</div>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <section class="hero-grid" aria-label="Network overview">
+      <article class="hero-card epoch-card">
+        <div class="card-label">Current epoch</div>
+        <div id="current-epoch" class="hero-value">
+          <span class="skeleton skeleton-hero-value" aria-hidden="true"></span>
+        </div>
+      </article>
+      <article class="hero-card momentum-card">
+        <div class="card-label">Latest momentum</div>
+        <div id="momentum-height" class="hero-value">
+          <span class="skeleton skeleton-hero-value" aria-hidden="true"></span>
+        </div>
+        <div id="last-update" class="muted">
+          <span class="skeleton skeleton-update" aria-hidden="true"></span>
+        </div>
+      </article>
+    </section>
+
+    <section class="metric-grid" aria-label="Pillar statistics">
+      <article class="metric-card">
+        <span class="metric-label">Total pillars</span>
+        <strong id="pillar-total"><span class="skeleton skeleton-metric" aria-hidden="true"></span></strong>
+      </article>
+      <article class="metric-card positive">
+        <span class="metric-label">Active pillars</span>
+        <strong id="pillar-active"><span class="skeleton skeleton-metric" aria-hidden="true"></span></strong>
+      </article>
+      <article class="metric-card warning">
+        <span class="metric-label">Inactive pillars</span>
+        <strong id="pillar-inactive"><span class="skeleton skeleton-metric" aria-hidden="true"></span></strong>
+      </article>
+    </section>
+
+    <section class="content-grid">
+      <section class="section-block">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">On-chain observations</p>
+            <h2>Epoch history</h2>
+          </div>
+        </div>
+        <div id="epoch-list" class="epoch-list">
+          <div class="loading-skeleton-list" aria-label="Loading epoch history" aria-busy="true">
+            <div class="skeleton-list-row">
+              <span class="skeleton skeleton-list-title"></span>
+              <span class="skeleton skeleton-list-time"></span>
+            </div>
+            <div class="skeleton-list-row">
+              <span class="skeleton skeleton-list-title"></span>
+              <span class="skeleton skeleton-list-time"></span>
+            </div>
+            <div class="skeleton-list-row">
+              <span class="skeleton skeleton-list-title"></span>
+              <span class="skeleton skeleton-list-time"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-block">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Changes</p>
+            <h2>Recent events</h2>
+          </div>
+        </div>
+        <div id="event-list" class="event-list">
+          <div class="loading-skeleton-list" aria-label="Loading recent events" aria-busy="true">
+            <div class="skeleton-list-row skeleton-event-row">
+              <span class="skeleton skeleton-list-title"></span>
+              <span class="skeleton skeleton-list-time"></span>
+              <span class="skeleton skeleton-event-detail"></span>
+            </div>
+            <div class="skeleton-list-row skeleton-event-row">
+              <span class="skeleton skeleton-list-title"></span>
+              <span class="skeleton skeleton-list-time"></span>
+              <span class="skeleton skeleton-event-detail"></span>
+            </div>
+            <div class="skeleton-list-row skeleton-event-row">
+              <span class="skeleton skeleton-list-title"></span>
+              <span class="skeleton skeleton-list-time"></span>
+              <span class="skeleton skeleton-event-detail"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="section-block">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Live network overview</p>
+          <h2>Pillars</h2>
+        </div>
+        <span id="pillar-count" class="muted">
+          <span class="skeleton skeleton-count" aria-hidden="true"></span>
+        </span>
+      </div>
+      <div class="toolbar">
+        <label class="search-box">
+          <span class="sr-only">Search pillars</span>
+          <input id="pillar-search" type="search" placeholder="Search by name or address">
+        </label>
+        <label class="select-box">
+          <span class="sr-only">Filter by status</span>
+          <select id="status-filter">
+            <option value="">Current pillars</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="all" hidden>All historical records</option>
+          </select>
+        </label>
+      </div>
+      <div id="pillar-list" class="pillar-list">
+        <div class="loading-skeleton-grid" aria-label="Loading pillars" aria-busy="true">
+          <article class="skeleton-card">
+            <div class="skeleton-card-top">
+              <span class="skeleton skeleton-rank"></span>
+              <span class="skeleton skeleton-badge"></span>
+            </div>
+            <div class="skeleton skeleton-name"></div>
+            <div class="skeleton skeleton-address"></div>
+            <div class="skeleton-stat-grid">
+              <span class="skeleton skeleton-stat"></span>
+              <span class="skeleton skeleton-stat"></span>
+              <span class="skeleton skeleton-stat"></span>
+              <span class="skeleton skeleton-stat"></span>
+            </div>
+            <div class="skeleton skeleton-performance"></div>
+          </article>
+          <article class="skeleton-card">
+            <div class="skeleton-card-top">
+              <span class="skeleton skeleton-rank"></span>
+              <span class="skeleton skeleton-badge"></span>
+            </div>
+            <div class="skeleton skeleton-name"></div>
+            <div class="skeleton skeleton-address"></div>
+            <div class="skeleton-stat-grid">
+              <span class="skeleton skeleton-stat"></span>
+              <span class="skeleton skeleton-stat"></span>
+              <span class="skeleton skeleton-stat"></span>
+              <span class="skeleton skeleton-stat"></span>
+            </div>
+            <div class="skeleton skeleton-performance"></div>
+          </article>
+          <article class="skeleton-card">
+            <div class="skeleton-card-top">
+              <span class="skeleton skeleton-rank"></span>
+              <span class="skeleton skeleton-badge"></span>
+            </div>
+            <div class="skeleton skeleton-name"></div>
+            <div class="skeleton skeleton-address"></div>
+            <div class="skeleton-stat-grid">
+              <span class="skeleton skeleton-stat"></span>
+              <span class="skeleton skeleton-stat"></span>
+              <span class="skeleton skeleton-stat"></span>
+              <span class="skeleton skeleton-stat"></span>
+            </div>
+            <div class="skeleton skeleton-performance"></div>
+          </article>
+          <article class="skeleton-card">
+            <div class="skeleton-card-top">
+              <span class="skeleton skeleton-rank"></span>
+              <span class="skeleton skeleton-badge"></span>
+            </div>
+            <div class="skeleton skeleton-name"></div>
+            <div class="skeleton skeleton-address"></div>
+            <div class="skeleton-stat-grid">
+              <span class="skeleton skeleton-stat"></span>
+              <span class="skeleton skeleton-stat"></span>
+              <span class="skeleton skeleton-stat"></span>
+              <span class="skeleton skeleton-stat"></span>
+            </div>
+            <div class="skeleton skeleton-performance"></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="pillar-detail" class="section-block detail-section" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Pillar details</p>
+          <h2 id="detail-name">—</h2>
+        </div>
+        <button id="close-detail" class="ghost-button" type="button">Close</button>
+      </div>
+      <div id="detail-summary" class="detail-summary"></div>
+      <div class="history-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Observed</th>
+              <th>Status</th>
+              <th>Produced</th>
+              <th>Expected</th>
+              <th>Weight</th>
+            </tr>
+          </thead>
+          <tbody id="detail-history"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>Zenon Pillar Tracker</span>
+    <span id="footer-updated">—</span>
+  </footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>
