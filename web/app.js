@@ -180,10 +180,13 @@ function renderEpochs(epochs) {
   }
   target.innerHTML = epochs.map((epoch) => {
     const timeLabel = formatDate(epoch.epoch_start_at);
+    const estimateLabel = epoch.epoch_start_inferred
+      ? '<span class="epoch-estimated">Estimated</span>'
+      : '';
     return '<div class="epoch-row">' +
     '<div class="event-top">' +
     '<span class="epoch-number">Epoch ' + formatEpoch(epoch.epoch) + '</span>' +
-    '<span class="event-time">' + timeLabel + '</span>' +
+    '<span class="event-time">' + timeLabel + estimateLabel + '</span>' +
     '</div>' +
     '</div>';
   }).join("");

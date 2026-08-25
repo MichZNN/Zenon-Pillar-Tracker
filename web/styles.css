@@ -357,6 +357,15 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 }
 .epoch-row:last-child, .event-row:last-child { border-bottom: 0; }
 .epoch-number { font-size: 1rem; font-weight: 850; }
+.epoch-estimated {
+  color: var(--plasma-pink);
+  display: block;
+  font-size: .6rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  margin-top: 2px;
+  text-transform: uppercase;
+}
 .event-type { color: var(--quasar-blue); font-size: .74rem; font-weight: 800; }
 .event-detail { font-size: .84rem; margin-top: 4px; }
 .event-time { color: var(--muted); font-size: .72rem; }

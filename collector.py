@@ -8,12 +8,6 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from database import Database, utc_now
-from epoch_schedule import (
-    DEFAULT_EPOCH_DURATION_SECONDS,
-    DEFAULT_EPOCH_REFERENCE_EPOCH,
-    DEFAULT_EPOCH_REFERENCE_START_AT,
-    calculate_epoch_start,
-)
 from notifications import NotificationDispatcher, create_pinned_stats_message
 from utils.node_rpc_pool import NodeRpcPool
 from utils.node_rpc_wrapper import NodeRpcWrapper
@@ -121,31 +115,6 @@ class Collector:
         self.allow_empty_pillars = bool(
             self.config.get("allow_empty_pillars", False)
         )
-        self.epoch_reference_epoch = int(
-            self.config.get(
-                "epoch_start_reference_epoch",
-                DEFAULT_EPOCH_REFERENCE_EPOCH,
-            )
-        )
-        self.epoch_reference_start_at = str(
-            self.config.get(
-                "epoch_start_reference_at",
-                DEFAULT_EPOCH_REFERENCE_START_AT,
-            )
-        )
-        self.epoch_duration_seconds = int(
-            self.config.get(
-                "epoch_duration_seconds",
-                DEFAULT_EPOCH_DURATION_SECONDS,
-            )
-        )
-        calculate_epoch_start(
-            self.epoch_reference_epoch,
-            reference_epoch=self.epoch_reference_epoch,
-            reference_start_at=self.epoch_reference_start_at,
-            duration_seconds=self.epoch_duration_seconds,
-        )
-
     def _add_epoch_start_times(
         self,
         epoch_data: Mapping[str, Any],
@@ -163,14 +132,8 @@ class Collector:
                     and observed_epoch_start_at is not None
                 ):
                     enriched["epoch_start_at"] = observed_epoch_start_at
+                    enriched["epoch_start_inferred"] = False
                     enriched["epoch_start_observed"] = True
-                else:
-                    enriched["epoch_start_at"] = calculate_epoch_start(
-                        epoch,
-                        reference_epoch=self.epoch_reference_epoch,
-                        reference_start_at=self.epoch_reference_start_at,
-                        duration_seconds=self.epoch_duration_seconds,
-                    )
             return enriched
 
         enriched_history = (

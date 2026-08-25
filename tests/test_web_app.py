@@ -54,6 +54,8 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn("Momentum / delegate", app)
         self.assertIn("formatEpoch", app)
         self.assertIn("epoch.epoch_start_at", app)
+        self.assertIn("epoch.epoch_start_inferred", app)
+        self.assertIn("epoch-estimated", app)
         self.assertNotIn("epoch.announcement_at || epoch.last_seen_at", app)
         self.assertIn("renderPerformanceChart", app)
         index_content = (web_dir / "index.html").read_text()

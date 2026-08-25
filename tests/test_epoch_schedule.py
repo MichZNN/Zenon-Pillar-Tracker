@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from epoch_schedule import calculate_epoch_start
+from tools.epoch_schedule import calculate_epoch_start
 
 
 class EpochScheduleTestCase(unittest.TestCase):

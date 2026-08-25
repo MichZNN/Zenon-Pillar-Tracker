@@ -2,11 +2,8 @@
 
 This guide describes the commands currently used to configure, initialize, run, and stop the Zenon Pillar Tracker on Windows PowerShell.
 
-Run all commands from the repository root:
-
-```text
-C:\Python\Zenon-Pillar-Tracker
-```
+Run all commands from the repository root, the directory containing
+`pillar_tracker.py`.
 
 Replace `python` with `.\.venv\Scripts\python.exe` if the virtual environment is not activated.
 
@@ -38,38 +35,27 @@ Edit `config/config.json` and set at least:
 ```json
 {
   "node_rpc_urls": [
-    "https://127.0.0.1:35997",
-    "https://your-backup-node.example:35997"
+    "https://127.0.0.1:35997"
   ],
   "node_require_sync_info": false,
   "node_max_frontier_age_seconds": 300,
   "node_failure_cooldown_seconds": 120,
   "reference_reward_address": "z1...",
-  "epoch_start_reference_epoch": 1627,
-  "epoch_start_reference_at": "2026-05-10T13:30:00+00:00",
-  "epoch_duration_seconds": 86400,
   "rate_limit_max_wait_seconds": 60,
   "telegram_rate_limit_retries": 2
 }
 ```
 
-`node_rpc_urls` must contain at least one Zenon JSON-RPC endpoint. The
-configured public endpoint uses HTTPS. The collector sends JSON-RPC requests
-over HTTP(S) `POST`; it does not use WebSockets.
+`node_rpc_urls` must contain at least one Zenon JSON-RPC endpoint. The endpoint
+in this example uses HTTPS. The collector sends JSON-RPC requests over HTTP(S)
+`POST`; it does not use WebSockets.
 
 ### Configure node failover
 
 The first URL is the primary. Following URLs are tried in order when the
 primary is unavailable or not ready. A single-item list is sufficient when you
-do not need failover yet:
-
-```json
-{
-  "node_rpc_urls": [
-    "https://primary-node.example:35997"
-  ]
-}
-```
+do not need failover yet. Add backup endpoints after the primary when failover
+is required.
 
 The collector uses a single endpoint for the complete snapshot. It first asks
 for the frontier momentum and, when available, `stats.syncInfo`. A node is
@@ -91,11 +77,9 @@ primary is tested again after it becomes eligible.
 For a live epoch transition, the collector stores the timestamp of the first
 observed momentum carrying the new epoch as `epoch_start_at`. This is the best
 available on-chain timestamp and is kept separate from the Telegram send time.
-If the transition was not observed, the collector uses the schedule calculated
-from `epoch_start_reference_epoch`, `epoch_start_reference_at` (UTC), and
-`epoch_duration_seconds`. The default reference is epoch 1627 at
-`2026-05-10T13:30:00+00:00`, which is 3:30 PM CEST. The standard epoch duration
-is 86400 seconds (24 hours).
+If the transition is not observed during live collection, the collector does
+not invent a new start time. The historical import and backfill tools can use
+an optional schedule fallback and mark the resulting value `Estimated`.
 
 `rate_limit_max_wait_seconds` caps the wait used when a node or Telegram API
 returns HTTP 429. `telegram_rate_limit_retries` controls how many additional
@@ -158,10 +142,10 @@ Use this to perform one node check and then stop:
 python .\pillar_tracker.py
 ```
 
-Expected successful output is similar to:
+Expected successful output includes the selected endpoint and current values:
 
 ```text
-Collected height 14032439, epoch 1733, 97 pillars via https://127.0.0.1:35997
+Collected height <height>, epoch <epoch>, <pillar-count> pillars via <configured-endpoint>
 ```
 
 The collector retrieves:
@@ -256,14 +240,12 @@ Open two PowerShell windows.
 In the first window:
 
 ```powershell
-cd C:\Python\Zenon-Pillar-Tracker
 .\.venv\Scripts\python.exe .\pillar_tracker.py --loop
 ```
 
 In the second window:
 
 ```powershell
-cd C:\Python\Zenon-Pillar-Tracker
 .\.venv\Scripts\python.exe .\web_app.py --host 127.0.0.1 --port 8090
 ```
 
@@ -319,17 +301,26 @@ python .\tools\telegram\import_history.py --fill-missing-epochs --apply
 The importer is idempotent. Running it again keeps existing rows and does not
 send old notifications. It does not change the current `pillars` table or
 pillar snapshots. Existing on-chain rewards and momentum heights are kept.
-Schedule-based epoch starts are stored in `epochs.epoch_start_at`, and known
-live transitions are then replaced with their observed on-chain momentum
-timestamps. The first successful Telegram message time is stored separately as
-`epochs.announcement_at`. If Telegram delivery fails, the notification remains
-pending and `announcement_at` stays empty until a retry succeeds.
+Historical schedule-based epoch starts are stored in `epochs.epoch_start_at`
+and marked by `epoch_start_inferred = 1`. Known live transitions are then
+replaced with their observed on-chain momentum timestamps and marked with
+`epoch_start_inferred = 0`. The first successful Telegram message time is
+stored separately as `epochs.announcement_at`. If Telegram delivery fails, the
+notification remains pending and `announcement_at` stays empty until a retry
+succeeds.
 
 `--fill-missing-epochs` fills only gaps between two known epoch announcements.
 The date is interpolated from the surrounding announcements and the missing
 time defaults to `13:30 UTC` (`3:30 PM CEST` during summer). The rows and
 events are marked as inferred. Omit this option if only messages that actually
 exist in Telegram should be imported.
+
+The schedule fallback settings belong to this historical tooling, not to
+`config/config.json`. The Telegram importer accepts
+`--epoch-start-reference-epoch`, `--epoch-start-reference-at`, and
+`--epoch-duration-seconds`. The standalone backfill tool accepts the equivalent
+`--reference-epoch`, `--reference-start-at`, and `--duration-seconds` options.
+They are only needed when you want to create or recalculate estimated starts.
 
 ### Backfill epoch start times
 
@@ -340,9 +331,10 @@ times for all stored epochs:
 python .\tools\backfill_epoch_starts.py
 ```
 
-The command first fills schedule-based times and then applies the first on-chain
-momentum timestamp for epochs whose live transition was recorded. It does not
-change announcement timestamps, pillar history, rewards, or snapshots.
+The command first fills schedule-based times and marks them as estimates. It
+then applies the first on-chain momentum timestamp for epochs whose live
+transition was recorded and marks those values as observed. It does not change
+announcement timestamps, pillar history, rewards, or snapshots.
 
 If a collector version from before live announcement timestamps were added was
 running, recover timestamps for already-sent Telegram epoch messages with:

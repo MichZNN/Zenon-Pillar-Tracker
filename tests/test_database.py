@@ -58,6 +58,7 @@ class DatabaseTestCase(unittest.TestCase):
         network_notification_channels=None,
         epoch_start_at=None,
         epoch_start_observed=False,
+        epoch_start_inferred=None,
     ):
         self.height += 1
         run_id = self.database.begin_poll()
@@ -76,6 +77,11 @@ class DatabaseTestCase(unittest.TestCase):
                 "source_address": "reference",
                 "epoch_start_at": epoch_start_at,
                 "epoch_start_observed": epoch_start_observed,
+                "epoch_start_inferred": (
+                    epoch_start_inferred
+                    if epoch_start_inferred is not None
+                    else bool(epoch_start_at) and not epoch_start_observed
+                ),
             },
             pillars=pillars,
             missed_momentums_threshold=3,
@@ -110,6 +116,7 @@ class DatabaseTestCase(unittest.TestCase):
 
         epoch = self.database.get_epochs(limit=1)[0]
         self.assertEqual(epoch["epoch_start_at"], "2026-08-23T13:30:00+00:00")
+        self.assertTrue(epoch["epoch_start_inferred"])
         self.assertNotEqual(epoch["epoch_start_at"], epoch["last_seen_at"])
 
     def test_observed_epoch_start_overrides_an_estimated_start(self):
@@ -127,6 +134,7 @@ class DatabaseTestCase(unittest.TestCase):
 
         epoch = self.database.get_epochs(limit=1)[0]
         self.assertEqual(epoch["epoch_start_at"], "2026-08-25T13:23:50+00:00")
+        self.assertFalse(epoch["epoch_start_inferred"])
 
     def test_performance_uses_counter_deltas_and_epoch_boundaries(self):
         self.record(

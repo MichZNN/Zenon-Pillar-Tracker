@@ -8,10 +8,10 @@ The existing Telegram channel is still supported as an optional notification out
 
 - `tools/setup_database.py` — creates the SQLite database and all tables and indexes.
 - `tools/migrate_legacy_json.py` — imports an old JSON cache into SQLite once.
-- `tools/backfill_epoch_starts.py` — fills epoch start times for existing epochs, using observed on-chain transitions when available.
+- `tools/backfill_epoch_starts.py` — fills fallback epoch start estimates and applies observed on-chain transitions when available.
 - `tools/backfill_epoch_announcements.py` — recovers live Telegram send times from the notification outbox.
 - `tools/build_favicons.py` — rebuilds all favicon and web app icon sizes from one PNG source.
-- `epoch_schedule.py` — calculates fallback epoch starts from the configured schedule reference.
+- `tools/epoch_schedule.py` — calculates fallback epoch starts for historical tools.
 - `pillar_tracker.py` — CLI entry point that delegates to `collector.py`.
 - `collector.py` — reliable one-shot poll or continuous collector loop.
 - `database.py` — SQLite schema, snapshots, events, node health, and notification outbox.
@@ -47,13 +47,11 @@ Then fill in at least these values in `config/config.json`:
 
 - `node_rpc_urls`
 - `reference_reward_address`
-- `epoch_start_reference_epoch` and `epoch_start_reference_at`
 
 `node_rpc_urls` must contain at least one Zenon HTTP(S) JSON-RPC endpoint, for
-example `http://127.0.0.1:35997` or `http://your-node-host:35997`. This
-application sends JSON-RPC requests with HTTP `POST`; it does not use
-WebSockets. Use `https://` only when the node or reverse proxy explicitly
-provides HTTPS.
+example `http://127.0.0.1:35997`. This application sends JSON-RPC requests with
+HTTP `POST`; it does not use WebSockets. Use `https://` only when the node or
+reverse proxy explicitly provides HTTPS.
 
 Put the primary endpoint first in `node_rpc_urls` and one or more backup
 endpoints after it. A list with one URL is a valid single-node configuration.
@@ -69,9 +67,10 @@ latest epoch and to import reward history.
 For a live epoch transition, the collector stores the timestamp of the first
 observed momentum carrying the new epoch as `epoch_start_at`. This is the best
 available on-chain timestamp and is kept separate from the Telegram send time.
-If the transition was not observed, the collector uses the configured schedule
-as a fallback. The default reference is epoch 1627 at
-`2026-05-10T13:30:00+00:00` (`3:30 PM CEST`). Epochs are one day long by default.
+If the transition is not observed during live collection, the collector does
+not invent a new start time. Historical import and backfill tools can use an
+optional schedule fallback and mark the resulting value `Estimated`; those
+settings are not part of the live collector configuration.
 
 Telegram is optional. The bot token is read only from the root `.env` file;
 `telegram_channel_id` and the other Telegram settings remain in
@@ -177,7 +176,7 @@ The web server binds to localhost by default. Put it behind a reverse proxy and 
 The main tables are:
 
 - `epochs` — one record per observed epoch.
-- `epochs.epoch_start_at` — observed on-chain transition time when available, otherwise a schedule-based estimate; `announcement_at` records the first successful Telegram announcement time when live notifications are enabled.
+- `epochs.epoch_start_at` — observed on-chain transition time when available, or an optional historical estimate; `epoch_start_inferred` identifies estimates; `announcement_at` records the first successful Telegram announcement time when live notifications are enabled.
 - `pillars` — the latest known identity and metadata for each pillar.
 - `pillar_snapshots` — the pillar state observed during an epoch.
 - `events` — status changes, availability changes, additions, removals, and poll errors.
@@ -273,7 +272,7 @@ python -m unittest discover -s tests -v
 Compile the Python modules:
 
 ```
-python -m py_compile database.py status_logic.py epoch_schedule.py tools/setup_database.py tools/migrate_legacy_json.py tools/backfill_epoch_starts.py tools/backfill_epoch_announcements.py tools/build_favicons.py collector.py web_app.py pillar_tracker.py notifications.py utils/node_rpc_pool.py
+python -m py_compile database.py status_logic.py tools/epoch_schedule.py tools/setup_database.py tools/migrate_legacy_json.py tools/backfill_epoch_starts.py tools/backfill_epoch_announcements.py tools/build_favicons.py collector.py web_app.py pillar_tracker.py notifications.py utils/node_rpc_pool.py
 ```
 
 The dashboard is static HTML/CSS/JavaScript and is served by `web_app.py`.

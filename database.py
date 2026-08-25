@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = "5"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS epochs (
     last_observed_momentum_height INTEGER,
     source TEXT NOT NULL DEFAULT 'node',
     epoch_start_at TEXT,
+    epoch_start_inferred INTEGER NOT NULL DEFAULT 1,
     announcement_at TEXT,
     announcement_source TEXT,
     announcement_inferred INTEGER NOT NULL DEFAULT 0
@@ -243,6 +244,11 @@ def initialize_database(database_path: str | Path) -> Path:
         if "epoch_start_at" not in epoch_columns:
             connection.execute(
                 "ALTER TABLE epochs ADD COLUMN epoch_start_at TEXT"
+            )
+        if "epoch_start_inferred" not in epoch_columns:
+            connection.execute(
+                "ALTER TABLE epochs ADD COLUMN epoch_start_inferred "
+                "INTEGER NOT NULL DEFAULT 1"
             )
         connection.execute(
             """
@@ -536,9 +542,10 @@ class Database:
                         first_seen_at, last_seen_at,
                         last_observed_momentum_height, source,
                         epoch_start_at,
+                        epoch_start_inferred,
                         announcement_at, announcement_source,
                         announcement_inferred
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(epoch) DO UPDATE SET
                         znn_reward = excluded.znn_reward,
                         qsr_reward = excluded.qsr_reward,
@@ -554,6 +561,15 @@ class Database:
                                 epochs.epoch_start_at,
                                 excluded.epoch_start_at
                             )
+                        END,
+                        epoch_start_inferred = CASE
+                            WHEN ? = 1 AND excluded.epoch_start_at IS NOT NULL
+                            THEN 0
+                            WHEN epochs.epoch_start_inferred = 0
+                            THEN 0
+                            WHEN excluded.epoch_start_at IS NOT NULL
+                            THEN excluded.epoch_start_inferred
+                            ELSE epochs.epoch_start_inferred
                         END,
                         announcement_at = COALESCE(
                             epochs.announcement_at,
@@ -578,9 +594,14 @@ class Database:
                         momentum_height,
                         entry.get("source", "node"),
                         entry.get("epoch_start_at"),
+                        1 if entry.get(
+                            "epoch_start_inferred",
+                            entry.get("epoch_start_at") is not None,
+                        ) else 0,
                         entry.get("announcement_at"),
                         entry.get("announcement_source"),
                         1 if entry.get("announcement_inferred") else 0,
+                        1 if entry.get("epoch_start_observed") else 0,
                         1 if entry.get("epoch_start_observed") else 0,
                     ),
                 )
@@ -1317,7 +1338,7 @@ class Database:
         duration_seconds: int,
     ) -> int:
         """Populate calculated start times without changing announcement data."""
-        from epoch_schedule import calculate_epoch_start
+        from tools.epoch_schedule import calculate_epoch_start
 
         with self._connect() as connection:
             rows = connection.execute(
@@ -1325,7 +1346,8 @@ class Database:
             ).fetchall()
             for row in rows:
                 connection.execute(
-                    "UPDATE epochs SET epoch_start_at = ? WHERE epoch = ?",
+                    "UPDATE epochs SET epoch_start_at = ?, "
+                    "epoch_start_inferred = 1 WHERE epoch = ?",
                     (
                         calculate_epoch_start(
                             row["epoch"],
@@ -1361,7 +1383,8 @@ class Database:
                     timezone.utc,
                 ).isoformat(timespec="seconds")
                 connection.execute(
-                    "UPDATE epochs SET epoch_start_at = ? WHERE epoch = ?",
+                    "UPDATE epochs SET epoch_start_at = ?, "
+                    "epoch_start_inferred = 0 WHERE epoch = ?",
                     (start_at, row["epoch"]),
                 )
         return len(rows)
@@ -1465,9 +1488,10 @@ class Database:
                         first_seen_at, last_seen_at,
                         last_observed_momentum_height, source,
                         epoch_start_at,
+                        epoch_start_inferred,
                         announcement_at, announcement_source,
                         announcement_inferred
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         epoch,
@@ -1479,6 +1503,10 @@ class Database:
                         _as_int(entry.get("last_observed_momentum_height")),
                         str(entry.get("source") or "historical"),
                         entry.get("epoch_start_at"),
+                        1 if entry.get(
+                            "epoch_start_inferred",
+                            entry.get("epoch_start_at") is not None,
+                        ) else 0,
                         observed_at,
                         str(entry.get("announcement_source") or "historical"),
                         1 if entry.get("announcement_inferred") else 0,

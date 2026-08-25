@@ -34,7 +34,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from database import Database  # noqa: E402
-from epoch_schedule import (  # noqa: E402
+from tools.epoch_schedule import (  # noqa: E402
     DEFAULT_EPOCH_DURATION_SECONDS,
     DEFAULT_EPOCH_REFERENCE_EPOCH,
     DEFAULT_EPOCH_REFERENCE_START_AT,
@@ -331,6 +331,7 @@ def build_import_records(
                     reference_start_at=epoch_reference_start_at,
                     duration_seconds=epoch_duration_seconds,
                 ),
+                "epoch_start_inferred": True,
                 "announcement_source": "telegram_preview",
                 "announcement_inferred": False,
             }
@@ -398,6 +399,7 @@ def build_import_records(
                         reference_start_at=epoch_reference_start_at,
                         duration_seconds=epoch_duration_seconds,
                     ),
+                    "epoch_start_inferred": True,
                     "announcement_source": "telegram_preview",
                     "announcement_inferred": True,
                 }

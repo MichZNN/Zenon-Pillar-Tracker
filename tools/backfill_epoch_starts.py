@@ -10,7 +10,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from database import Database  # noqa: E402
-from epoch_schedule import (  # noqa: E402
+from tools.epoch_schedule import (  # noqa: E402
     DEFAULT_EPOCH_DURATION_SECONDS,
     DEFAULT_EPOCH_REFERENCE_EPOCH,
     DEFAULT_EPOCH_REFERENCE_START_AT,
@@ -20,8 +20,8 @@ from epoch_schedule import (  # noqa: E402
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Backfill epoch start times in SQLite, using observed on-chain "
-            "transitions when available."
+            "Backfill estimated epoch start times in SQLite and apply "
+            "observed on-chain transitions when available."
         )
     )
     parser.add_argument(
@@ -62,7 +62,7 @@ def main() -> int:
         duration_seconds=args.duration_seconds,
     )
     observed = database.backfill_observed_epoch_start_times()
-    print(f"Backfilled epoch start times for {updated} epoch records.")
+    print(f"Marked schedule-based epoch estimates for {updated} epoch records.")
     print(f"Applied {observed} observed on-chain epoch transition times.")
     print("Announcement timestamps and other historical data were preserved.")
     return 0

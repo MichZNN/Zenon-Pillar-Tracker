@@ -80,6 +80,9 @@ class CollectorTestCase(unittest.TestCase):
     def test_collector_handles_stale_runs_and_status_changes(self):
         first = self.collector.run_once()
         self.assertEqual(first["status"], "success")
+        self.assertIsNone(
+            self.collector.database.get_epochs(limit=1)[0]["epoch_start_at"]
+        )
 
         stale = self.collector.run_once()
         self.assertEqual(stale["status"], "stale")

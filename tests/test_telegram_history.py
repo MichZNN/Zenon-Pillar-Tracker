@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from database import Database
-from epoch_schedule import calculate_epoch_start
+from tools.epoch_schedule import calculate_epoch_start
 from tools.telegram.import_history import (
     TelegramMessage,
     build_import_records,
@@ -81,6 +81,7 @@ class TelegramHistoryTestCase(unittest.TestCase):
             epochs[1]["epoch_start_at"],
             calculate_epoch_start(11),
         )
+        self.assertTrue(epochs[1]["epoch_start_inferred"])
 
     def test_database_import_is_idempotent_and_does_not_queue_notifications(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -126,6 +127,9 @@ class TelegramHistoryTestCase(unittest.TestCase):
             self.assertEqual(
                 database.get_epochs()[0]["epoch_start_at"],
                 "2025-12-01T13:30:00+00:00",
+            )
+            self.assertTrue(
+                database.get_epochs()[0]["epoch_start_inferred"]
             )
             self.assertEqual(len(database.get_events()), 1)
             self.assertEqual(database.get_pending_notifications(), [])
