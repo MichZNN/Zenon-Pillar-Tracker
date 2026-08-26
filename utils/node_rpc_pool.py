@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import time
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable, Mapping
 
 from utils.node_rpc_wrapper import NodeRpcError, NodeRpcWrapper
 
@@ -19,6 +19,23 @@ class NodeNotReadyError(NodeRpcError):
     """Raised when a reachable node is not suitable for collection."""
 
 
+class NodeSyncingError(NodeNotReadyError):
+    """Raised when a node remains in the transient syncing state."""
+
+    def __init__(self, sync_info: Mapping[str, Any], waited_seconds: float):
+        self.sync_info = dict(sync_info)
+        self.waited_seconds = max(0.0, float(waited_seconds))
+        self.state = _as_int(self.sync_info.get("state"))
+        self.current_height = _as_int(self.sync_info.get("currentHeight"))
+        self.target_height = _as_int(self.sync_info.get("targetHeight"))
+        super().__init__(
+            "node sync state is "
+            f"{self.state} (syncing) after {self.waited_seconds:.1f}s; "
+            f"current height {self.current_height}, "
+            f"target height {self.target_height}"
+        )
+
+
 class NodePoolError(NodeRpcError):
     """Raised when no configured node can provide a valid observation."""
 
@@ -31,6 +48,8 @@ class NodePollResult:
     pillars: dict[str, dict[str, Any]] | None = None
     epoch_data: dict[str, Any] | None = None
     epoch_history: list[dict[str, Any]] | None = None
+    reason: str | None = None
+    sync_info: dict[str, Any] | None = None
 
 
 class NodeRpcPool:
@@ -43,6 +62,8 @@ class NodeRpcPool:
         require_sync_info: bool = False,
         max_frontier_age_seconds: float = 300,
         failure_cooldown_seconds: float = 120,
+        sync_retry_seconds: float = 30,
+        sync_retry_interval_seconds: float = 5,
     ):
         self.nodes = list(nodes)
         if not self.nodes:
@@ -52,6 +73,11 @@ class NodeRpcPool:
         self.failure_cooldown_seconds = max(
             0.0,
             float(failure_cooldown_seconds),
+        )
+        self.sync_retry_seconds = max(0.0, float(sync_retry_seconds))
+        self.sync_retry_interval_seconds = max(
+            0.1,
+            float(sync_retry_interval_seconds),
         )
         self.active_index = 0
         self._unavailable_until = [0.0] * len(self.nodes)
@@ -102,7 +128,10 @@ class NodeRpcPool:
         self,
         node: NodeRpcWrapper,
         latest_momentum: dict[str, Any],
-    ) -> None:
+        *,
+        retry_sync: bool,
+    ) -> bool:
+        sync_was_retried = False
         timestamp = _as_int(latest_momentum.get("timestamp"))
         if (
             self.max_frontier_age_seconds > 0
@@ -120,7 +149,7 @@ class NodeRpcPool:
         if not callable(get_sync_info):
             if self.require_sync_info:
                 raise NodeNotReadyError("stats.syncInfo is not available")
-            return
+            return sync_was_retried
 
         try:
             sync_info = get_sync_info()
@@ -129,13 +158,27 @@ class NodeRpcPool:
                 raise NodeNotReadyError(
                     f"stats.syncInfo check failed: {exc}"
                 ) from exc
-            return
+            return sync_was_retried
 
         if not isinstance(sync_info, dict):
             raise NodeNotReadyError("stats.syncInfo did not return an object")
         state = _as_int(sync_info.get("state"))
         current_height = _as_int(sync_info.get("currentHeight"))
         target_height = _as_int(sync_info.get("targetHeight"))
+        if state == 1 and retry_sync and self.sync_retry_seconds > 0:
+            sync_info = self._wait_for_sync(
+                get_sync_info,
+                sync_info,
+            )
+            sync_was_retried = True
+            state = _as_int(sync_info.get("state"))
+            current_height = _as_int(sync_info.get("currentHeight"))
+            target_height = _as_int(sync_info.get("targetHeight"))
+        if state == 1:
+            raise NodeSyncingError(
+                sync_info,
+                self.sync_retry_seconds if retry_sync else 0.0,
+            )
         if state is not None and state != 2:
             raise NodeNotReadyError(
                 f"node sync state is {state}, expected 2 (synced)"
@@ -150,6 +193,35 @@ class NodeRpcPool:
             )
         if self.require_sync_info and state is None:
             raise NodeNotReadyError("stats.syncInfo did not return a state")
+        return sync_was_retried
+
+    def _wait_for_sync(
+        self,
+        get_sync_info: Callable[[], Any],
+        sync_info: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Give a node a short grace period to leave the syncing state."""
+        started = time.monotonic()
+        deadline = started + self.sync_retry_seconds
+        latest_sync_info = dict(sync_info)
+
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise NodeSyncingError(
+                    latest_sync_info,
+                    time.monotonic() - started,
+                )
+            time.sleep(min(self.sync_retry_interval_seconds, remaining))
+            try:
+                next_sync_info = get_sync_info()
+            except NodeRpcError:
+                continue
+            if not isinstance(next_sync_info, dict):
+                continue
+            latest_sync_info = next_sync_info
+            if _as_int(latest_sync_info.get("state")) != 1:
+                return latest_sync_info
 
     def collect_snapshot(
         self,
@@ -164,15 +236,35 @@ class NodeRpcPool:
         errors: list[str] = []
         stale_candidates: list[tuple[int, dict[str, Any]]] = []
         reorg_candidates: list[tuple[int, dict[str, Any]]] = []
+        syncing_candidates: list[
+            tuple[int, dict[str, Any], dict[str, Any]]
+        ] = []
+        candidate_indices = self._candidate_indices()
 
-        for index in self._candidate_indices():
+        for index in candidate_indices:
             node = self.nodes[index]
             try:
                 latest_momentum = node.get_latest_momentum()
                 current_height = _as_int(latest_momentum.get("height"))
                 if current_height is None:
                     raise NodeNotReadyError("frontier momentum has no height")
-                self._validate_node(node, latest_momentum)
+                sync_was_retried = self._validate_node(
+                    node,
+                    latest_momentum,
+                    retry_sync=len(candidate_indices) == 1,
+                )
+                if sync_was_retried:
+                    latest_momentum = node.get_latest_momentum()
+                    current_height = _as_int(latest_momentum.get("height"))
+                    if current_height is None:
+                        raise NodeNotReadyError(
+                            "frontier momentum has no height after sync recovery"
+                        )
+                    self._validate_node(
+                        node,
+                        latest_momentum,
+                        retry_sync=False,
+                    )
 
                 if previous_height is not None and current_height < previous_height:
                     reorg_candidates.append((index, latest_momentum))
@@ -222,6 +314,20 @@ class NodeRpcPool:
                     epoch_data=epoch_data,
                     epoch_history=epoch_history,
                 )
+            except NodeSyncingError as exc:
+                self._mark_failure(index)
+                node_url = self._node_url(node)
+                syncing_candidates.append(
+                    (index, latest_momentum, exc.sync_info)
+                )
+                errors.append(f"{node_url}: {exc}")
+                print(
+                    f"Node RPC candidate deferred ({node_url}): "
+                    f"sync state {exc.state}, current height "
+                    f"{exc.current_height}, target height "
+                    f"{exc.target_height} after "
+                    f"{exc.waited_seconds:.1f}s"
+                )
             except (NodeRpcError, KeyError, TypeError, ValueError) as exc:
                 self._mark_failure(index)
                 node_url = self._node_url(node)
@@ -247,6 +353,19 @@ class NodeRpcPool:
                 status="stale",
                 node_url=self._node_url(self.nodes[index]),
                 latest_momentum=latest_momentum,
+            )
+
+        if syncing_candidates:
+            index, latest_momentum, sync_info = max(
+                syncing_candidates,
+                key=lambda item: _as_int(item[1].get("height"), -1) or -1,
+            )
+            return NodePollResult(
+                status="stale",
+                node_url=self._node_url(self.nodes[index]),
+                latest_momentum=latest_momentum,
+                reason="node_syncing",
+                sync_info=sync_info,
             )
 
         joined_errors = "; ".join(errors) or "no usable node response"

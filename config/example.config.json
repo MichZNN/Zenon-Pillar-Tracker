@@ -5,6 +5,8 @@
     "node_require_sync_info": false,
     "node_max_frontier_age_seconds": 300,
     "node_failure_cooldown_seconds": 120,
+    "node_sync_retry_seconds": 30,
+    "node_sync_retry_interval_seconds": 5,
     "database_path": "data_store/pillar_tracker.sqlite3",
     "http_timeout_seconds": 15,
     "rpc_retries": 2,

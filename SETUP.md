@@ -40,6 +40,8 @@ Edit `config/config.json` and set at least:
   "node_require_sync_info": false,
   "node_max_frontier_age_seconds": 300,
   "node_failure_cooldown_seconds": 120,
+  "node_sync_retry_seconds": 30,
+  "node_sync_retry_interval_seconds": 5,
   "reference_reward_address": "z1...",
   "rate_limit_max_wait_seconds": 60,
   "telegram_rate_limit_retries": 2
@@ -59,18 +61,22 @@ is required.
 
 The collector uses a single endpoint for the complete snapshot. It first asks
 for the frontier momentum and, when available, `stats.syncInfo`. A node is
-rejected when it is unreachable, reports a synchronization state other than
+rejected when it is unreachable, remains in a synchronization state other than
 `2` (synced), is behind its target height, has a frontier older than the
 configured limit, returns no pillars, or fails while the snapshot is being
-collected. This prevents momentum, pillar, and epoch data from being combined
-from different nodes.
+collected. A node that briefly reports `state = 1` (syncing) receives a short
+grace period before the poll is deferred. This prevents momentum, pillar, and
+epoch data from being combined from different nodes.
 
 `node_require_sync_info` defaults to `false` so older nodes that do not expose
 `stats.syncInfo` can still be used. Set it to `true` to require that check.
 `node_max_frontier_age_seconds` defaults to five minutes; set it to `0` to
 disable the timestamp-age check. `node_failure_cooldown_seconds` defaults to
 two minutes. A failed endpoint is skipped during that cooldown, and the
-primary is tested again after it becomes eligible.
+primary is tested again after it becomes eligible. `node_sync_retry_seconds`
+defaults to 30 seconds, with a 5-second retry interval. With multiple endpoints,
+the collector tries the other candidates immediately and only waits when no
+other candidate is available.
 
 `reference_reward_address` must be a valid pillar owner address with reward history. It is used to determine the latest epoch and to import epoch reward history. The reward amounts remain available in SQLite, but are not displayed on the dashboard.
 

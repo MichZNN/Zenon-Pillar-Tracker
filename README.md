@@ -57,8 +57,10 @@ Put the primary endpoint first in `node_rpc_urls` and one or more backup
 endpoints after it. A list with one URL is a valid single-node configuration.
 The collector checks the node's frontier and synchronization state before
 collecting a snapshot and fails over when an endpoint is unavailable, not
-synchronized, too old, or returns invalid data. The primary endpoint is
-periodically tested again after it recovers.
+synchronized, too old, or returns invalid data. A single node that briefly
+reports `state = 1` receives a short synchronization grace period. If it does
+not recover, that poll is deferred without sending a collector error. The
+primary endpoint is periodically tested again after it recovers.
 
 `reference_reward_address` must contain a valid pillar address with reward history
 (normally a `z1...` address). The collector uses this address to determine the

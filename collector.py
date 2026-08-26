@@ -101,6 +101,12 @@ class Collector:
             failure_cooldown_seconds=float(
                 self.config.get("node_failure_cooldown_seconds", 120)
             ),
+            sync_retry_seconds=float(
+                self.config.get("node_sync_retry_seconds", 30)
+            ),
+            sync_retry_interval_seconds=float(
+                self.config.get("node_sync_retry_interval_seconds", 5)
+            ),
         )
         self.node_urls = node_urls
         self.dispatcher = NotificationDispatcher(self.database, self.config)
@@ -196,6 +202,9 @@ class Collector:
         poll_run_id: int,
         latest_momentum: Mapping[str, Any],
         previous_state: Mapping[str, Any],
+        *,
+        reason: str | None = None,
+        sync_info: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         stale_count = int(previous_state.get("stale_count") or 0) + 1
         health = (
@@ -218,10 +227,21 @@ class Collector:
             "stale_count": stale_count,
             "health": health,
         }
-        print(
-            f"No new momentum at height {latest_momentum.get('height')} "
-            f"(stale check {stale_count}, health: {health})"
-        )
+        if reason == "node_syncing" and sync_info is not None:
+            print(
+                "Poll deferred: node is still syncing "
+                f"(state {sync_info.get('state')}, current height "
+                f"{sync_info.get('currentHeight')}, target height "
+                f"{sync_info.get('targetHeight')}; stale check "
+                f"{stale_count}, health: {health})"
+            )
+            result["reason"] = reason
+            result["sync_info"] = dict(sync_info)
+        else:
+            print(
+                f"No new momentum at height {latest_momentum.get('height')} "
+                f"(stale check {stale_count}, health: {health})"
+            )
         return result
 
     def _mark_reorg(
@@ -339,6 +359,8 @@ class Collector:
                     poll_run_id,
                     latest_momentum,
                     previous_state,
+                    reason=snapshot.reason,
+                    sync_info=snapshot.sync_info,
                 )
 
             current_height = _as_int(latest_momentum.get("height"))
