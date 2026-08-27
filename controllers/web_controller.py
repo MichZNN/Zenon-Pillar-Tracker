@@ -773,6 +773,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         try:
             parsed = urlparse(self.path)
+            if parsed.path == "/.well-known/appspecific/com.chrome.devtools.json":
+                # Chrome probes this optional endpoint while DevTools is open.
+                # It is not an application error and should not fill the log.
+                self._send_json({})
+                return
             if parsed.path.startswith("/api/"):
                 self._dispatch_api("GET", parsed)
                 return

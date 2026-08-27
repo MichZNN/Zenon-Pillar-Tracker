@@ -168,6 +168,15 @@ class WebAppTestCase(unittest.TestCase):
             logger.warning.assert_not_called()
             logger.error.assert_not_called()
 
+    def test_chrome_devtools_probe_is_handled_without_a_not_found(self):
+        handler = object.__new__(DashboardHandler)
+        handler.path = "/.well-known/appspecific/com.chrome.devtools.json"
+        handler._send_json = lambda payload: setattr(handler, "probe_payload", payload)
+
+        handler.do_GET()
+
+        self.assertEqual(handler.probe_payload, {})
+
 
 if __name__ == "__main__":
     unittest.main()

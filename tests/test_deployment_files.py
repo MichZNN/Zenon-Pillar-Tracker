@@ -36,12 +36,25 @@ class DeploymentFilesTests(unittest.TestCase):
         self.assertIn(".deploy-image.env", script)
         self.assertIn("printf 'IMAGE=%s", script)
 
+    def test_development_deployment_is_isolated(self) -> None:
+        environment = self.read("deploy/examples/development.env.example")
+        unit = self.read("deploy/systemd/zenon-pillar-tracker-dev.service")
+        nginx = self.read("deploy/nginx/pillartracker.turmin.com.conf")
+        self.assertIn("WEB_PORT=8081", environment)
+        self.assertIn("/srv/zenon-pillar-tracker-dev/data_store", environment)
+        self.assertIn("WorkingDirectory=/srv/zenon-pillar-tracker-dev", unit)
+        self.assertIn("127.0.0.1:8081", nginx)
+        self.assertIn("server_name pillartracker.turmin.com", nginx)
+
     def test_workflow_tests_both_platforms_builds_arm64_and_deploys_main(self) -> None:
         workflow = self.read(".github/workflows/ci-cd.yml")
         self.assertIn("Tests (Windows)", workflow)
         self.assertIn("Tests (Debian ARM64 container)", workflow)
         self.assertIn('python-version: "3.14.5"', workflow)
         self.assertIn("python:3.14.5-slim-bookworm", workflow)
+        self.assertIn("channel=development", workflow)
+        self.assertIn("environment: ${{ github.ref == 'refs/heads/development'", workflow)
+        self.assertIn("zenon-pillar-tracker-dev.service", workflow)
         self.assertIn("linux/arm64", workflow)
         self.assertIn("refs/heads/main", workflow)
         self.assertIn("deploy/bin/deploy.sh", workflow)

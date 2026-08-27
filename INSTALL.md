@@ -182,28 +182,128 @@ IMAGE=zenon-pillar-tracker:local docker compose up -d collector
 On Windows, `DATA_DIR` in `.env` can point to a directory shared with Docker
 Desktop. Check file-sharing and volume permissions explicitly in that setup.
 
+## First development deployment on Debian ARM64
+
+The first remote deployment uses a separate Compose stack so it cannot share
+the production database, logs, containers, or host port. The development stack
+uses `/srv/zenon-pillar-tracker-dev`, port `8081`, and the environment template
+at `deploy/examples/development.env.example`.
+
+Copy the repository's deployment files to the server, then prepare the
+development directory:
+
+```sh
+sudo mkdir -p /srv/zenon-pillar-tracker-dev/deploy/bin
+sudo mkdir -p /srv/zenon-pillar-tracker-dev/deploy/systemd
+sudo mkdir -p /srv/zenon-pillar-tracker-dev/deploy/nginx
+sudo mkdir -p /srv/zenon-pillar-tracker-dev/data_store
+sudo chown -R "$(id -u):$(id -g)" /srv/zenon-pillar-tracker-dev
+cp compose.yaml /srv/zenon-pillar-tracker-dev/compose.yaml
+cp deploy/bin/deploy.sh /srv/zenon-pillar-tracker-dev/deploy/bin/deploy.sh
+cp deploy/examples/development.env.example /srv/zenon-pillar-tracker-dev/.env
+cp deploy/systemd/zenon-pillar-tracker-dev.service /srv/zenon-pillar-tracker-dev/deploy/systemd/zenon-pillar-tracker-dev.service
+cp deploy/nginx/pillartracker.turmin.com.bootstrap.conf /srv/zenon-pillar-tracker-dev/deploy/nginx/pillartracker.turmin.com.bootstrap.conf
+cp deploy/nginx/pillartracker.turmin.com.conf /srv/zenon-pillar-tracker-dev/deploy/nginx/pillartracker.turmin.com.conf
+```
+
+Set the real Telegram token only when development notifications are needed.
+The directory used by `DATA_DIR` must be writable by the container user:
+
+```sh
+sudo chmod 600 /srv/zenon-pillar-tracker-dev/.env
+sudo chown -R 10001:10001 /srv/zenon-pillar-tracker-dev/data_store
+sudo chmod 750 /srv/zenon-pillar-tracker-dev/data_store
+```
+
+Start and initialize the development stack:
+
+```sh
+cd /srv/zenon-pillar-tracker-dev
+docker compose config
+docker compose pull web collector
+docker compose up -d web
+docker compose run --rm web python tools/setup_database.py --database /app/data_store/pillar_tracker.sqlite3
+docker compose up -d collector
+docker compose ps
+```
+
+The development unit is optional because Compose already uses
+`restart: unless-stopped`. If the host uses systemd, install the development
+unit and enable it:
+
+```sh
+sudo cp deploy/systemd/zenon-pillar-tracker-dev.service /etc/systemd/system/zenon-pillar-tracker-dev.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now zenon-pillar-tracker-dev.service
+```
+
+### NGINX and DNS
+
+Create a DNS `A` record for `pillartracker.turmin.com` that points to the VPS.
+Add an `AAAA` record only when IPv6 is configured correctly. Allow inbound TCP
+ports 80 and 443 in the host or provider firewall.
+
+Before enabling this server block, inspect the existing NGINX configuration
+with `sudo nginx -T` and confirm that no other server block already claims
+`pillartracker.turmin.com`. Leave unrelated `turmin.com` configurations
+unchanged.
+
+The supplied NGINX configuration routes the domain to the development web
+container on `127.0.0.1:8081`. It does not expose Docker or the application
+port publicly. First install the temporary HTTP configuration so Let's Encrypt
+can validate the domain:
+
+```sh
+sudo mkdir -p /var/www/certbot
+sudo cp deploy/nginx/pillartracker.turmin.com.bootstrap.conf /etc/nginx/sites-available/pillartracker.turmin.com
+sudo ln -sf /etc/nginx/sites-available/pillartracker.turmin.com /etc/nginx/sites-enabled/pillartracker.turmin.com
+sudo nginx -t
+sudo systemctl reload nginx
+sudo certbot certonly --webroot -w /var/www/certbot -d pillartracker.turmin.com
+```
+
+After the certificate has been issued, replace the temporary configuration with
+the HTTPS configuration and reload NGINX:
+
+```sh
+sudo cp deploy/nginx/pillartracker.turmin.com.conf /etc/nginx/sites-available/pillartracker.turmin.com
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Do not install both supplied configurations at the same time. The final file
+still points to the development stack on port `8081`; change that one upstream
+port to `8080` when this hostname is promoted to production. The application
+currently uses root-relative URLs, so `/dev` on the same hostname is not enabled
+by this configuration: it would break frontend assets and API calls. Use the
+hostname root for this first development environment. If development and
+production must run simultaneously, use a separate hostname such as
+`dev.pillartracker.turmin.com` or add explicit application base-path support
+before using `/dev`.
+
 ## Automatic GitHub deployment
 
 `.github/workflows/ci-cd.yml` performs the following steps:
 
 1. Pull requests and pushes to `development` and `main` run tests natively on
    Windows and inside a Debian ARM64 container.
-2. Only a push to `main` (including a merge from `development` to `main`)
-   builds an image for `linux/amd64` and `linux/arm64`.
-3. The image is published to GHCR with both a `main` tag and an immutable full
-   commit-SHA tag.
+2. A push to `development` builds a `development` image and deploys the
+   development environment. A push to `main` (including a merge from
+   `development` to `main`) builds and deploys the production environment.
+3. Each image is published to GHCR with its channel tag (`development` or
+   `main`) and an immutable full commit-SHA tag.
 4. The deployment job uploads `compose.yaml`, the deployment script, and the
-   systemd template to the server.
+   environment-specific systemd template to the selected server path.
 5. The script pulls the SHA-tagged image and runs `docker compose up -d`.
    Changed containers are replaced/restarted while SQLite and logs remain in
    `DATA_DIR`.
 
 The script is copied to the server again on every deployment. The application
 source does not need to be checked out on the server because it is inside the
-container image. The systemd unit only needs to be installed during the first
-setup. The workflow does not change secrets or overwrite `.env`. The deployment
-script stores the active image tag in `.deploy-image.env`, so the same version
-remains active after a host reboot.
+container image. The matching systemd unit only needs to be installed during
+the first setup. The workflow does not change secrets or overwrite `.env`. The
+deployment script stores the active image tag in `.deploy-image.env`, so the
+same version remains active after a host reboot.
 
 The Debian ARM64 test job uses `ubuntu-latest` only as a GitHub host for Docker
 and QEMU; the Python tests run in `python:3.14.5-slim-bookworm` with platform
@@ -211,14 +311,16 @@ and QEMU; the Python tests run in `python:3.14.5-slim-bookworm` with platform
 
 ### Required GitHub secrets
 
-Create these repository or environment secrets:
+Create `development` and `production` GitHub Environments. Add the following
+secrets to each environment, using the development server/path for
+`development` and the production server/path for `production`:
 
 | Secret | Value |
 | --- | --- |
 | `DEPLOY_HOST` | DNS name or IP address of the server |
 | `DEPLOY_PORT` | SSH port; empty means `22` |
 | `DEPLOY_USER` | Dedicated SSH/deployment user |
-| `DEPLOY_PATH` | Exact `/srv/zenon-pillar-tracker`, without spaces |
+| `DEPLOY_PATH` | Deployment directory, such as `/srv/zenon-pillar-tracker` or `/srv/zenon-pillar-tracker-dev` |
 | `DEPLOY_SSH_KEY` | Private ed25519 SSH key for the deployment user |
 | `DEPLOY_KNOWN_HOSTS` | Pre-verified host key line(s) |
 

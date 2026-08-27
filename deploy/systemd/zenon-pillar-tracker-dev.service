@@ -1,0 +1,21 @@
+[Unit]
+Description=Zenon Pillar Tracker development Docker Compose stack
+Documentation=https://github.com/MichZNN/Zenon-Pillar-Tracker/blob/development/INSTALL.md
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/zenon-pillar-tracker-dev
+EnvironmentFile=-/srv/zenon-pillar-tracker-dev/.deploy-image.env
+ExecStartPre=/usr/bin/env docker compose config --quiet
+ExecStart=/usr/bin/env docker compose up -d --remove-orphans
+ExecReload=/usr/bin/env docker compose up -d --remove-orphans
+ExecStop=/usr/bin/env docker compose down --remove-orphans
+RemainAfterExit=yes
+TimeoutStartSec=0
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

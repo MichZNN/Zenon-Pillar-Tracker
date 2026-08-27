@@ -20,6 +20,7 @@ The existing Telegram channel is still supported as an optional notification out
 - `functions/` — pure status and subscription domain functions.
 - `utils/` — internal RPC, HTTP, Telegram, Discord, and environment helpers.
 - `templates/` — mobile-first dashboard, one login page, and one role-aware portal.
+- `deploy/` — Docker deployment script, systemd units, development environment template, and NGINX configuration.
 - `SETUP.md` — current setup, run commands, status timing, and database safety.
 - `INSTALL.md` — Docker, Debian ARM64/Linux deployment, systemd, GitHub Actions, and rollback.
 - `.plans/REPORT_AND_IMPLEMENTATION_PLAN.md` — technical analysis and roadmap.

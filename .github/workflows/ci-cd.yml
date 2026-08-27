@@ -60,7 +60,7 @@ jobs:
 
   build:
     name: Build multi-architecture image
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: (github.ref == 'refs/heads/development' || github.ref == 'refs/heads/main') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [test-windows, test-debian-arm64]
     runs-on: ubuntu-latest
     outputs:
@@ -69,10 +69,16 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Resolve image name
+      - name: Resolve image name and channel
         id: image
         shell: bash
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF" = "refs/heads/development" ]; then
+            echo "channel=development" >> "$GITHUB_OUTPUT"
+          else
+            echo "channel=main" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -93,7 +99,7 @@ jobs:
         with:
           images: ${{ steps.image.outputs.name }}
           tags: |
-            type=raw,value=main
+            type=raw,value=${{ steps.image.outputs.channel }}
             type=raw,value=${{ github.sha }}
 
       - name: Build and push image
@@ -111,10 +117,11 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
-    name: Deploy to Linux host
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    name: Deploy ${{ github.ref == 'refs/heads/development' && 'development' || 'production' }} environment
+    if: (github.ref == 'refs/heads/development' || github.ref == 'refs/heads/main') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: build
     runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/development' && 'development' || 'production' }}
     env:
       GHCR_DEPLOY_TOKEN: ${{ secrets.GHCR_DEPLOY_TOKEN }}
     steps:
@@ -203,13 +210,17 @@ jobs:
             -o UserKnownHostsFile="$ZENON_SSH_DIR/known_hosts" \
             deploy/bin/deploy.sh \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/deploy/bin/deploy.sh"
+          unit_file=deploy/systemd/zenon-pillar-tracker.service
+          if [ "$GITHUB_REF" = "refs/heads/development" ]; then
+            unit_file=deploy/systemd/zenon-pillar-tracker-dev.service
+          fi
           scp \
             -P "$deploy_port" \
             -i "$ZENON_SSH_DIR/id_ed25519" \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$ZENON_SSH_DIR/known_hosts" \
-            deploy/systemd/zenon-pillar-tracker.service \
+            "$unit_file" \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/deploy/systemd/zenon-pillar-tracker.service"
 
       - name: Pull and restart the application stack
