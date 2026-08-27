@@ -38,7 +38,8 @@ class DeploymentFilesTests(unittest.TestCase):
 
     def test_workflow_tests_both_platforms_builds_arm64_and_deploys_main(self) -> None:
         workflow = self.read(".github/workflows/ci-cd.yml")
-        self.assertIn("windows-latest", workflow)
+        self.assertIn("Tests (Windows)", workflow)
+        self.assertIn("Tests (Debian ARM64 container)", workflow)
         self.assertIn("linux/arm64", workflow)
         self.assertIn("refs/heads/main", workflow)
         self.assertIn("deploy/bin/deploy.sh", workflow)

@@ -188,8 +188,8 @@ wijzen. Controleer daar expliciet de file-sharing- en volume-permissies.
 
 `.github/workflows/ci-cd.yml` doet het volgende:
 
-1. Bij pull requests en pushes naar `development` en `main` draait de testmatrix
-   op `ubuntu-latest` en `windows-latest`.
+1. Bij pull requests en pushes naar `development` en `main` draaien de tests
+   native op Windows en in een Debian ARM64-container.
 2. Alleen een push naar `main` (dus ook een merge van `development` naar
    `main`) bouwt een image voor `linux/amd64` en `linux/arm64`.
 3. De image wordt naar GHCR gepubliceerd met zowel `main` als een immutable
@@ -206,6 +206,11 @@ containerimage. De systemd-unit hoeft alleen bij de eerste installatie te
 worden geïnstalleerd. De workflow verandert geen secrets en schrijft `.env`
 niet over. Het deploymentscript bewaart de actieve image-tag in
 `.deploy-image.env`, zodat dezelfde versie ook na een hostreboot actief blijft.
+
+De Debian ARM64-testjob gebruikt `ubuntu-latest` uitsluitend als GitHub-host
+voor Docker en QEMU; de Python-tests draaien in `python:3.12-slim-bookworm`
+met platform `linux/arm64`. Ubuntu is dus geen productie- of applicatieruntime-
+aanname.
 
 ### Benodigde GitHub Secrets
 
