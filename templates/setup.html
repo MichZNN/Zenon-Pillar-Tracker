@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#151515">
+  <title>Initial setup · Zenon Pillar Tracker</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16x16.png">
+  <link rel="icon" href="/static/icons/favicon.ico">
+  <link rel="manifest" href="/static/icons/site.webmanifest">
+  <link rel="stylesheet" href="/static/vendor/font-awesome/7.3.1/css/all.min.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="auth-shell">
+    <section class="auth-card section-block">
+      <div class="auth-brand" aria-hidden="true">
+        <span class="auth-brand-icon"><i class="fa-solid fa-shield-halved"></i></span>
+        <span>Zenon Pillar Tracker</span>
+      </div>
+      <p class="eyebrow">First-run setup</p>
+      <h1>Create your admin</h1>
+      <p class="muted">There are no accounts yet. Create the first administrator to secure the tracker.</p>
+      <form id="setup-form" class="form-stack">
+        <label><span class="field-label">Username</span><input name="username" autocomplete="username" required minlength="3" maxlength="80"></label>
+        <label><span class="field-label">Display name</span><input name="display_name" autocomplete="name" maxlength="120"></label>
+        <label><span class="field-label">Password</span><input name="password" type="password" autocomplete="new-password" minlength="12" required></label>
+        <label><span class="field-label">Repeat password</span><input name="password_confirmation" type="password" autocomplete="new-password" minlength="12" required></label>
+        <button class="primary-button" type="submit"><i class="fa-solid fa-user-shield" aria-hidden="true"></i> Create admin account</button>
+      </form>
+      <p id="setup-message" class="form-message" role="status"></p>
+      <a class="muted" href="/">Back to dashboard</a>
+    </section>
+  </main>
+  <script src="/setup.js" defer></script>
+</body>
+</html>

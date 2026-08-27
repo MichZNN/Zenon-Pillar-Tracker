@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from utils.http_wrapper import HttpWrapper
+from .http_wrapper import HttpWrapper
 
 
 class TelegramWrapper:

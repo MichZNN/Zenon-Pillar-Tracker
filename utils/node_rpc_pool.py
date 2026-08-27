@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import logging
 import time
 from typing import Any, Callable, Iterable, Mapping
 
-from utils.node_rpc_wrapper import NodeRpcError, NodeRpcWrapper
+from .node_rpc_wrapper import NodeRpcError, NodeRpcWrapper
+
+
+logger = logging.getLogger(__name__)
 
 
 def _as_int(value: Any, default: int | None = None) -> int | None:
@@ -118,7 +122,7 @@ class NodeRpcPool:
         self.active_index = index
         self._unavailable_until[index] = 0.0
         if previous_index != index:
-            print(
+            logger.warning(
                 "Node RPC failover: switched from "
                 f"{self._node_url(self.nodes[previous_index])} to "
                 f"{self._node_url(self.nodes[index])}"
@@ -321,7 +325,7 @@ class NodeRpcPool:
                     (index, latest_momentum, exc.sync_info)
                 )
                 errors.append(f"{node_url}: {exc}")
-                print(
+                logger.warning(
                     f"Node RPC candidate deferred ({node_url}): "
                     f"sync state {exc.state}, current height "
                     f"{exc.current_height}, target height "
@@ -332,7 +336,7 @@ class NodeRpcPool:
                 self._mark_failure(index)
                 node_url = self._node_url(node)
                 errors.append(f"{node_url}: {exc}")
-                print(f"Node RPC candidate failed ({node_url}): {exc}")
+                logger.warning("Node RPC candidate failed (%s): %s", node_url, exc)
 
         if reorg_candidates:
             index, latest_momentum = reorg_candidates[0]

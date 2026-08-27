@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from database import Database
-from notifications import NotificationDispatcher, format_event
+from models.database import Database
+from services.notification_service import NotificationDispatcher, format_event
 
 
 class NotificationDispatcherTestCase(unittest.TestCase):
@@ -28,7 +28,7 @@ class NotificationDispatcherTestCase(unittest.TestCase):
                 }
             ],
         }
-        with patch("notifications.get_env_value", return_value="test-token"):
+        with patch("services.notification_service.get_env_value", return_value="test-token"):
             dispatcher = NotificationDispatcher(self.database, config)
 
         self.assertEqual(dispatcher.channels, ("telegram",))
@@ -56,7 +56,7 @@ class NotificationDispatcherTestCase(unittest.TestCase):
                 }
             ],
         }
-        with patch("notifications.get_env_value", return_value="test-token"):
+        with patch("services.notification_service.get_env_value", return_value="test-token"):
             dispatcher = NotificationDispatcher(self.database, config)
 
         self.assertEqual(
@@ -78,7 +78,7 @@ class NotificationDispatcherTestCase(unittest.TestCase):
                 }
             ],
         }
-        with patch("notifications.get_env_value", return_value="test-token"):
+        with patch("services.notification_service.get_env_value", return_value="test-token"):
             dispatcher = NotificationDispatcher(self.database, config)
 
         self.assertEqual(dispatcher.pillar_event_channels, {})
@@ -97,7 +97,7 @@ class NotificationDispatcherTestCase(unittest.TestCase):
                 }
             ],
         }
-        with patch("notifications.get_env_value", return_value="test-token"):
+        with patch("services.notification_service.get_env_value", return_value="test-token"):
             dispatcher = NotificationDispatcher(self.database, config)
 
         self.assertEqual(dispatcher.pillar_event_channels, {})

@@ -1,10 +1,6 @@
-"""CLI entrypoint for the collector.
+"""CLI entrypoint for the Zenon Pillar Tracker collector."""
 
-Run ``python pillar_tracker.py`` for one poll or
-``python pillar_tracker.py --loop`` for a self-contained polling loop.
-"""
-
-from collector import main
+from controllers.collector_controller import main
 
 
 if __name__ == "__main__":

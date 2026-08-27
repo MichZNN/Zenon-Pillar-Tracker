@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from database import Database
+from models.database import Database
 from tools.epoch_schedule import calculate_epoch_start
 from tools.telegram.import_history import (
     TelegramMessage,

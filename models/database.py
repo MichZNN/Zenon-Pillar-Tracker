@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from secrets import token_urlsafe
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 
-SCHEMA_VERSION = "5"
+SCHEMA_VERSION = "6"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -121,6 +122,62 @@ CREATE TABLE IF NOT EXISTS notifications (
     UNIQUE (event_id, channel)
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    display_name TEXT NOT NULL DEFAULT '',
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user'
+        CHECK (role IN ('admin', 'user')),
+    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_login_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    csrf_token_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    ip_address TEXT,
+    user_agent TEXT
+);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS pillar_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    label TEXT NOT NULL DEFAULT '',
+    channel_id TEXT NOT NULL,
+    pillar_owner_addresses_json TEXT NOT NULL DEFAULT '[]',
+    events_json TEXT NOT NULL DEFAULT '[]',
+    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    action TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    ip_address TEXT,
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_poll_runs_started_at
     ON poll_runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_snapshots_owner_time
@@ -131,6 +188,12 @@ CREATE INDEX IF NOT EXISTS idx_events_owner_time
     ON events(owner_address, observed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_status
     ON notifications(status, last_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_expires
+    ON sessions(user_id, expires_at);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_user_active
+    ON pillar_subscriptions(user_id, active);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at
+    ON audit_log(created_at DESC, id DESC);
 
 INSERT OR IGNORE INTO node_state (id, updated_at)
 VALUES (1, '1970-01-01T00:00:00+00:00');
@@ -208,6 +271,30 @@ def _empty_performance(period_days: int = 30) -> dict[str, Any]:
     }
 
 
+DEFAULT_SUBSCRIPTION_EVENTS = (
+    "pillar_inactive",
+    "pillar_active",
+    "reward_shares_changed",
+)
+_UNSET = object()
+
+
+class InitialSetupAlreadyCompletedError(RuntimeError):
+    """Raised when a second first-admin setup is attempted."""
+
+
+def _string_values(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    return list(dict.fromkeys(
+        str(item).strip() for item in value if str(item).strip()
+    ))
+
+
 class _ManagedConnection(sqlite3.Connection):
     """Close short-lived SQLite connections after their context exits."""
 
@@ -266,6 +353,670 @@ def initialize_database(database_path: str | Path) -> Path:
 class Database:
     def __init__(self, database_path: str | Path):
         self.path = initialize_database(database_path)
+
+    def ensure_settings(self, defaults: Mapping[str, Any]) -> None:
+        """Persist code defaults once without replacing administrator values."""
+        now = utc_now()
+        with self._connect() as connection:
+            for raw_key, value in defaults.items():
+                key = str(raw_key).strip()
+                if not key or key in {"database_path", "telegram_pillar_subscriptions"}:
+                    continue
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO app_settings(key, value_json, updated_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    (key, _json(value), now),
+                )
+
+    def get_settings(self) -> dict[str, Any]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT key, value_json FROM app_settings ORDER BY key"
+            ).fetchall()
+        return {
+            str(row["key"]): _load_json(row["value_json"])
+            for row in rows
+        }
+
+    def get_setting(self, key: str, default: Any = None) -> Any:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT value_json FROM app_settings WHERE key = ?",
+                (str(key),),
+            ).fetchone()
+        return _load_json(row["value_json"], default) if row else default
+
+    def get_admin_settings(
+        self,
+        defaults: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        settings = dict(defaults or {})
+        settings.update(self.get_settings())
+        # The database path is bootstrap metadata, not an editable runtime
+        # setting. It is useful in the admin UI, but must not be moved by an
+        # HTTP request while this process is using the current database.
+        settings["database_path"] = str(self.path)
+        return settings
+
+    def has_users(self) -> bool:
+        """Return whether the database already contains an account."""
+        with self._connect() as connection:
+            row = connection.execute("SELECT 1 FROM users LIMIT 1").fetchone()
+        return row is not None
+
+    def set_settings(
+        self,
+        settings: Mapping[str, Any],
+        *,
+        updated_by: int | None = None,
+    ) -> dict[str, Any]:
+        if not isinstance(settings, Mapping):
+            raise ValueError("Settings must be a JSON object")
+        protected = {
+            "database_path",
+            "telegram_bot_api_key",
+            "telegram_bot_token",
+            "telegram_pillar_subscriptions",
+        }
+        now = utc_now()
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            for raw_key, value in settings.items():
+                key = str(raw_key).strip()
+                if not key:
+                    raise ValueError("Setting names cannot be empty")
+                if key in protected:
+                    raise ValueError(f"Setting cannot be changed here: {key}")
+                try:
+                    # Settings edited through the API must stay real JSON
+                    # values; do not silently stringify unsupported objects.
+                    value_json = json.dumps(
+                        value,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"Setting {key} is not JSON serializable") from exc
+                connection.execute(
+                    """
+                    INSERT INTO app_settings(key, value_json, updated_at, updated_by)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value_json = excluded.value_json,
+                        updated_at = excluded.updated_at,
+                        updated_by = excluded.updated_by
+                    """,
+                    (key, value_json, now, updated_by),
+                )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        return self.get_settings()
+
+    @staticmethod
+    def _user_json(row: Mapping[str, Any]) -> dict[str, Any]:
+        available = set(row.keys()) if hasattr(row, "keys") else set(row)
+        result = {
+            key: row[key]
+            for key in (
+                "id",
+                "username",
+                "display_name",
+                "role",
+                "active",
+                "created_at",
+                "updated_at",
+                "last_login_at",
+            )
+            if key in available
+        }
+        result["active"] = bool(result.get("active"))
+        if "subscription_count" in available:
+            result["subscription_count"] = int(row["subscription_count"] or 0)
+        return result
+
+    def create_user(
+        self,
+        *,
+        username: str,
+        password_hash: str,
+        role: str = "user",
+        display_name: str = "",
+        active: bool = True,
+    ) -> dict[str, Any]:
+        username = str(username).strip()
+        role = str(role).strip().lower()
+        from services.auth_service import username_is_acceptable
+
+        if not username_is_acceptable(username):
+            raise ValueError(
+                "Username must be 3-80 characters using letters, numbers, ., _ or -"
+            )
+        if role not in {"admin", "user"}:
+            raise ValueError("Role must be admin or user")
+        if not password_hash:
+            raise ValueError("Password hash is required")
+        now = utc_now()
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO users(
+                    username, display_name, password_hash, role, active,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    username,
+                    str(display_name).strip(),
+                    password_hash,
+                    role,
+                    1 if active else 0,
+                    now,
+                    now,
+                ),
+            )
+            user_id = int(cursor.lastrowid)
+        return self.get_user(user_id)  # type: ignore[return-value]
+
+    def create_initial_admin(
+        self,
+        *,
+        username: str,
+        password_hash: str,
+        display_name: str = "",
+    ) -> dict[str, Any]:
+        """Atomically create the only account allowed during first-run setup."""
+        username = str(username).strip()
+        from services.auth_service import username_is_acceptable
+
+        if not username_is_acceptable(username):
+            raise ValueError(
+                "Username must be 3-80 characters using letters, numbers, ., _ or -"
+            )
+        if not password_hash:
+            raise ValueError("Password hash is required")
+
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            if connection.execute("SELECT 1 FROM users LIMIT 1").fetchone():
+                raise InitialSetupAlreadyCompletedError(
+                    "Initial administrator setup has already been completed"
+                )
+            now = utc_now()
+            cursor = connection.execute(
+                """
+                INSERT INTO users(
+                    username, display_name, password_hash, role, active,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, 'admin', 1, ?, ?)
+                """,
+                (username, str(display_name).strip(), password_hash, now, now),
+            )
+            user_id = int(cursor.lastrowid)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        return self.get_user(user_id)  # type: ignore[return-value]
+
+    def get_user(self, user_id: int) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT u.*, COUNT(ps.id) AS subscription_count
+                FROM users u
+                LEFT JOIN pillar_subscriptions ps ON ps.user_id = u.id
+                WHERE u.id = ?
+                GROUP BY u.id
+                """,
+                (int(user_id),),
+            ).fetchone()
+        return self._user_json(row) if row else None
+
+    def get_user_credentials(self, username: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM users WHERE username = ? COLLATE NOCASE",
+                (str(username).strip(),),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_users(self, *, include_inactive: bool = True) -> list[dict[str, Any]]:
+        clause = "" if include_inactive else "WHERE u.active = 1"
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT u.*, COUNT(ps.id) AS subscription_count
+                FROM users u
+                LEFT JOIN pillar_subscriptions ps ON ps.user_id = u.id
+                {clause}
+                GROUP BY u.id
+                ORDER BY u.role DESC, u.username COLLATE NOCASE
+                """
+            ).fetchall()
+        return [self._user_json(row) for row in rows]
+
+    def count_active_admins(self) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND active = 1"
+            ).fetchone()
+        return int(row["count"] or 0)
+
+    def update_user(
+        self,
+        user_id: int,
+        *,
+        display_name: str | None = None,
+        role: str | None = None,
+        active: bool | None = None,
+        password_hash: str | None = None,
+    ) -> dict[str, Any]:
+        current = self.get_user(int(user_id))
+        if current is None:
+            raise ValueError("User not found")
+        changes: dict[str, Any] = {}
+        if display_name is not None:
+            changes["display_name"] = str(display_name).strip()
+        if role is not None:
+            role = str(role).strip().lower()
+            if role not in {"admin", "user"}:
+                raise ValueError("Role must be admin or user")
+            changes["role"] = role
+        if active is not None:
+            changes["active"] = 1 if active else 0
+        if password_hash is not None:
+            if not password_hash:
+                raise ValueError("Password hash is required")
+            changes["password_hash"] = password_hash
+        if not changes:
+            return current
+
+        will_remove_admin = (
+            current["role"] == "admin"
+            and current["active"]
+            and (
+                changes.get("role", "admin") != "admin"
+                or changes.get("active", 1) != 1
+            )
+        )
+        if will_remove_admin and self.count_active_admins() <= 1:
+            raise ValueError("At least one active administrator is required")
+
+        assignments = list(changes)
+        assignments.append("updated_at")
+        values = [changes[key] for key in changes]
+        values.extend([utc_now(), int(user_id)])
+        with self._connect() as connection:
+            connection.execute(
+                f"UPDATE users SET {', '.join(f'{key} = ?' for key in assignments)} "
+                "WHERE id = ?",
+                values,
+            )
+        return self.get_user(int(user_id))  # type: ignore[return-value]
+
+    def mark_user_login(self, user_id: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?",
+                (utc_now(), utc_now(), int(user_id)),
+            )
+
+    def create_session(
+        self,
+        user_id: int,
+        *,
+        duration_hours: float = 12,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> dict[str, Any]:
+        if duration_hours <= 0:
+            raise ValueError("Session duration must be greater than zero")
+        user = self.get_user(int(user_id))
+        if user is None or not user["active"]:
+            raise ValueError("User is not active")
+        from services.auth_service import hash_token
+
+        token = token_urlsafe(48)
+        csrf_token = token_urlsafe(32)
+        created_at = datetime.now(timezone.utc)
+        expires_at = created_at + timedelta(hours=float(duration_hours))
+        created_text = created_at.isoformat(timespec="seconds")
+        expires_text = expires_at.isoformat(timespec="seconds")
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM sessions WHERE expires_at <= ?",
+                (created_text,),
+            )
+            connection.execute(
+                """
+                INSERT INTO sessions(
+                    token_hash, user_id, csrf_token_hash, created_at,
+                    expires_at, last_seen_at, ip_address, user_agent
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    hash_token(token),
+                    int(user_id),
+                    hash_token(csrf_token),
+                    created_text,
+                    expires_text,
+                    created_text,
+                    str(ip_address or "")[:255],
+                    str(user_agent or "")[:500],
+                ),
+            )
+        return {
+            "token": token,
+            "csrf_token": csrf_token,
+            "expires_at": expires_text,
+        }
+
+    def get_session_user(self, token: str | None) -> dict[str, Any] | None:
+        if not token:
+            return None
+        from services.auth_service import hash_token
+
+        now = utc_now()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT u.*
+                FROM sessions s
+                JOIN users u ON u.id = s.user_id
+                WHERE s.token_hash = ?
+                  AND s.expires_at > ?
+                  AND u.active = 1
+                """,
+                (hash_token(token), now),
+            ).fetchone()
+            if row:
+                connection.execute(
+                    "UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?",
+                    (now, hash_token(token)),
+                )
+        return self._user_json(row) if row else None
+
+    def rotate_csrf_token(self, token: str | None) -> str | None:
+        if not token:
+            return None
+        from services.auth_service import hash_token
+
+        csrf_token = token_urlsafe(32)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE sessions
+                SET csrf_token_hash = ?
+                WHERE token_hash = ? AND expires_at > ?
+                """,
+                (hash_token(csrf_token), hash_token(token), utc_now()),
+            )
+        return csrf_token if cursor.rowcount else None
+
+    def verify_csrf_token(self, token: str | None, csrf_token: str | None) -> bool:
+        if not token or not csrf_token:
+            return False
+        from services.auth_service import hash_token
+
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT csrf_token_hash
+                FROM sessions
+                WHERE token_hash = ? AND expires_at > ?
+                """,
+                (hash_token(token), utc_now()),
+            ).fetchone()
+        return bool(row and row["csrf_token_hash"] == hash_token(csrf_token))
+
+    def delete_session(self, token: str | None) -> None:
+        if not token:
+            return
+        from services.auth_service import hash_token
+
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM sessions WHERE token_hash = ?",
+                (hash_token(token),),
+            )
+
+    @staticmethod
+    def _subscription_json(row: Mapping[str, Any]) -> dict[str, Any]:
+        result = dict(row)
+        result["active"] = bool(result.get("active"))
+        result["pillar_owner_addresses"] = _load_json(
+            result.pop("pillar_owner_addresses_json", "[]"), []
+        )
+        result["events"] = _load_json(result.pop("events_json", "[]"), [])
+        return result
+
+    def has_subscriptions(self) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM pillar_subscriptions LIMIT 1"
+            ).fetchone()
+        return row is not None
+
+    def get_pillar_subscriptions(
+        self,
+        *,
+        user_id: int | None = None,
+        include_inactive: bool = True,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if user_id is not None:
+            clauses.append("ps.user_id = ?")
+            params.append(int(user_id))
+        if not include_inactive:
+            clauses.append("ps.active = 1")
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT ps.*, u.username AS owner_username
+                FROM pillar_subscriptions ps
+                LEFT JOIN users u ON u.id = ps.user_id
+                {where}
+                ORDER BY ps.active DESC, ps.updated_at DESC, ps.id DESC
+                """,
+                params,
+            ).fetchall()
+        return [self._subscription_json(row) for row in rows]
+
+    def get_pillar_subscription(
+        self,
+        subscription_id: int,
+    ) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT ps.*, u.username AS owner_username
+                FROM pillar_subscriptions ps
+                LEFT JOIN users u ON u.id = ps.user_id
+                WHERE ps.id = ?
+                """,
+                (int(subscription_id),),
+            ).fetchone()
+        return self._subscription_json(row) if row else None
+
+    def get_active_subscription_config(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "channel_id": row["channel_id"],
+                "pillar_owner_addresses": row["pillar_owner_addresses"],
+                "events": row["events"],
+            }
+            for row in self.get_pillar_subscriptions(include_inactive=False)
+        ]
+
+    def create_pillar_subscription(
+        self,
+        *,
+        user_id: int | None,
+        channel_id: str,
+        pillar_owner_addresses: Iterable[str] = (),
+        events: Iterable[str] | None = None,
+        label: str = "",
+        active: bool = True,
+        changed_by: int | None = None,
+    ) -> dict[str, Any]:
+        channel_id = str(channel_id).strip()
+        if not channel_id:
+            raise ValueError("Channel ID is required")
+        owners = _string_values(pillar_owner_addresses)
+        event_values = (
+            _string_values(events)
+            if events is not None
+            else list(DEFAULT_SUBSCRIPTION_EVENTS)
+        )
+        now = utc_now()
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO pillar_subscriptions(
+                    user_id, label, channel_id,
+                    pillar_owner_addresses_json, events_json, active,
+                    created_at, updated_at, created_by, updated_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    str(label).strip(),
+                    channel_id,
+                    _json(owners),
+                    _json(event_values),
+                    1 if active else 0,
+                    now,
+                    now,
+                    changed_by,
+                    changed_by,
+                ),
+            )
+            subscription_id = int(cursor.lastrowid)
+        return self.get_pillar_subscription(subscription_id)  # type: ignore[return-value]
+
+    def update_pillar_subscription(
+        self,
+        subscription_id: int,
+        *,
+        user_id: int | None | object = _UNSET,
+        channel_id: str | object = _UNSET,
+        pillar_owner_addresses: Iterable[str] | object = _UNSET,
+        events: Iterable[str] | object = _UNSET,
+        label: str | object = _UNSET,
+        active: bool | object = _UNSET,
+        changed_by: int | None = None,
+    ) -> dict[str, Any]:
+        """Update a subscription; omission is represented by an internal sentinel.
+
+        ``user_id=None`` deliberately means an unassigned legacy subscription;
+        omitted fields are left unchanged. The web layer only sends ``None``
+        for administrators.
+        """
+        current = self.get_pillar_subscription(subscription_id)
+        if current is None:
+            raise ValueError("Subscription not found")
+        changes: dict[str, Any] = {}
+        if user_id is not _UNSET:
+            changes["user_id"] = None if user_id is None else int(user_id)
+        if channel_id is not _UNSET:
+            channel_id = str(channel_id).strip()
+            if not channel_id:
+                raise ValueError("Channel ID is required")
+            changes["channel_id"] = channel_id
+        if pillar_owner_addresses is not _UNSET:
+            changes["pillar_owner_addresses_json"] = _json(
+                _string_values(pillar_owner_addresses)
+            )
+        if events is not _UNSET:
+            changes["events_json"] = _json(_string_values(events))
+        if label is not _UNSET:
+            changes["label"] = str(label).strip()
+        if active is not _UNSET:
+            changes["active"] = 1 if active else 0
+        if not changes:
+            return current
+        changes["updated_at"] = utc_now()
+        changes["updated_by"] = changed_by
+        assignments = list(changes)
+        values = [changes[key] for key in assignments]
+        values.append(int(subscription_id))
+        with self._connect() as connection:
+            connection.execute(
+                f"UPDATE pillar_subscriptions SET "
+                f"{', '.join(f'{key} = ?' for key in assignments)} "
+                "WHERE id = ?",
+                values,
+            )
+        return self.get_pillar_subscription(subscription_id)  # type: ignore[return-value]
+
+    def get_subscription_config_from_legacy_or_db(
+        self,
+        legacy_config: Mapping[str, Any],
+    ) -> list[dict[str, Any]]:
+        if self.has_subscriptions():
+            return self.get_active_subscription_config()
+        configured = legacy_config.get("telegram_pillar_subscriptions", [])
+        return configured if isinstance(configured, list) else []
+
+    def add_audit_log(
+        self,
+        *,
+        user_id: int | None,
+        action: str,
+        entity_type: str,
+        entity_id: str | int | None = None,
+        details: Mapping[str, Any] | None = None,
+        ip_address: str | None = None,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO audit_log(
+                    user_id, action, entity_type, entity_id,
+                    details_json, ip_address, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    str(action),
+                    str(entity_type),
+                    None if entity_id is None else str(entity_id),
+                    _json(details or {}),
+                    str(ip_address or "")[:255],
+                    utc_now(),
+                ),
+            )
+
+    def get_audit_log(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT a.*, u.username
+                FROM audit_log a
+                LEFT JOIN users u ON u.id = a.user_id
+                ORDER BY a.created_at DESC, a.id DESC
+                LIMIT ?
+                """,
+                (max(1, min(int(limit), 500)),),
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["details"] = _load_json(item.pop("details_json"), {})
+            result.append(item)
+        return result
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(
@@ -481,7 +1232,7 @@ class Database:
             str, Iterable[str]
         ] | None = None,
     ) -> dict[str, Any]:
-        from status_logic import evaluate_pillar_status
+        from functions.status import evaluate_pillar_status
 
         momentum_height = _as_int(momentum.get("height"))
         epoch = _as_int(epoch_data.get("epoch"))

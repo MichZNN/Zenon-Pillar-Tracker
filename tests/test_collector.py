@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from collector import Collector
+from controllers.collector_controller import Collector
 from utils.node_rpc_pool import NodeRpcPool
 
 

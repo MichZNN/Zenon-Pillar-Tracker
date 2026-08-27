@@ -3,8 +3,10 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from database import Database
+from models.database import Database
+from controllers.web_controller import DashboardHandler
 
 
 class WebAppTestCase(unittest.TestCase):
@@ -16,14 +18,14 @@ class WebAppTestCase(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_dashboard_assets_exist(self):
-        web_dir = Path(__file__).parents[1] / "web"
-        index = (web_dir / "index.html").read_text()
+        templates_dir = Path(__file__).parents[1] / "templates"
+        index = (templates_dir / "index.html").read_text()
         self.assertIn("Zenon Pillar Tracker", index)
         self.assertIn('/static/icons/apple-touch-icon.png', index)
         self.assertIn('/static/icons/favicon-32x32.png', index)
         self.assertIn('/static/icons/favicon-16x16.png', index)
         self.assertIn('/static/icons/site.webmanifest', index)
-        static_dir = web_dir.parents[0] / "static" / "icons"
+        static_dir = templates_dir.parents[0] / "static" / "icons"
         for filename in (
             "apple-touch-icon.png",
             "favicon-16x16.png",
@@ -32,7 +34,7 @@ class WebAppTestCase(unittest.TestCase):
             "site.webmanifest",
         ):
             self.assertTrue((static_dir / filename).exists())
-        styles = (web_dir / "styles.css").read_text().lower()
+        styles = (templates_dir / "styles.css").read_text().lower()
         self.assertIn("@media (min-width: 680px)", styles)
         self.assertIn("nth-child(n + 3)", styles)
         self.assertIn(".skeleton-card { min-height: 380px; }", styles)
@@ -43,7 +45,7 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn(".content-grid > .section-block { margin-top: 0; }", styles)
         self.assertIn("--syrius-green", styles)
         self.assertNotIn("--sirius-green", styles)
-        app = (web_dir / "app.js").read_text()
+        app = (templates_dir / "app.js").read_text()
         self.assertIn("/api/overview", app)
         self.assertIn("Inactive for", app)
         self.assertIn("missed checks", app)
@@ -58,7 +60,75 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn("epoch-estimated", app)
         self.assertNotIn("epoch.announcement_at || epoch.last_seen_at", app)
         self.assertIn("renderPerformanceChart", app)
-        index_content = (web_dir / "index.html").read_text()
+        self.assertIn("payload.collector", app)
+        self.assertNotIn('healthy: "Node online"', app)
+        index_content = (templates_dir / "index.html").read_text()
+        self.assertIn('href="/portal"', index_content)
+        self.assertIn(">Login<", index_content)
+        self.assertNotIn('href="/account"', index_content)
+        self.assertNotIn('href="/admin"', index_content)
+        for page_name in ("login.html", "setup.html", "portal.html"):
+            page = (templates_dir / page_name).read_text()
+            self.assertIn('/static/icons/favicon-32x32.png', page)
+            self.assertIn('/static/icons/site.webmanifest', page)
+        setup = (templates_dir / "setup.html").read_text()
+        self.assertIn('id="setup-form"', setup)
+        self.assertIn("/api/setup/admin", (templates_dir / "setup.js").read_text())
+        portal = (templates_dir / "portal.html").read_text()
+        self.assertIn('id="admin-area"', portal)
+        self.assertIn('id="user-subscriptions-section" class="section-block" hidden', portal)
+        self.assertIn('class="admin-layout"', portal)
+        self.assertIn('class="admin-menu"', portal)
+        self.assertIn('data-admin-nav', portal)
+        section_ids = (
+            "runtime-settings",
+            "subscription-settings",
+            "user-settings",
+            "session-settings-card",
+            "log-settings-card",
+            "operations-settings",
+        )
+        for section_id in section_ids:
+            self.assertIn(f'id="{section_id}"', portal)
+        menu_positions = [portal.index(f'href="#{section_id}"') for section_id in section_ids]
+        self.assertEqual(menu_positions, sorted(menu_positions))
+        self.assertIn('/static/vendor/font-awesome/7.3.1/css/all.min.css', portal)
+        self.assertIn('id="settings-form"', portal)
+        self.assertIn('id="logging-settings-form"', portal)
+        self.assertIn('id="session-settings-form"', portal)
+        self.assertIn('id="toast-container"', portal)
+        self.assertIn("Save runtime settings", portal)
+        self.assertIn("Save log settings", portal)
+        self.assertIn("Save session settings", portal)
+        self.assertIn('name="node_rpc_urls"', portal)
+        self.assertIn('name="auth_session_hours"', portal)
+        self.assertIn('value="pillar_inactive"', portal)
+        self.assertIn('value="reward_shares_changed"', portal)
+        self.assertNotIn('id="settings-json"', portal)
+        self.assertNotIn("Settings are stored in SQLite", portal)
+        portal_js = (templates_dir / "portal.js").read_text()
+        self.assertIn("selectedEvents", portal_js)
+        self.assertIn("readSettingsForm", portal_js)
+        self.assertIn("initialiseAdminNavigation", portal_js)
+        self.assertIn('$("#user-subscriptions-section").hidden = false', portal_js)
+        self.assertIn("IntersectionObserver", portal_js)
+        self.assertIn("showToast", portal_js)
+        self.assertIn("validationNotified", portal_js)
+        self.assertIn("TOAST_DURATION_MS = 10000", portal_js)
+        self.assertIn("container.append(toast)", portal_js)
+        self.assertNotIn("container.replaceChildren(toast)", portal_js)
+        self.assertIn('step="0.1"', portal)
+        self.assertIn(".admin-menu", styles)
+        self.assertIn(".admin-layout", styles)
+        self.assertIn("justify-content: flex-end", styles)
+        self.assertIn("transition: transform 10s linear", styles)
+        self.assertEqual(portal.count("Save runtime settings"), 2)
+        self.assertEqual(portal.count("Save log settings"), 1)
+        self.assertEqual(portal.count("Save session settings"), 1)
+        restart_note = portal.index('class="muted settings-restart-note"')
+        runtime_bottom_save = portal.index('form="settings-form"', restart_note)
+        self.assertLess(restart_note, runtime_bottom_save)
+        self.assertIn('src="/portal.js"', portal)
         self.assertIn("skeleton-stat-grid", index_content)
         self.assertEqual(index_content.count('class="skeleton-card"'), 4)
         self.assertIn("Total pillars", index_content)
@@ -78,6 +148,16 @@ class WebAppTestCase(unittest.TestCase):
         self.assertEqual(overview["pillar_counts"]["total"], 0)
         self.assertIn("node", overview)
         self.assertIn("recent_events", overview)
+
+    def test_successful_read_access_is_not_logged(self):
+        handler = object.__new__(DashboardHandler)
+        handler.address_string = lambda: "127.0.0.1"
+        with patch("controllers.web_controller.logger") as logger:
+            handler.log_message('"%s" %s %s', "GET /app.js HTTP/1.1", "200", "42")
+            handler.log_message('"%s" %s %s', "POST /api/auth/login HTTP/1.1", "200", "42")
+            logger.info.assert_called_once()
+            logger.warning.assert_not_called()
+            logger.error.assert_not_called()
 
 
 if __name__ == "__main__":

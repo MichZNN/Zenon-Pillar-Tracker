@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#151515">
+  <title>Control panel · Zenon Pillar Tracker</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16x16.png">
+  <link rel="icon" href="/static/icons/favicon.ico">
+  <link rel="manifest" href="/static/icons/site.webmanifest">
+  <link rel="stylesheet" href="/static/vendor/font-awesome/7.3.1/css/all.min.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div><p class="eyebrow">Secure workspace</p><h1>Zenon Pillar Tracker</h1></div>
+      <div class="header-actions"><span id="user-name" class="muted"></span><a class="ghost-button" href="/">Dashboard</a><button id="logout" class="ghost-button" type="button">Log out</button></div>
+    </div>
+  </header>
+  <main class="page-shell admin-shell">
+    <div id="portal-message" class="sr-only" role="status"></div>
+
+    <section id="user-subscriptions-section" class="section-block" hidden>
+      <div class="section-heading"><div><p class="eyebrow">Personal access</p><h2>My Telegram subscriptions</h2></div></div>
+      <p class="muted">You can view and change subscriptions assigned to your account. Deactivation keeps the record and its history.</p>
+      <form id="subscription-form" class="form-grid">
+        <input name="id" type="hidden">
+        <label>Label<input name="label" maxlength="120" placeholder="Optional description"></label>
+        <label>Telegram channel ID<input name="channel_id" required maxlength="255" placeholder="@channel or -100…"></label>
+        <label class="full-width">Pillar owner addresses<input name="pillar_owner_addresses" placeholder="One address per line or comma-separated"></label>
+        <fieldset class="event-options full-width">
+          <legend>Events</legend>
+          <p class="setting-help">Choose which events should be sent to this channel.</p>
+          <div class="checkbox-grid">
+            <label><input name="events" type="checkbox" value="pillar_created"><span>Pillar created</span></label>
+            <label><input name="events" type="checkbox" value="pillar_dismantled"><span>Pillar dismantled</span></label>
+            <label><input name="events" type="checkbox" value="pillar_name_changed"><span>Pillar name changed</span></label>
+            <label><input name="events" type="checkbox" value="reward_shares_changed" checked><span>Reward shares changed</span></label>
+            <label><input name="events" type="checkbox" value="pillar_inactive" checked><span>Pillar inactive</span></label>
+            <label><input name="events" type="checkbox" value="pillar_active" checked><span>Pillar active again</span></label>
+            <label><input name="events" type="checkbox" value="epoch_available"><span>Epoch rewards available</span></label>
+          </div>
+        </fieldset>
+        <label class="checkbox-label"><input name="active" type="checkbox" checked> Active</label>
+        <div class="form-actions full-width"><button class="primary-button" type="submit">Save subscription</button><button id="cancel-edit" class="ghost-button" type="button" hidden>Cancel edit</button></div>
+      </form>
+      <div class="table-wrap"><table><thead><tr><th>Channel</th><th>Pillars</th><th>Events</th><th>Status</th><th></th></tr></thead><tbody id="subscription-list"></tbody></table></div>
+    </section>
+
+    <div id="admin-area" hidden>
+      <div class="admin-layout">
+        <aside class="admin-menu" aria-label="Administration navigation">
+          <div class="admin-menu-heading">
+            <p class="eyebrow">Administration</p>
+            <h2>Manage</h2>
+          </div>
+          <nav class="admin-menu-links">
+            <a class="admin-menu-link is-active" data-admin-nav href="#runtime-settings" aria-current="location"><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Runtime</span></a>
+            <a class="admin-menu-link" data-admin-nav href="#subscription-settings"><i class="fa-solid fa-bell" aria-hidden="true"></i><span>Subscriptions</span></a>
+            <a class="admin-menu-link" data-admin-nav href="#user-settings"><i class="fa-solid fa-users" aria-hidden="true"></i><span>Users</span></a>
+            <a class="admin-menu-link" data-admin-nav href="#session-settings-card"><i class="fa-solid fa-clock" aria-hidden="true"></i><span>Sessions</span></a>
+            <a class="admin-menu-link" data-admin-nav href="#log-settings-card"><i class="fa-solid fa-file-lines" aria-hidden="true"></i><span>Application logs</span></a>
+            <a class="admin-menu-link" data-admin-nav href="#operations-settings"><i class="fa-solid fa-chart-line" aria-hidden="true"></i><span>Operations</span></a>
+          </nav>
+        </aside>
+
+        <div class="admin-content">
+      <section id="runtime-settings" class="section-block">
+        <div class="section-heading"><div><p class="eyebrow">Administrator access</p><h2>Runtime settings</h2></div><button id="save-settings" class="primary-button" type="submit" form="settings-form">Save runtime settings</button></div>
+        <form id="settings-form" class="settings-form" data-settings-form data-settings-label="Runtime settings">
+          <section class="settings-category">
+            <div class="settings-category-heading"><p class="eyebrow">Node and collector</p><h3>Collection</h3></div>
+            <div class="settings-grid">
+              <label class="setting-field setting-field-wide">
+                <span class="setting-label">Node RPC URLs</span>
+                <span class="setting-help">One HTTP(S) JSON-RPC endpoint per line. The first endpoint is primary; the others are used for failover.</span>
+                <textarea name="node_rpc_urls" data-setting-type="list" rows="3" required></textarea>
+              </label>
+              <label class="setting-field setting-field-wide">
+                <span class="setting-label">Reference reward address</span>
+                <span class="setting-help">The pillar address used to determine the current epoch and read reward history.</span>
+                <input name="reference_reward_address" type="text" spellcheck="false">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">Poll interval (seconds)</span>
+                <span class="setting-help">How often the collector checks the node.</span>
+                <input name="poll_interval_seconds" type="number" min="1" step="1">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">Pillar page size</span>
+                <span class="setting-help">Number of pillars requested per node page.</span>
+                <input name="pillar_page_size" type="number" min="1" step="1">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">Reward page size</span>
+                <span class="setting-help">Number of reward records requested per page.</span>
+                <input name="reward_page_size" type="number" min="1" step="1">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">Stale grace runs</span>
+                <span class="setting-help">Successful-looking retries allowed before a run is marked stale.</span>
+                <input name="stale_grace_runs" type="number" min="1" step="1">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">Missed momentum threshold</span>
+                <span class="setting-help">Missed checks before a pillar is marked inactive.</span>
+                <input name="missed_momentums_threshold" type="number" min="1" step="1">
+              </label>
+              <label class="setting-toggle">
+                <input name="node_require_sync_info" type="checkbox">
+                <span><span class="setting-label">Require sync information</span><span class="setting-help">Only use nodes that report synchronization state.</span></span>
+              </label>
+              <label class="setting-toggle">
+                <input name="allow_empty_pillars" type="checkbox">
+                <span><span class="setting-label">Allow an empty pillar list</span><span class="setting-help">Keep a poll successful when the node returns no pillars.</span></span>
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-category">
+            <div class="settings-category-heading"><p class="eyebrow">Node health</p><h3>Failover and retries</h3></div>
+            <div class="settings-grid">
+              <label class="setting-field">
+                <span class="setting-label">Maximum frontier age (seconds)</span>
+                <span class="setting-help">Maximum age accepted for a node frontier; zero disables this check.</span>
+                <input name="node_max_frontier_age_seconds" type="number" min="0" step="1">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">Node failure cooldown (seconds)</span>
+                <span class="setting-help">Time before a failed node is tested again.</span>
+                <input name="node_failure_cooldown_seconds" type="number" min="1" step="1">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">Sync retry window (seconds)</span>
+                <span class="setting-help">How long a node may recover while it is syncing.</span>
+                <input name="node_sync_retry_seconds" type="number" min="1" step="1">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">Sync retry interval (seconds)</span>
+                <span class="setting-help">Delay between synchronization checks.</span>
+                <input name="node_sync_retry_interval_seconds" type="number" min="1" step="1">
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-category">
+            <div class="settings-category-heading"><p class="eyebrow">Network requests</p><h3>Timeouts and rate limits</h3></div>
+            <div class="settings-grid">
+              <label class="setting-field">
+                <span class="setting-label">HTTP timeout (seconds)</span>
+                <span class="setting-help">Maximum time to wait for one HTTP request.</span>
+                <input name="http_timeout_seconds" type="number" min="0.1" step="0.1">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">RPC retries</span>
+                <span class="setting-help">Additional attempts after a failed node request.</span>
+                <input name="rpc_retries" type="number" min="0" step="1">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">Rate-limit max wait (seconds)</span>
+                <span class="setting-help">Maximum wait before a rate-limited request is skipped.</span>
+                <input name="rate_limit_max_wait_seconds" type="number" min="0.1" step="0.1">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">Telegram rate-limit retries</span>
+                <span class="setting-help">Additional attempts after Telegram asks the bot to slow down.</span>
+                <input name="telegram_rate_limit_retries" type="number" min="0" step="1">
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-category">
+            <div class="settings-category-heading"><p class="eyebrow">Notifications</p><h3>Delivery channels</h3></div>
+            <div class="settings-grid">
+              <label class="setting-field">
+                <span class="setting-label">Telegram channel ID</span>
+                <span class="setting-help">Optional default channel for general Telegram notifications.</span>
+                <input name="telegram_channel_id" type="text">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">Pinned message ID</span>
+                <span class="setting-help">Message ID used for the pinned statistics update.</span>
+                <input name="telegram_pinned_message_id" type="text">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">Development channel ID</span>
+                <span class="setting-help">Optional separate channel for development notifications.</span>
+                <input name="telegram_dev_channel_id" type="text">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">Discord webhook</span>
+                <span class="setting-help">Optional Discord webhook used for notifications.</span>
+                <input name="discord_channel_webhook" type="url" inputmode="url">
+              </label>
+            </div>
+          </section>
+
+        </form>
+        <p class="muted settings-restart-note">Restart the collector after changing collector settings.</p>
+        <div class="settings-form-actions">
+          <button class="primary-button" type="submit" form="settings-form">Save runtime settings</button>
+        </div>
+      </section>
+
+      <section id="subscription-settings" class="section-block">
+        <div class="section-heading"><div><p class="eyebrow">Notification routing</p><h2>All pillar subscriptions</h2></div></div>
+        <p class="muted">Subscriptions are never deleted. Assign them to a user, edit them, or deactivate them.</p>
+        <form id="admin-subscription-form" class="form-grid">
+          <input name="id" type="hidden">
+          <label>Owner<select name="owner_user_id" id="owner-user"><option value="">Unassigned</option></select></label>
+          <label>Label<input name="label" maxlength="120"></label>
+          <label>Telegram channel ID<input name="channel_id" required maxlength="255"></label>
+          <label class="full-width">Pillar owner addresses<input name="pillar_owner_addresses" placeholder="One address per line or comma-separated"></label>
+          <fieldset class="event-options full-width">
+            <legend>Events</legend>
+            <p class="setting-help">Choose which events should be sent to this channel.</p>
+            <div class="checkbox-grid">
+              <label><input name="events" type="checkbox" value="pillar_created"><span>Pillar created</span></label>
+              <label><input name="events" type="checkbox" value="pillar_dismantled"><span>Pillar dismantled</span></label>
+              <label><input name="events" type="checkbox" value="pillar_name_changed"><span>Pillar name changed</span></label>
+              <label><input name="events" type="checkbox" value="reward_shares_changed" checked><span>Reward shares changed</span></label>
+              <label><input name="events" type="checkbox" value="pillar_inactive" checked><span>Pillar inactive</span></label>
+              <label><input name="events" type="checkbox" value="pillar_active" checked><span>Pillar active again</span></label>
+              <label><input name="events" type="checkbox" value="epoch_available"><span>Epoch rewards available</span></label>
+            </div>
+          </fieldset>
+          <label class="checkbox-label"><input name="active" type="checkbox" checked> Active</label>
+          <div class="form-actions full-width"><button class="primary-button" type="submit">Save subscription</button><button id="cancel-subscription" class="ghost-button" type="button" hidden>Cancel edit</button></div>
+        </form>
+        <div class="table-wrap"><table><thead><tr><th>Owner</th><th>Channel</th><th>Pillars</th><th>Events</th><th>Status</th><th></th></tr></thead><tbody id="admin-subscription-list"></tbody></table></div>
+      </section>
+
+      <section id="user-settings" class="section-block">
+        <div class="section-heading"><div><p class="eyebrow">Access control</p><h2>Users</h2></div></div>
+        <form id="user-form" class="form-grid compact-form">
+          <input name="id" type="hidden">
+          <label>Username<input name="username" required maxlength="80" autocomplete="off"></label>
+          <label>Display name<input name="display_name" maxlength="120"></label>
+          <label>Password<input name="password" type="password" minlength="12" autocomplete="new-password" placeholder="12+ characters"></label>
+          <label>Role<select name="role"><option value="user">User</option><option value="admin">Admin</option></select></label>
+          <label class="checkbox-label"><input name="active" type="checkbox" checked> Active</label>
+          <div class="form-actions full-width"><button class="primary-button" type="submit">Save user</button><button id="cancel-user" class="ghost-button" type="button" hidden>Cancel edit</button></div>
+        </form>
+        <div class="table-wrap"><table><thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Subscriptions</th><th>Last login</th><th></th></tr></thead><tbody id="user-list"></tbody></table></div>
+      </section>
+
+      <section id="session-settings-card" class="section-block">
+        <div class="section-heading"><div><p class="eyebrow">Access</p><h2>Sessions</h2></div></div>
+        <form id="session-settings-form" class="settings-form" data-settings-form data-settings-label="Session settings">
+          <div class="settings-grid">
+            <label class="setting-field">
+              <span class="setting-label">Session lifetime (hours)</span>
+              <span class="setting-help">How long a user remains signed in before logging in again.</span>
+              <input name="auth_session_hours" type="number" min="0.1" step="0.1">
+            </label>
+          </div>
+        </form>
+        <div class="settings-form-actions">
+          <button class="primary-button" type="submit" form="session-settings-form">Save session settings</button>
+        </div>
+      </section>
+
+      <section id="log-settings-card" class="section-block">
+        <div class="section-heading"><div><p class="eyebrow">Application logs</p><h2>Log rotation</h2></div></div>
+        <form id="logging-settings-form" class="settings-form" data-settings-form data-settings-label="Log settings">
+          <div class="settings-grid">
+            <label class="setting-field setting-field-wide">
+              <span class="setting-label">Log path</span>
+              <span class="setting-help">File path for application errors and operational events.</span>
+              <input name="log_path" type="text" spellcheck="false">
+            </label>
+            <label class="setting-field">
+              <span class="setting-label">Maximum log size (bytes)</span>
+              <span class="setting-help">The active log rotates after reaching this size.</span>
+              <input name="log_max_bytes" type="number" min="1" step="1">
+            </label>
+            <label class="setting-field">
+              <span class="setting-label">Rotated log files</span>
+              <span class="setting-help">Number of backup files to retain; zero disables backups.</span>
+              <input name="log_backup_count" type="number" min="0" max="20" step="1">
+            </label>
+            <label class="setting-field">
+              <span class="setting-label">Log level</span>
+              <span class="setting-help">Minimum severity written to the log file.</span>
+              <select name="log_level">
+                <option value="DEBUG">Debug</option>
+                <option value="INFO">Info</option>
+                <option value="WARNING">Warning</option>
+                <option value="ERROR">Error</option>
+                <option value="CRITICAL">Critical</option>
+              </select>
+            </label>
+          </div>
+        </form>
+        <div class="settings-form-actions">
+          <button class="primary-button" type="submit" form="logging-settings-form">Save log settings</button>
+        </div>
+      </section>
+
+      <section id="operations-settings" class="section-block">
+        <div class="section-heading"><div><p class="eyebrow">Operations</p><h2>Logs and audit trail</h2></div><button id="refresh-logs" class="ghost-button" type="button">Refresh</button></div>
+        <p id="log-file-info" class="muted"></p>
+        <pre id="file-log" class="log-viewer">Loading…</pre>
+        <h3>Admin actions</h3>
+        <div class="table-wrap"><table><thead><tr><th>When</th><th>User</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead><tbody id="audit-list"></tbody></table></div>
+      </section>
+        </div>
+      </div>
+    </div>
+  </main>
+  <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+  <script src="/portal.js" defer></script>
+</body>
+</html>

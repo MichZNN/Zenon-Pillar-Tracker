@@ -79,17 +79,14 @@ async function getJson(url) {
   return payload;
 }
 
-function renderHealth(node) {
-  const health = node?.health || "unknown";
+function renderHealth(collector) {
+  const state = collector?.state || "unknown";
   const badge = $("#health-badge");
-  badge.className = "health-badge " + health;
-  badge.textContent = {
-    healthy: "Node online",
-    stale: "No new momentum",
-    error: "Collector error",
-    reorg: "Node reorg",
-    unknown: "No data yet",
-  }[health] || health;
+  const label = collector?.label || "Waiting for tracker";
+  badge.className = "health-badge " + state;
+  badge.textContent = label;
+  badge.title = collector?.description || label;
+  badge.setAttribute("aria-label", "Tracker status: " + label);
 }
 
 function renderOverview(payload) {
@@ -101,15 +98,15 @@ function renderOverview(payload) {
     ? formatNumber(node.last_momentum_height)
     : "—";
   $("#last-update").textContent = node?.last_success_at
-    ? "Updated " + formatDate(node.last_success_at)
-    : "No update yet";
+    ? "Last successful update " + formatDate(node.last_success_at)
+    : "No successful update yet";
   $("#pillar-total").textContent = formatNumber(counts.total || 0);
   $("#pillar-active").textContent = formatNumber(counts.active || 0);
   $("#pillar-inactive").textContent = formatNumber(counts.inactive || 0);
   $("#footer-updated").textContent = payload.last_snapshot_at
     ? "Latest snapshot: " + formatDate(payload.last_snapshot_at)
     : "No snapshot yet";
-  renderHealth(node);
+  renderHealth(payload.collector);
   renderEvents(payload.recent_events || []);
 }
 

@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if __package__ in {None, ""}:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from database import Database, utc_now  # noqa: E402
+from models.database import Database, utc_now  # noqa: E402
 
 
 def read_json(path: Path) -> dict[str, Any] | None:

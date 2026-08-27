@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import time
 from typing import Any
 
-from utils.http_wrapper import HttpError, HttpWrapper
+from .http_wrapper import HttpError, HttpWrapper
 
 
 class NodeRpcError(RuntimeError):

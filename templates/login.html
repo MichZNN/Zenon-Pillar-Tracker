@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#151515">
+  <title>Login · Zenon Pillar Tracker</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16x16.png">
+  <link rel="icon" href="/static/icons/favicon.ico">
+  <link rel="manifest" href="/static/icons/site.webmanifest">
+  <link rel="stylesheet" href="/static/vendor/font-awesome/7.3.1/css/all.min.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="auth-shell">
+    <section class="auth-card section-block">
+      <div class="auth-brand" aria-hidden="true">
+        <span class="auth-brand-icon"><i class="fa-solid fa-shield-halved"></i></span>
+        <span>Zenon Pillar Tracker</span>
+      </div>
+      <p class="eyebrow">Secure access</p>
+      <h1>Welcome back</h1>
+      <p class="muted">Login to manage your pillar subscriptions.</p>
+      <form id="login-form" class="form-stack">
+        <label><span class="field-label">Username</span><input name="username" autocomplete="username" required></label>
+        <label><span class="field-label">Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="primary-button" type="submit"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i> Login</button>
+      </form>
+      <p id="login-message" class="form-message" role="status"></p>
+      <a class="muted" href="/">Back to dashboard</a>
+    </section>
+  </main>
+  <script src="/auth.js" defer></script>
+</body>
+</html>

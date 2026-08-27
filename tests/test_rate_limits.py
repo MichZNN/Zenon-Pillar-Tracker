@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from utils.http_wrapper import HttpWrapper
 from utils.telegram_wrapper import TelegramWrapper
-from web_app import ApiRateLimiter
+from controllers.web_controller import ApiRateLimiter
 
 
 class FakeResponse:

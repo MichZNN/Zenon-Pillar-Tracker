@@ -1,34 +1,21 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
+from services.settings_service import DEFAULT_DATABASE_PATH, load_runtime_config
 from utils.env_loader import get_env_value
 from utils.telegram_wrapper import TelegramWrapper
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "config.json"
 
 
-def load_config(config_path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
-    path = Path(config_path)
-    if not path.is_absolute():
-        path = PROJECT_ROOT / path
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Configuration file not found: {path}. "
-            "Create config/config.json first."
-        )
-    try:
-        with path.open(encoding="utf-8") as file:
-            config = json.load(file)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in configuration file: {path}") from exc
-    if not isinstance(config, dict):
-        raise ValueError("Configuration root must be a JSON object")
-    return config
+def load_runtime_settings(
+    database_path: str | Path = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
+    """Load runtime settings from SQLite."""
+    return load_runtime_config(database_path)
 
 
 def create_telegram_client(config: dict[str, Any]) -> TelegramWrapper:

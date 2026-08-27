@@ -9,7 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if __package__ in {None, ""}:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from database import Database  # noqa: E402
+from models.database import Database  # noqa: E402
 from tools.epoch_schedule import (  # noqa: E402
     DEFAULT_EPOCH_DURATION_SECONDS,
     DEFAULT_EPOCH_REFERENCE_EPOCH,

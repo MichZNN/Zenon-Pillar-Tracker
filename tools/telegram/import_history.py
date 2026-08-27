@@ -33,7 +33,7 @@ from urllib.request import Request, urlopen
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from database import Database  # noqa: E402
+from models.database import Database  # noqa: E402
 from tools.epoch_schedule import (  # noqa: E402
     DEFAULT_EPOCH_DURATION_SECONDS,
     DEFAULT_EPOCH_REFERENCE_EPOCH,

@@ -9,9 +9,9 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tools.telegram.common import (  # noqa: E402
-    DEFAULT_CONFIG_PATH,
+    DEFAULT_DATABASE_PATH,
     create_telegram_client,
-    load_config,
+    load_runtime_settings,
     require_success,
 )
 
@@ -38,9 +38,9 @@ def main(argv: list[str] | None = None) -> int:
         description="Show pending Telegram channel posts and their IDs."
     )
     parser.add_argument(
-        "--config",
-        default=str(DEFAULT_CONFIG_PATH),
-        help="Path to config.json",
+        "--database",
+        default=str(DEFAULT_DATABASE_PATH),
+        help="Path to the SQLite database",
     )
     parser.add_argument(
         "--json",
@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        config = load_config(args.config)
+        config = load_runtime_settings(args.database)
         response = create_telegram_client(config).bot_get_updates()
         payload = require_success(response, "Telegram getUpdates")
     except (OSError, ValueError, RuntimeError) as exc:

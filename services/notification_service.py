@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
-from database import Database
+from models.database import Database
 from utils.discord_wrapper import DiscordWrapper
 from utils.env_loader import get_env_value
 from utils.telegram_wrapper import TelegramWrapper
+
+
+logger = logging.getLogger(__name__)
 
 
 PILLAR_NOTIFICATION_EVENT_TYPES = frozenset(
@@ -102,6 +106,7 @@ def format_event(event: Mapping[str, Any]) -> str:
 
 class NotificationDispatcher:
     def __init__(self, database: Database, config: Mapping[str, Any]):
+        self.config = dict(config)
         timeout = float(config.get("http_timeout_seconds", 15))
         self.database = database
         self.telegram = TelegramWrapper(
@@ -145,7 +150,11 @@ class NotificationDispatcher:
         """Build per-owner and network-wide Telegram routes."""
         if not self.telegram.enabled:
             return {}, {}
-        configured = config.get("telegram_pillar_subscriptions", [])
+        configured = (
+            self.database.get_active_subscription_config()
+            if self.database.has_subscriptions()
+            else config.get("telegram_pillar_subscriptions", [])
+        )
         if configured in (None, []):
             return {}, {}
         if not isinstance(configured, list):
@@ -219,6 +228,13 @@ class NotificationDispatcher:
             },
         )
 
+    def refresh_routes(self) -> None:
+        """Reload DB-backed subscription routes before a collector poll."""
+        (
+            self.pillar_event_channels,
+            self.network_event_channels,
+        ) = self._build_pillar_event_channels(self.config)
+
     @property
     def channels(self) -> tuple[str, ...]:
         channels: list[str] = []
@@ -272,7 +288,7 @@ class NotificationDispatcher:
             except Exception as exc:
                 self.database.mark_notification_failed(notification_id, str(exc))
                 failed += 1
-                print(f"Notification {notification_id} failed: {exc}")
+                logger.warning("Notification %s failed: %s", notification_id, exc)
         return {"sent": sent, "failed": failed}
 
 

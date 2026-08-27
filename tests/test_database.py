@@ -4,7 +4,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from database import Database, utc_now
+from models.database import (
+    Database,
+    InitialSetupAlreadyCompletedError,
+    utc_now,
+)
 
 
 def make_pillar(
@@ -107,6 +111,23 @@ class DatabaseTestCase(unittest.TestCase):
         self.assertLess(pillar["live_seconds"], 5)
         self.assertEqual(len(pillar["history"]), 1)
         self.assertEqual(pillar["events"][0]["event_type"], "pillar_created")
+
+    def test_initial_admin_can_only_be_created_once(self):
+        self.assertFalse(self.database.has_users())
+        admin = self.database.create_initial_admin(
+            username="first-admin",
+            display_name="First Admin",
+            password_hash="test-password-hash",
+        )
+        self.assertTrue(self.database.has_users())
+        self.assertEqual(admin["role"], "admin")
+        self.assertTrue(admin["active"])
+
+        with self.assertRaises(InitialSetupAlreadyCompletedError):
+            self.database.create_initial_admin(
+                username="second-admin",
+                password_hash="another-test-password-hash",
+            )
 
     def test_epoch_start_at_is_persisted_without_changing_observation_times(self):
         self.record(

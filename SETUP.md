@@ -21,36 +21,24 @@ If PowerShell blocks script activation, run the commands with the virtual-enviro
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-## 2. Create the configuration
+## 2. Create the secret file
 
-Create the local configuration from the example:
+Runtime settings are stored in SQLite; no JSON configuration file is read by
+the collector or web server. Copy the optional `.env` template when Telegram
+is enabled:
 
 ```powershell
-Copy-Item .\config\example.config.json .\config\config.json
 Copy-Item .\.env.example .\.env
 ```
 
-Edit `config/config.json` and set at least:
+Keep the Telegram bot token only in `.env`:
 
-```json
-{
-  "node_rpc_urls": [
-    "https://127.0.0.1:35997"
-  ],
-  "node_require_sync_info": false,
-  "node_max_frontier_age_seconds": 300,
-  "node_failure_cooldown_seconds": 120,
-  "node_sync_retry_seconds": 30,
-  "node_sync_retry_interval_seconds": 5,
-  "reference_reward_address": "z1...",
-  "rate_limit_max_wait_seconds": 60,
-  "telegram_rate_limit_retries": 2
-}
+```env
+TELEGRAM_BOT_API_KEY=
 ```
 
-`node_rpc_urls` must contain at least one Zenon JSON-RPC endpoint. The endpoint
-in this example uses HTTPS. The collector sends JSON-RPC requests over HTTP(S)
-`POST`; it does not use WebSockets.
+The `.env` file is ignored by Git. Do not commit the token, put it in a web
+form, or include it in screenshots or logs.
 
 ### Configure node failover
 
@@ -78,7 +66,10 @@ defaults to 30 seconds, with a 5-second retry interval. With multiple endpoints,
 the collector tries the other candidates immediately and only waits when no
 other candidate is available.
 
-`reference_reward_address` must be a valid pillar owner address with reward history. It is used to determine the latest epoch and to import epoch reward history. The reward amounts remain available in SQLite, but are not displayed on the dashboard.
+`reference_reward_address` must be a valid pillar owner address with reward
+history. It is used to determine the latest epoch and to import epoch reward
+history. The reward amounts remain available in SQLite, but are not displayed
+on the dashboard.
 
 For a live epoch transition, the collector stores the timestamp of the first
 observed momentum carrying the new epoch as `epoch_start_at`. This is the best
@@ -88,20 +79,8 @@ not invent a new start time. The historical import and backfill tools can use
 an optional schedule fallback and mark the resulting value `Estimated`.
 
 `rate_limit_max_wait_seconds` caps the wait used when a node or Telegram API
-returns HTTP 429. `telegram_rate_limit_retries` controls how many additional
-attempts are made for Telegram rate-limit responses. The retry delay uses the
-server-provided `Retry-After` or Telegram `parameters.retry_after` value when
-available.
-
-Telegram and Discord can remain disabled. The Telegram bot token is never read
-from `config/config.json`; store it only in the project-root `.env` file:
-
-```env
-TELEGRAM_BOT_API_KEY=123456:replace_this_with_the_real_token
-```
-
-The `.env` file is ignored by Git. Do not commit it, paste the token into a
-chat, or include it in screenshots or logs.
+returns HTTP 429. `telegram_rate_limit_retries` controls additional attempts.
+These settings are editable in the admin panel.
 
 ## 3. Initialize the SQLite database
 
@@ -140,6 +119,22 @@ The collector and dashboard also initialize the database safely when they open i
 
 Do not manually delete `data_store\pillar_tracker.sqlite3` unless you intentionally want to start with an empty database.
 
+Create the first administrator account in the browser by opening
+`http://127.0.0.1:8090/portal`. If the database contains no users, this is
+automatically redirected to the one-time setup page at `/setup`. The form
+creates the administrator and signs it in automatically.
+
+For a headless installation, use the command-line fallback:
+
+```powershell
+python .\tools\create_admin.py
+```
+
+There is one login and one role-aware portal. Administrators see the settings,
+users, all subscriptions, logs, and audit trail; normal users see and manage
+only their own subscriptions. The setup endpoint is disabled as soon as the
+first account exists.
+
 ## 4. Run one collector poll
 
 Use this to perform one node check and then stop:
@@ -172,11 +167,9 @@ Start the polling loop:
 python .\pillar_tracker.py --loop
 ```
 
-The configured default interval is 60 seconds:
-
-```json
-"poll_interval_seconds": 60
-```
+The default interval is stored as the `poll_interval_seconds` setting in
+SQLite. It can be changed by an administrator; restart the collector after
+changing collector settings.
 
 You can override it for a run:
 
@@ -233,13 +226,44 @@ python .\web_app.py --host 127.0.0.1 --port 8090 --api-rate-limit 120 --api-rate
 ```
 
 Use `--api-rate-limit 0` only when the dashboard is strictly local and the
-limit must be disabled. If the dashboard is exposed publicly, add
-authentication and a reverse proxy rate limit as well; the built-in limiter is
-not an authentication system.
+limit must be disabled. The portal uses one built-in login, expiring sessions,
+CSRF protection, and role checks. If the dashboard is
+exposed publicly, use HTTPS and a reverse proxy as well.
 
 Stop the dashboard with `Ctrl+C`.
 
-## 7. Recommended startup sequence
+## 7. Logging
+
+The collector and dashboard write to `data_store/pillar_tracker.log` by
+default. The file is rotated automatically using these SQLite settings:
+
+- `log_max_bytes` — maximum size of one log file (default 5 MiB);
+- `log_backup_count` — number of rotated files (default 5);
+- `log_level` — `DEBUG`, `INFO`, `WARNING`, or `ERROR`.
+
+The application creates the `data_store` directory and the log file with the
+process umask, normally resulting in a directory mode around `750` and a file
+mode around `640`. On Linux, run the service as the account that owns the
+application data directory, or grant that service account write permission.
+If the configured path is not writable, the process continues with stderr
+logging and records the reason; the portal reports the log-file status to
+administrators. The latest file tail and database audit trail are available in
+the administrator section of `/portal`.
+
+Normal successful `GET` and `HEAD` requests are intentionally not written to
+the application log, including static files. Successful writes such as login
+and subscription changes, plus all `4xx` and `5xx` responses, remain visible.
+
+## 8. Users and roles
+
+`tools/create_admin.py` creates the first administrator. Administrators can
+create, deactivate, or update users, change runtime settings, and manage all
+subscriptions from `/portal`. Normal users use that same portal and can only
+view, edit, activate, and deactivate subscriptions assigned to themselves.
+There is no delete endpoint for users or subscriptions, and every
+account/admin change is written to `audit_log`.
+
+## 9. Recommended startup sequence
 
 Open two PowerShell windows.
 
@@ -263,7 +287,7 @@ The database setup is normally only needed once:
 .\.venv\Scripts\python.exe .\tools\setup_database.py
 ```
 
-## 8. How pillar status is updated
+## 10. How pillar status is updated
 
 Pillar status is calculated from the on-chain `producedMomentums` and `expectedMomentums` values returned by the node.
 
@@ -277,7 +301,7 @@ Pillar status is calculated from the on-chain `producedMomentums` and `expectedM
 
 The dashboard only shows the latest status stored by the collector. If the collector is stopped, the dashboard cannot update the status.
 
-## 9. Import historical Telegram notifications
+## 11. Import historical Telegram notifications
 
 The repository includes a read-only-by-default importer for the public
 Telegram preview pages of the old [Pillar Tracker](https://t.me/pillar_tracker)
@@ -321,8 +345,8 @@ time defaults to `13:30 UTC` (`3:30 PM CEST` during summer). The rows and
 events are marked as inferred. Omit this option if only messages that actually
 exist in Telegram should be imported.
 
-The schedule fallback settings belong to this historical tooling, not to
-`config/config.json`. The Telegram importer accepts
+The schedule fallback settings belong to this historical tooling, not to the
+runtime database settings. The Telegram importer accepts
 `--epoch-start-reference-epoch`, `--epoch-start-reference-at`, and
 `--epoch-duration-seconds`. The standalone backfill tool accepts the equivalent
 `--reference-epoch`, `--reference-start-at`, and `--duration-seconds` options.
@@ -352,7 +376,7 @@ python .\tools\backfill_epoch_announcements.py
 This reads only successful Telegram notifications from the outbox and does not
 alter epoch start times or other historical data.
 
-## 10. Check the API directly
+## 12. Check the API directly
 
 Check the current overview:
 
@@ -366,7 +390,7 @@ Check the pillar list:
 Invoke-RestMethod http://127.0.0.1:8090/api/pillars | ConvertTo-Json -Depth 6
 ```
 
-## 11. Back up the database
+## 13. Back up the database
 
 Stop both the collector and dashboard before copying the database so SQLite WAL data is fully closed.
 
@@ -379,7 +403,7 @@ Copy-Item .\data_store\pillar_tracker.sqlite3 (Join-Path $backupDirectory $backu
 
 Keep the `-wal` and `-shm` files together with the database while the application is running. Stopping both processes before a file copy avoids copying an incomplete live database state.
 
-## 12. Configure Telegram notifications
+## 14. Configure Telegram notifications
 
 The collector already supports Telegram through the official HTTPS Bot API. It sends event messages with `sendMessage` and can update an optional pinned overview with `editMessageText`. See the [official Telegram Bot API documentation](https://core.telegram.org/bots/api).
 
@@ -449,19 +473,13 @@ The number in a link such as `https://web.telegram.org/k/#-4343093545` is a Tele
 Create or update `.env`:
 
 ```env
-TELEGRAM_BOT_API_KEY=123456:replace_this_with_the_real_token
+TELEGRAM_BOT_API_KEY=
 ```
 
-Update the non-secret Telegram settings in `config/config.json`:
-
-```json
-{
-  "telegram_channel_id": "@my_pillar_channel",
-  "telegram_pinned_message_id": "",
-  "telegram_dev_channel_id": "",
-  "telegram_pillar_subscriptions": []
-}
-```
+Update the non-secret Telegram settings in the administrator section of
+`/portal`.
+The pinned message ID and global channel are normal SQLite settings; extra
+pillar subscriptions are managed in the Subscriptions section.
 
 The `telegram_pinned_message_id` should stay empty until a real message ID has been obtained. The example value `1` is only a placeholder. If it is incorrect, the collector will log a pinned-message update error on every successful poll, although normal event notifications can still work.
 
@@ -469,8 +487,7 @@ The `telegram_pinned_message_id` should stay empty until a real message ID has b
 
 The repository includes two optional Python maintenance tools in
 `tools/telegram/`. They read the bot token only from `.env` and the channel ID
-from `config/config.json`, so the token does not need to be placed on the
-command line.
+from SQLite, so the token does not need to be placed on the command line.
 
 Send a test message:
 
@@ -556,38 +573,17 @@ The bot must be allowed to edit the message. Event notifications and pinned-mess
 ### Add notifications for specific pillars
 
 The `telegram_channel_id` remains the global channel and continues to receive
-all notifications. You can add extra Telegram channels for specific pillars
-with the same bot:
-
-```json
-"telegram_pillar_subscriptions": [
-  {
-    "channel_id": "-1001234567890",
-    "pillar_owner_addresses": [
-      "z1..."
-    ],
-    "events": [
-      "pillar_inactive",
-      "pillar_active",
-      "reward_shares_changed",
-      "epoch_available"
-    ]
-  }
-]
-```
+all notifications. Add extra Telegram channels for specific pillars through
+the administrator Subscriptions section in `/portal`. Normal users can manage
+their assigned records in the same portal.
 
 Use the pillar owner address shown on the dashboard. A subscription can list
 multiple owner addresses and multiple subscriptions can use different
 channels. Add `epoch_available` to send epoch notifications to that channel;
 epoch events are network-wide and are not filtered by the owner addresses.
-For an epoch-only channel, omit `pillar_owner_addresses`:
-
-```json
-{
-  "channel_id": "-1009876543210",
-  "events": ["epoch_available"]
-}
-```
+For an epoch-only channel, leave the pillar address list empty and select only
+`epoch_available`. Subscription records can be deactivated but are never
+deleted.
 
 If `events` is omitted, the tracker sends inactive, active, and reward-share
 changes. Use `"all"` for all supported events, including epoch, name-change,
@@ -600,7 +596,7 @@ after changing this configuration.
 
 ### Run and verify
 
-Restart the collector after changing the configuration:
+Restart the collector after changing settings:
 
 ```powershell
 python .\pillar_tracker.py
@@ -624,7 +620,7 @@ Common errors:
 - `403 Forbidden` — the bot is not an administrator or lacks the required permission.
 - pinned-message edit errors — the message ID is wrong, the message was deleted, or the bot cannot edit it.
 
-## 13. Common problems
+## 15. Common problems
 
 ### HTTP 400 from the node
 
@@ -672,7 +668,8 @@ python .\pillar_tracker.py --loop
 
 ### Missing reward address
 
-If the collector reports `reference_reward_address is empty`, set a valid `z1...` pillar address in `config/config.json`.
+If the collector reports `reference_reward_address is empty`, set a valid
+`z1...` pillar address in the administrator Settings section of `/portal`.
 
 ### Stopping everything
 

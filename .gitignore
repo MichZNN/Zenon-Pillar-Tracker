@@ -130,5 +130,6 @@ dmypy.json
 
 .plans
 config.json
+.deploy-image.env
 data_store
 _*

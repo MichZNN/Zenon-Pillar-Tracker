@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from utils.http_wrapper import HttpWrapper
+from .http_wrapper import HttpWrapper
 
 
 class DiscordWrapper:
