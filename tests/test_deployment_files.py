@@ -11,7 +11,7 @@ class DeploymentFilesTests(unittest.TestCase):
 
     def test_docker_image_is_unprivileged_and_health_checked(self) -> None:
         dockerfile = self.read("Dockerfile")
-        self.assertIn("python:3.12-slim-bookworm", dockerfile)
+        self.assertIn("python:3.14.5-slim-bookworm", dockerfile)
         self.assertIn("USER tracker", dockerfile)
         self.assertIn("HEALTHCHECK", dockerfile)
         self.assertIn("/app/data_store", dockerfile)
@@ -40,6 +40,8 @@ class DeploymentFilesTests(unittest.TestCase):
         workflow = self.read(".github/workflows/ci-cd.yml")
         self.assertIn("Tests (Windows)", workflow)
         self.assertIn("Tests (Debian ARM64 container)", workflow)
+        self.assertIn('python-version: "3.14.5"', workflow)
+        self.assertIn("python:3.14.5-slim-bookworm", workflow)
         self.assertIn("linux/arm64", workflow)
         self.assertIn("refs/heads/main", workflow)
         self.assertIn("deploy/bin/deploy.sh", workflow)

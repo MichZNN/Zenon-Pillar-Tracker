@@ -14,10 +14,14 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <header class="site-header">
+  <header class="site-header portal-header">
     <div class="header-inner">
       <div><p class="eyebrow">Secure workspace</p><h1>Zenon Pillar Tracker</h1></div>
-      <div class="header-actions"><span id="user-name" class="muted"></span><a class="ghost-button" href="/">Dashboard</a><button id="logout" class="ghost-button" type="button">Log out</button></div>
+      <div class="header-actions">
+        <div class="user-identity"><i class="fa-solid fa-circle-user" aria-hidden="true"></i><span id="user-name" class="muted user-name"></span></div>
+        <a class="ghost-button header-action-link" href="/"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Dashboard</span></a>
+        <button id="logout" class="ghost-button header-action-link" type="button"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i><span>Log out</span></button>
+      </div>
     </div>
   </header>
   <main class="page-shell admin-shell">
@@ -54,10 +58,17 @@
       <div class="admin-layout">
         <aside class="admin-menu" aria-label="Administration navigation">
           <div class="admin-menu-heading">
-            <p class="eyebrow">Administration</p>
-            <h2>Manage</h2>
+            <div class="admin-menu-title">
+              <p class="eyebrow">Administration</p>
+              <h2>Manage</h2>
+            </div>
+            <button id="admin-menu-toggle" class="admin-menu-toggle" type="button" aria-expanded="false" aria-controls="admin-menu-links">
+              <i class="fa-solid fa-bars" aria-hidden="true"></i>
+              <span id="admin-menu-toggle-label">Sections</span>
+              <i class="fa-solid fa-chevron-down menu-chevron" aria-hidden="true"></i>
+            </button>
           </div>
-          <nav class="admin-menu-links">
+          <nav id="admin-menu-links" class="admin-menu-links">
             <a class="admin-menu-link is-active" data-admin-nav href="#runtime-settings" aria-current="location"><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Runtime</span></a>
             <a class="admin-menu-link" data-admin-nav href="#subscription-settings"><i class="fa-solid fa-bell" aria-hidden="true"></i><span>Subscriptions</span></a>
             <a class="admin-menu-link" data-admin-nav href="#user-settings"><i class="fa-solid fa-users" aria-hidden="true"></i><span>Users</span></a>

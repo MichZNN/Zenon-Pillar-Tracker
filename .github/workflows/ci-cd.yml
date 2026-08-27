@@ -23,7 +23,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14.5"
           cache: pip
 
       - name: Install dependencies
@@ -55,7 +55,7 @@ jobs:
           docker run --rm --pull always --platform linux/arm64 \
             --volume "$GITHUB_WORKSPACE:/workspace" \
             --workdir /workspace \
-            python:3.12-slim-bookworm \
+            python:3.14.5-slim-bookworm \
             sh -c 'python -m pip install --upgrade pip && python -m pip install --requirement requirements.txt && python -m compileall -q . && python -m unittest discover -s tests -p "test_*.py"'
 
   build:

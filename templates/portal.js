@@ -100,6 +100,16 @@ function initialiseAdminNavigation() {
     .filter(Boolean);
   if (!links.length || !sections.length) return;
 
+  const menu = document.querySelector(".admin-menu");
+  const toggle = $("#admin-menu-toggle");
+  const toggleLabel = $("#admin-menu-toggle-label");
+
+  const setMenuOpen = (open) => {
+    if (!menu || !toggle) return;
+    menu.classList.toggle("is-open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+  };
+
   const activate = (id) => {
     links.forEach((link) => {
       const active = link.hash.slice(1) === id;
@@ -107,15 +117,34 @@ function initialiseAdminNavigation() {
       if (active) link.setAttribute("aria-current", "location");
       else link.removeAttribute("aria-current");
     });
+    const activeLink = links.find((link) => link.hash.slice(1) === id);
+    if (toggleLabel && activeLink) {
+      toggleLabel.textContent = activeLink.querySelector("span")?.textContent || "Sections";
+    }
   };
 
   links.forEach((link) => {
-    link.addEventListener("click", () => activate(link.hash.slice(1)));
+    link.addEventListener("click", () => {
+      activate(link.hash.slice(1));
+      setMenuOpen(false);
+    });
+  });
+
+  toggle?.addEventListener("click", () => {
+    setMenuOpen(!menu?.classList.contains("is-open"));
+  });
+  document.addEventListener("click", (event) => {
+    if (menu && !menu.contains(event.target)) setMenuOpen(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setMenuOpen(false);
   });
 
   const initialSection = window.location.hash.slice(1);
   if (sections.some((section) => section.id === initialSection)) {
     activate(initialSection);
+  } else {
+    activate(links[0].hash.slice(1));
   }
 
   if (!("IntersectionObserver" in window)) return;

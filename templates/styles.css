@@ -378,12 +378,16 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 .detail-stat span { color: var(--muted); display: block; font-size: .68rem; text-transform: uppercase; }
 .detail-stat strong { display: block; margin-top: 3px; }
 .ghost-button {
+  align-items: center;
   background: transparent;
   border: 1px solid var(--line);
   border-radius: 9px;
   color: var(--muted);
   cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
   padding: 8px 10px;
+  text-decoration: none;
 }
 .ghost-button:hover { border-color: var(--zenon-green); color: var(--text); }
 .history-table-wrap { overflow-x: auto; }
@@ -433,6 +437,10 @@ td { font-size: .78rem; }
 
 .header-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
 .site-nav { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }
+.user-identity { align-items: center; display: flex; gap: 8px; min-width: 0; }
+.user-identity i { color: var(--accent); font-size: .9rem; }
+.user-name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-action-link { gap: 8px; white-space: nowrap; }
 .site-nav a { color: var(--muted); font-size: .72rem; font-weight: 800; text-decoration: none; }
 .site-nav a:hover { color: var(--accent); }
 .site-nav .login-link {
@@ -460,6 +468,26 @@ td { font-size: .78rem; }
 }
 .admin-menu-heading { padding: 3px 8px 12px; }
 .admin-menu-heading h2 { margin-top: 4px; }
+.admin-menu-title { min-width: 0; }
+.admin-menu-toggle {
+  align-items: center;
+  background: rgba(21, 21, 21, .5);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  cursor: pointer;
+  display: none;
+  font-size: .74rem;
+  font-weight: 800;
+  gap: 8px;
+  justify-content: center;
+  padding: 9px 10px;
+  white-space: nowrap;
+}
+.admin-menu-toggle:hover { border-color: rgba(111, 243, 77, .58); color: var(--text); }
+.admin-menu-toggle > i:first-child { color: var(--accent); }
+.menu-chevron { transition: transform .2s ease; }
+.admin-menu.is-open .menu-chevron { transform: rotate(180deg); }
 .admin-menu-links { display: flex; gap: 5px; overflow-x: auto; scrollbar-width: thin; }
 .admin-menu-link {
   align-items: center;
@@ -478,6 +506,39 @@ td { font-size: .78rem; }
 .admin-menu-link:hover { color: var(--text); }
 .admin-menu-link:hover i, .admin-menu-link.is-active, .admin-menu-link.is-active i { color: var(--accent); }
 .admin-menu-link.is-active { border-bottom-color: var(--accent); }
+
+@media (max-width: 959px) {
+  .admin-menu { padding: 12px; }
+  .admin-menu-heading {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    padding: 3px 4px;
+  }
+  .admin-menu-toggle { display: inline-flex; }
+  .admin-menu-links {
+    display: none;
+    flex-direction: column;
+    gap: 3px;
+    overflow: visible;
+    padding-top: 10px;
+  }
+  .admin-menu.is-open .admin-menu-links { display: flex; }
+  .admin-menu-link {
+    border: 0;
+    border-left: 2px solid transparent;
+    border-radius: 8px;
+    flex: 0 0 auto;
+    padding: 10px 11px;
+    white-space: normal;
+  }
+  .admin-menu-link.is-active {
+    background: rgba(111, 243, 77, .08);
+    border-left-color: var(--accent);
+  }
+}
+
 .admin-content { min-width: 0; }
 .admin-content > .section-block { scroll-margin-top: 104px; }
 .admin-content > .section-block:first-child { margin-top: 0; }
@@ -572,7 +633,25 @@ td { font-size: .78rem; }
 .toast.is-closing { opacity: 0; transform: translateY(8px); }
 
 @media (max-width: 679px) {
-  .header-actions { align-items: flex-end; flex-direction: column; }
+  .site-header .header-inner {
+    align-items: stretch;
+    flex-direction: column;
+    min-height: 0;
+    padding: 14px 0;
+  }
+  .header-actions { gap: 8px; width: 100%; }
+  .dashboard-header .header-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .dashboard-header .site-nav { justify-self: start; }
+  .dashboard-header .health-badge { justify-self: end; }
+  .portal-header .header-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+  .portal-header .user-identity { min-width: 0; }
+  .portal-header .header-action-link { min-width: 0; }
   .full-width { grid-column: auto; }
   .table-wrap table { min-width: 620px; }
   .toast-container { bottom: 12px; left: 12px; max-width: none; right: 12px; }

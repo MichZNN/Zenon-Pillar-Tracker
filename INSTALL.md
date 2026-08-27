@@ -1,56 +1,55 @@
-# Installatie en deployment
+# Installation and deployment
 
-Dit document beschrijft de aanbevolen productie-installatie van Zenon Pillar
-Tracker op een Linux-server met Docker. Debian ARM64 is het primaire
-doelplatform, maar de applicatie gebruikt geen Ubuntu-specifieke commando's of
-paden. De GitHub Workflow bouwt één multi-architecture image voor
-`linux/amd64` en `linux/arm64`.
+This document describes the recommended production installation of Zenon Pillar
+Tracker on a Linux server with Docker. Debian ARM64 is the primary target, but
+the application uses no Ubuntu-specific commands or paths. The GitHub workflow
+builds one multi-architecture image for `linux/amd64` and `linux/arm64`.
 
-## Architectuur
+## Architecture
 
-De productie-installatie bestaat uit twee containers:
+The production installation consists of two containers:
 
-- `web` serveert het dashboard op poort 8080.
-- `collector` verzamelt de Zenon-data in een aparte, door Docker beheerde
-  achtergrondcontainer.
+- `web` serves the dashboard on port 8080.
+- `collector` collects Zenon data in a separate background container managed by
+  Docker.
 
-Beide containers gebruiken dezelfde hostdirectory voor SQLite en de
-applicatielog. De runtimeconfiguratie staat in SQLite; er wordt tijdens runtime
-geen JSON-configuratie gelezen. `.env` is alleen voor deploymentwaarden en
-geheimen die niet in de database horen, zoals de optionele Telegram-bottoken.
+Both containers use the same host directory for SQLite and the application log.
+Runtime configuration is stored in SQLite; the application does not read JSON
+configuration at runtime. `.env` is reserved for deployment values and secrets
+that do not belong in the database, such as the optional Telegram bot token.
 
-De applicatie draait als UID/GID `10001` (`tracker`) zonder rootrechten. Alleen
-de gemounte datadirectory is schrijfbaar. De applicatielog rouleert op basis van
-de instellingen in het adminpanel. Daarnaast begrenst Compose de Docker
-stdout/stderr-logs op 10 MB met maximaal drie bestanden per container.
+The application image uses Python `3.14.5`. The application runs as UID/GID
+`10001` (`tracker`) without root privileges. Only the mounted data directory is
+writable. The application log rotates according to the settings in the admin
+portal. Compose additionally limits Docker stdout/stderr logs to 10 MB with a
+maximum of three files per container.
 
-Systemd draait niet in een container. Als de Linux-host systemd gebruikt,
-beheert één host-unit de Compose-stack. Op een Linux-host zonder systemd kan
-dezelfde stack rechtstreeks met `docker compose` worden beheerd.
+Systemd does not run inside a container. If the Linux host uses systemd, one
+host unit manages the Compose stack. On a Linux host without systemd, the same
+stack can be managed directly with `docker compose`.
 
-## Vereisten
+## Requirements
 
-Installeer op de server een ondersteunde Docker Engine met Compose v2 volgens de
-documentatie van de gekozen Linux-distributie. Er is geen Ubuntu-installatie of
-Ubuntu-package nodig. Controleer daarna:
+Install a supported Docker Engine with Compose v2 on the server, following the
+documentation for the selected Linux distribution. No Ubuntu installation or
+Ubuntu package is required. Verify the installation:
 
 ```sh
 docker --version
 docker compose version
 ```
 
-De deployment gebruikt een rootful Docker daemon. De gebruiker die de
-deployment uitvoert moet Docker mogen aanroepen, bijvoorbeeld via de
-distributie-eigen Docker-groep of via een passend beheermodel. Lid zijn van de
-`docker`-groep geeft in de praktijk root-equivalente rechten; gebruik daarom een
-afzonderlijke deploymentgebruiker en beperk SSH-toegang.
+The deployment uses a rootful Docker daemon. The deployment user must be
+allowed to call Docker, for example through the distribution's Docker group or
+an equivalent access model. Membership of the `docker` group is effectively
+root-equivalent in practice; use a separate deployment user and restrict SSH
+access accordingly.
 
-## Serverdirectory aanmaken
+## Create the server directory
 
-Gebruik als vaste directory `/srv/zenon-pillar-tracker`. De meegeleverde
-systemd-unit gebruikt dit pad. Wie een andere directory kiest, moet vóór het
-installeren van de unit `WorkingDirectory` in
-`deploy/systemd/zenon-pillar-tracker.service` aanpassen.
+Use `/srv/zenon-pillar-tracker` as the standard directory. The included systemd
+unit uses this path. If you choose another directory, change `WorkingDirectory`
+in `deploy/systemd/zenon-pillar-tracker.service` before installing the unit.
 
 ```sh
 sudo mkdir -p /srv/zenon-pillar-tracker/deploy/bin
@@ -59,7 +58,7 @@ sudo mkdir -p /srv/zenon-pillar-tracker/data_store
 sudo chown -R "$(id -u):$(id -g)" /srv/zenon-pillar-tracker
 ```
 
-Kopieer vervolgens vanuit deze repository:
+Copy the following files from this repository:
 
 ```sh
 cp compose.yaml /srv/zenon-pillar-tracker/compose.yaml
@@ -68,10 +67,10 @@ cp deploy/systemd/zenon-pillar-tracker.service /srv/zenon-pillar-tracker/deploy/
 cp .env.example /srv/zenon-pillar-tracker/.env
 ```
 
-## Environmentbestand en schrijfrechten
+## Environment file and write permissions
 
-Open `/srv/zenon-pillar-tracker/.env` en vul de deploymentwaarden in. Gebruik
-geen echte secrets in GitHub of in deze repository.
+Open `/srv/zenon-pillar-tracker/.env` and fill in the deployment values. Never
+put real secrets in GitHub or in this repository.
 
 ```dotenv
 IMAGE=ghcr.io/michznn/zenon-pillar-tracker:main
@@ -81,31 +80,30 @@ DATA_DIR=/srv/zenon-pillar-tracker/data_store
 TELEGRAM_BOT_API_KEY=
 ```
 
-`TELEGRAM_BOT_API_KEY` is optioneel. Telegram- en Discord-instellingen die in
-de database horen, configureert een administrator na het inloggen in het
-portal. Zet het environmentbestand zo beperkt mogelijk:
+`TELEGRAM_BOT_API_KEY` is optional. An administrator configures the Telegram
+and Discord settings that belong in the database after signing in to the
+portal. Restrict access to the environment file:
 
 ```sh
 sudo chmod 600 /srv/zenon-pillar-tracker/.env
 sudo chown "$(id -u):$(id -g)" /srv/zenon-pillar-tracker/.env
 ```
 
-De map die in `DATA_DIR` staat moet schrijfbaar zijn voor de containergebruiker
-`10001:10001`. Dit is bewust nodig voor SQLite, SQLite-journalbestanden en de
-roterende applicatielogs:
+The directory configured in `DATA_DIR` must be writable by the container user
+`10001:10001`. This is required for SQLite, SQLite journal files, and rotating
+application logs:
 
 ```sh
 sudo chown -R 10001:10001 /srv/zenon-pillar-tracker/data_store
 sudo chmod 750 /srv/zenon-pillar-tracker/data_store
 ```
 
-Als `DATA_DIR` naar een andere bestaande directory wijst, pas dan dezelfde
-rechten op precies die directory toe. Verwijder geen bestanden om dit op te
-lossen.
+If `DATA_DIR` points to another existing directory, apply the same permissions
+to that exact directory. Do not delete files to resolve a permissions issue.
 
-## Eerste start
+## First start
 
-Controleer eerst de Compose-configuratie en start alleen de webcontainer:
+Validate the Compose configuration and start only the web container first:
 
 ```sh
 cd /srv/zenon-pillar-tracker
@@ -114,14 +112,14 @@ docker compose pull web
 docker compose up -d web
 ```
 
-Initialiseer de database expliciet. Het script is idempotent en bewaart
-bestaande gegevens:
+Initialize the database explicitly. The script is idempotent and preserves
+existing data:
 
 ```sh
 docker compose run --rm web python tools/setup_database.py --database /app/data_store/pillar_tracker.sqlite3
 ```
 
-Start daarna de collector:
+Start the collector afterwards:
 
 ```sh
 docker compose up -d collector
@@ -129,19 +127,19 @@ docker compose ps
 docker compose logs --tail=100 web collector
 ```
 
-Open het dashboard via de reverse proxy of lokaal via
-`http://127.0.0.1:8080`. Wanneer de database nog geen accounts bevat, stuurt
-`/portal` automatisch door naar `/setup`. Maak daar het eerste adminaccount en
-configureer vervolgens de node- en notificatie-instellingen in SQLite.
+Open the dashboard through the reverse proxy or locally at
+`http://127.0.0.1:8080`. When the database contains no accounts, `/portal`
+automatically redirects to `/setup`. Create the first administrator account
+there, then configure the node and notification settings in SQLite.
 
-Bind de webcontainer standaard aan localhost en gebruik voor internettoegang
-een reverse proxy met HTTPS. Zet `WEB_BIND_ADDRESS` alleen op een publiek
-adres als firewall- en TLS-beveiliging elders correct geregeld zijn.
+Bind the web container to localhost by default and use an HTTPS reverse proxy
+for internet access. Set `WEB_BIND_ADDRESS` to a public address only when
+firewall and TLS protection are correctly handled elsewhere.
 
-## Systemd op de Linux-host
+## Systemd on the Linux host
 
-Gebruik systemd alleen op hosts die het daadwerkelijk draaien. De unit start
-en stopt de Compose-stack; systemd wordt niet in de image geïnstalleerd.
+Use systemd only on hosts that actually run it. The unit starts and stops the
+Compose stack; systemd is not installed in the image.
 
 ```sh
 sudo cp /srv/zenon-pillar-tracker/deploy/systemd/zenon-pillar-tracker.service /etc/systemd/system/zenon-pillar-tracker.service
@@ -150,7 +148,7 @@ sudo systemctl enable --now zenon-pillar-tracker.service
 sudo systemctl status zenon-pillar-tracker.service
 ```
 
-Handige beheercommando's:
+Useful management commands:
 
 ```sh
 sudo systemctl restart zenon-pillar-tracker.service
@@ -159,20 +157,20 @@ sudo systemctl start zenon-pillar-tracker.service
 docker compose -f /srv/zenon-pillar-tracker/compose.yaml ps
 ```
 
-De Compose `restart: unless-stopped`-policy vangt een gecrashte container op.
-De systemd-unit zorgt voor starten na een hostreboot en voor het beheren van de
-volledige stack. `docker compose down` verwijdert de containers en het netwerk,
-maar niet de bind-mounted `data_store`.
+The Compose `restart: unless-stopped` policy restarts a crashed container. The
+systemd unit starts the stack after a host reboot and manages the complete
+stack. `docker compose down` removes the containers and network, but not the
+bind-mounted `data_store`.
 
-Op een distributie waar de Docker systemd-unit anders heet dan
-`docker.service`, pas je alleen `Requires=` en `After=` in de meegeleverde unit
-aan. De Docker- en applicatiecommando's blijven hetzelfde.
+On a distribution where the Docker systemd unit has a name other than
+`docker.service`, change only `Requires=` and `After=` in the included unit. The
+Docker and application commands remain the same.
 
-## Lokaal Docker testen
+## Test with Docker locally
 
-Dezelfde image werkt op Windows voor ontwikkeling als Docker Desktop draait.
-De productie-aanname blijft Linux; Windows is in de Workflow alleen een extra
-testomgeving voor Python.
+The same image works on Windows for development when Docker Desktop is running.
+The production target remains Linux; Windows is only an additional Python test
+environment in the workflow.
 
 ```sh
 docker build --tag zenon-pillar-tracker:local .
@@ -181,104 +179,104 @@ docker compose run --rm web python tools/setup_database.py --database /app/data_
 IMAGE=zenon-pillar-tracker:local docker compose up -d collector
 ```
 
-Op Windows kan `DATA_DIR` in `.env` naar een door Docker Desktop gedeelde map
-wijzen. Controleer daar expliciet de file-sharing- en volume-permissies.
+On Windows, `DATA_DIR` in `.env` can point to a directory shared with Docker
+Desktop. Check file-sharing and volume permissions explicitly in that setup.
 
-## Automatische GitHub deployment
+## Automatic GitHub deployment
 
-`.github/workflows/ci-cd.yml` doet het volgende:
+`.github/workflows/ci-cd.yml` performs the following steps:
 
-1. Bij pull requests en pushes naar `development` en `main` draaien de tests
-   native op Windows en in een Debian ARM64-container.
-2. Alleen een push naar `main` (dus ook een merge van `development` naar
-   `main`) bouwt een image voor `linux/amd64` en `linux/arm64`.
-3. De image wordt naar GHCR gepubliceerd met zowel `main` als een immutable
-   volledige commit-SHA als tag.
-4. De deploymentjob uploadt `compose.yaml`, het deploymentscript en de systemd-
-   template naar de server.
-5. Het script haalt de SHA-getagde image op en voert `docker compose up -d` uit.
-   Gewijzigde containers worden daardoor vervangen/herstart; SQLite en logs
-   blijven in `DATA_DIR` behouden.
+1. Pull requests and pushes to `development` and `main` run tests natively on
+   Windows and inside a Debian ARM64 container.
+2. Only a push to `main` (including a merge from `development` to `main`)
+   builds an image for `linux/amd64` and `linux/arm64`.
+3. The image is published to GHCR with both a `main` tag and an immutable full
+   commit-SHA tag.
+4. The deployment job uploads `compose.yaml`, the deployment script, and the
+   systemd template to the server.
+5. The script pulls the SHA-tagged image and runs `docker compose up -d`.
+   Changed containers are replaced/restarted while SQLite and logs remain in
+   `DATA_DIR`.
 
-Het script wordt dus bij elke deployment opnieuw naar de server gekopieerd. De
-applicatiecode hoeft niet als git-checkout op de server te staan; die zit in de
-containerimage. De systemd-unit hoeft alleen bij de eerste installatie te
-worden geïnstalleerd. De workflow verandert geen secrets en schrijft `.env`
-niet over. Het deploymentscript bewaart de actieve image-tag in
-`.deploy-image.env`, zodat dezelfde versie ook na een hostreboot actief blijft.
+The script is copied to the server again on every deployment. The application
+source does not need to be checked out on the server because it is inside the
+container image. The systemd unit only needs to be installed during the first
+setup. The workflow does not change secrets or overwrite `.env`. The deployment
+script stores the active image tag in `.deploy-image.env`, so the same version
+remains active after a host reboot.
 
-De Debian ARM64-testjob gebruikt `ubuntu-latest` uitsluitend als GitHub-host
-voor Docker en QEMU; de Python-tests draaien in `python:3.12-slim-bookworm`
-met platform `linux/arm64`. Ubuntu is dus geen productie- of applicatieruntime-
-aanname.
+The Debian ARM64 test job uses `ubuntu-latest` only as a GitHub host for Docker
+and QEMU; the Python tests run in `python:3.14.5-slim-bookworm` with platform
+`linux/arm64`. Ubuntu is not a production or application-runtime assumption.
 
-### Benodigde GitHub Secrets
+### Required GitHub secrets
 
-Maak deze repository- of environment-secrets aan:
+Create these repository or environment secrets:
 
-| Secret | Waarde |
+| Secret | Value |
 | --- | --- |
-| `DEPLOY_HOST` | DNS-naam of IP-adres van de server |
-| `DEPLOY_PORT` | SSH-poort; leeg betekent `22` |
-| `DEPLOY_USER` | Afzonderlijke SSH/deploymentgebruiker |
-| `DEPLOY_PATH` | Exact `/srv/zenon-pillar-tracker`, zonder spaties |
-| `DEPLOY_SSH_KEY` | Private ed25519 SSH-key voor de deploymentgebruiker |
-| `DEPLOY_KNOWN_HOSTS` | Vooraf geverifieerde host-keyregel(s) |
+| `DEPLOY_HOST` | DNS name or IP address of the server |
+| `DEPLOY_PORT` | SSH port; empty means `22` |
+| `DEPLOY_USER` | Dedicated SSH/deployment user |
+| `DEPLOY_PATH` | Exact `/srv/zenon-pillar-tracker`, without spaces |
+| `DEPLOY_SSH_KEY` | Private ed25519 SSH key for the deployment user |
+| `DEPLOY_KNOWN_HOSTS` | Pre-verified host key line(s) |
 
-Als de GHCR-package private is, voeg dan ook toe:
+If the GHCR package is private, also add:
 
-| Secret | Waarde |
+| Secret | Value |
 | --- | --- |
-| `GHCR_DEPLOY_USERNAME` | GitHub-gebruikersnaam van de package-login |
-| `GHCR_DEPLOY_TOKEN` | Token met minimaal `read:packages` |
+| `GHCR_DEPLOY_USERNAME` | GitHub username for the package login |
+| `GHCR_DEPLOY_TOKEN` | Token with at least `read:packages` |
 
-De workflow accepteert geen onbekende host-key automatisch: `DEPLOY_KNOWN_HOSTS`
-moet vooraf door de beheerder worden gevuld met een gecontroleerde SSH-hostkey.
-Zo voorkom je dat een deployment stilzwijgend naar een verkeerde host gaat.
+The workflow does not automatically accept an unknown host key:
+`DEPLOY_KNOWN_HOSTS` must be populated in advance by an administrator with a
+verified SSH host key. This prevents a deployment from silently targeting the
+wrong host.
 
-De deploymentgebruiker moet `docker compose` kunnen uitvoeren. Voor de eerste
-installatie zijn rootrechten nodig voor `/srv`, de systemd-unit en de
-datamaprechten; daarna is voor de workflow alleen Docker-toegang nodig.
+The deployment user must be able to run `docker compose`. Root privileges are
+needed during the initial setup for `/srv`, the systemd unit, and data-directory
+permissions; after that, the workflow only needs Docker access.
 
-## Handmatige update en rollback
+## Manual update and rollback
 
-Een handmatige update gebruikt hetzelfde script als GitHub Actions:
+A manual update uses the same script as GitHub Actions:
 
 ```sh
 cd /srv/zenon-pillar-tracker
 sh deploy/bin/deploy.sh ghcr.io/michznn/zenon-pillar-tracker:<commit-sha>
 ```
 
-Gebruik voor rollback de volledige SHA van de vorige bekende goede deployment.
-Omdat iedere image een eigen SHA-tag heeft, hoef je geen code op de server terug
-te zetten. De gekozen rollback-tag wordt in `.deploy-image.env` bewaard en blijft
-daarmee ook na een reboot actief. Controleer daarna:
+For a rollback, use the full SHA of the previous known-good deployment. Every
+image has its own SHA tag, so no source code needs to be restored on the server.
+The selected rollback tag is stored in `.deploy-image.env` and therefore remains
+active after a reboot. Check the result:
 
 ```sh
 docker compose ps
 docker compose logs --tail=100 web collector
 ```
 
-Als de build- of testjob faalt, start de deployjob niet. Als een deploymentjob
-faalt vóór `docker compose up`, blijven de draaiende containers ongemoeid.
+If the build or test job fails, the deployment job does not start. If a
+deployment job fails before `docker compose up`, the running containers remain
+untouched.
 
-## Logs en backups
+## Logs and backups
 
-Bekijk containerlogs met:
+View container logs with:
 
 ```sh
 cd /srv/zenon-pillar-tracker
 docker compose logs --tail=200 web collector
 ```
 
-De applicatielog staat standaard in
-`/srv/zenon-pillar-tracker/data_store/pillar_tracker.log`. De maximale grootte
-en het aantal backups zijn aanpasbaar door een administrator in het portal.
-De Docker stdout/stderr-logs hebben aanvullend een vaste limiet van 10 MB × 3
-per container in `compose.yaml`.
+The application log is stored by default at
+`/srv/zenon-pillar-tracker/data_store/pillar_tracker.log`. An administrator can
+change the maximum size and backup count in the portal. Docker stdout/stderr
+logs additionally have a fixed limit of 10 MB × 3 per container in
+`compose.yaml`.
 
-Maak een backup van SQLite en logs bij voorkeur terwijl de containers kort
-gestopt zijn:
+Prefer backing up SQLite and logs while the containers are briefly stopped:
 
 ```sh
 cd /srv/zenon-pillar-tracker
@@ -287,17 +285,17 @@ tar -czf "zenon-pillar-tracker-backup-$(date +%Y%m%d-%H%M%S).tar.gz" data_store
 docker compose start web collector
 ```
 
-Bewaar backups buiten de deploymentdirectory en test periodiek of een backup
-daadwerkelijk kan worden teruggezet.
+Store backups outside the deployment directory and periodically verify that a
+backup can actually be restored.
 
-## Dashboardbesturing van de collector
+## Dashboard control of the collector
 
-De stack kan betrouwbaar met Docker en systemd worden gestart, gestopt en
-herstart. Het dashboard krijgt bewust geen Docker socket en geen onbeperkte
-systemd-rechten: dat zou een webrequest in de praktijk host-rootcontrole geven.
-De veilige dashboardknoppen voor Start/Stop/Restart van alleen de collector
-vereisen daarom een afzonderlijke, allowlisted host-control bridge. Die kan
-later als beperkt hostproces worden toegevoegd zonder de webcontainer
-privileged te maken. Tot die tijd gebruik je voor collectorbeheer de
-systemd/Compose-commando's hierboven; de dashboardstatus toont wel of de
-collector nog recent een succesvolle heartbeat heeft gemeld.
+The stack can reliably be started, stopped, and restarted with Docker and
+systemd. The dashboard intentionally has no Docker socket and no unrestricted
+systemd permissions: either would effectively give a web request host-root
+control. Safe dashboard buttons for Start/Stop/Restart of only the collector
+therefore require a separate allowlisted host-control bridge. This can be added
+later as a restricted host process without making the web container privileged.
+Until then, use the systemd/Compose commands above for collector management;
+the dashboard still shows whether the collector has reported a recent
+successful heartbeat.
