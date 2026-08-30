@@ -37,6 +37,7 @@ class DeploymentFilesTests(unittest.TestCase):
     def test_deploy_script_persists_the_selected_image_tag(self) -> None:
         script = self.read("deploy/bin/deploy.sh")
         self.assertIn(".deploy-image.env", script)
+        self.assertIn("if [ ! -r .env ]", script)
         self.assertIn("printf 'IMAGE=%s", script)
         self.assertIn("docker compose ps --status running --services", script)
         self.assertIn("docker compose logs --no-color --tail=200 web collector", script)

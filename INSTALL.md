@@ -95,8 +95,12 @@ portal. Restrict access to the environment file:
 
 ```sh
 sudo chmod 600 /srv/zenon-pillar-tracker/.env
-sudo chown "$(id -u):$(id -g)" /srv/zenon-pillar-tracker/.env
+sudo chown "$(id -un):$(id -gn)" /srv/zenon-pillar-tracker/.env
 ```
+
+Run these commands while logged in as the same account configured as
+`DEPLOY_USER`. The GitHub workflow runs the deployment script as that account;
+Docker access alone does not grant permission to read `.env`.
 
 The directory configured in `DATA_DIR` must be writable by the container user
 `10001:10001`. This is required for SQLite, SQLite journal files, and rotating
@@ -222,6 +226,7 @@ The directory used by `DATA_DIR` must be writable by the container user:
 
 ```sh
 sudo chmod 600 /srv/zenon-pillar-tracker-dev/.env
+sudo chown "$(id -un):$(id -gn)" /srv/zenon-pillar-tracker-dev/.env
 sudo chown -R 10001:10001 /srv/zenon-pillar-tracker-dev/data_store
 sudo chmod 750 /srv/zenon-pillar-tracker-dev/data_store
 ```

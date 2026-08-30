@@ -22,6 +22,11 @@ if [ ! -f .env ]; then
     printf '%s\n' "Missing $DEPLOY_DIR/.env; create it from .env.example first." >&2
     exit 1
 fi
+if [ ! -r .env ]; then
+    printf '%s\n' "Cannot read $DEPLOY_DIR/.env as deployment user $(id -un)." >&2
+    printf '%s\n' "The file must be owned by DEPLOY_USER and kept mode 600; fix its ownership and retry." >&2
+    exit 1
+fi
 
 # Keep the mount point available even before the optional host control bridge
 # is installed. The bridge service later tightens its ownership and mode.
