@@ -1,7 +1,11 @@
 const state = {
   search: "",
   status: "",
+  pillars: null,
+  performance: {},
+  refreshId: 0,
 };
+let performanceRequest = null;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -106,7 +110,6 @@ function renderOverview(payload) {
   $("#footer-updated").textContent = payload.last_snapshot_at
     ? "Latest snapshot: " + formatDate(payload.last_snapshot_at)
     : "No snapshot yet";
-  renderHealth(payload.collector);
   renderEvents(payload.recent_events || []);
 }
 
@@ -120,7 +123,8 @@ function renderPillars(payload) {
   list.innerHTML = payload.items.map((pillar) => {
     const produced = pillar.produced_momentums ?? 0;
     const expected = pillar.expected_momentums ?? 0;
-    const performance = pillar.performance_last_30_days || {};
+    const performance = state.performance[pillar.owner_address] ||
+      pillar.performance_last_30_days || {};
     const rank = pillar.rank === null || pillar.rank === undefined
       ? "—"
       : pillar.rank + 1;
@@ -340,19 +344,54 @@ async function showPillar(ownerAddress) {
   }
 }
 
+async function refreshCollectorStatus() {
+  try {
+    const collector = await getJson("/api/collector-status");
+    renderHealth(collector);
+  } catch (error) {
+    console.error(error);
+    renderHealth({
+      state: "unknown",
+      label: "Status unavailable",
+      description: "The tracker status could not be loaded.",
+    });
+  }
+}
+
+async function refreshPerformance(refreshId) {
+  try {
+    if (!performanceRequest) {
+      performanceRequest = getJson("/api/performance?days=30").finally(() => {
+        performanceRequest = null;
+      });
+    }
+    const performance = await performanceRequest;
+    if (refreshId !== state.refreshId) return;
+    state.performance = performance;
+    renderPillars(state.pillars);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
 async function refresh() {
+  const refreshId = ++state.refreshId;
   try {
     const [overview, pillars, epochs] = await Promise.all([
       getJson("/api/overview"),
       getJson(
         "/api/pillars?status=" + encodeURIComponent(state.status) +
-        "&q=" + encodeURIComponent(state.search)
+        "&q=" + encodeURIComponent(state.search) +
+        "&performance=0"
       ),
       getJson("/api/epochs?limit=11"),
     ]);
+    if (refreshId !== state.refreshId) return;
+    state.pillars = pillars;
     renderOverview(overview);
     renderPillars(pillars);
     renderEpochs(epochs);
+    void refreshPerformance(refreshId);
   } catch (error) {
     console.error(error);
     $("#health-badge").className = "health-badge error";
@@ -373,4 +412,6 @@ $("#close-detail").addEventListener("click", () => {
 });
 
 refresh();
+refreshCollectorStatus();
 window.setInterval(refresh, 30000);
+window.setInterval(refreshCollectorStatus, 30000);

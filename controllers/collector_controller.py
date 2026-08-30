@@ -272,7 +272,10 @@ class Collector:
         if not channel_id or message_id is None or message_id <= 0:
             return
 
-        current = self.database.get_pillars(status="all")["items"]
+        current = self.database.get_pillars(
+            status="all",
+            include_performance=False,
+        )["items"]
         current_by_address: dict[str, dict[str, Any]] = {}
         for item in current:
             if not item["is_present"]:
