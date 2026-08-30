@@ -573,26 +573,29 @@ The bot must be allowed to edit the message. Event notifications and pinned-mess
 ### Add notifications for specific pillars
 
 The `telegram_channel_id` remains the global channel and continues to receive
-all notifications. Add extra Telegram channels for specific pillars through
-the administrator Subscriptions section in `/portal`. Normal users can manage
-their assigned records in the same portal.
+all notifications. The optional `discord_channel_webhook` is the global
+Discord destination. Add extra subscriptions for specific pillars through the
+Subscriptions section in `/portal`. Each subscription can contain a Telegram
+channel ID, a Discord webhook, or both; normal users can manage their assigned
+records in the same portal.
 
 Use the pillar owner address shown on the dashboard. A subscription can list
 multiple owner addresses and multiple subscriptions can use different
-channels. Add `epoch_available` to send epoch notifications to that channel;
-epoch events are network-wide and are not filtered by the owner addresses.
-For an epoch-only channel, leave the pillar address list empty and select only
-`epoch_available`. Subscription records can be deactivated but are never
-deleted.
+destinations. Add `epoch_available` to send epoch notifications to those
+destinations; epoch events are network-wide and are not filtered by the owner
+addresses. For an epoch-only subscription, leave the pillar address list empty
+and select only `epoch_available`. Subscription records can be deactivated but
+are never deleted.
 
 If `events` is omitted, the tracker sends inactive, active, and reward-share
 changes. Use `"all"` for all supported events, including epoch, name-change,
 pillar-creation, and dismantling events.
 
-Add the same bot as an administrator to every additional channel and enable
-**Post Messages**. The collector sends through one bot and one process; it
-does not require a separate tracker instance per pillar. Restart the collector
-after changing this configuration.
+Add the same bot as an administrator to every additional Telegram channel and
+enable **Post Messages**. Discord subscriptions use standard HTTPS Discord
+webhook URLs. The collector sends through one bot and one process; it does not
+require a separate tracker instance per pillar. Restart the collector after
+changing this configuration.
 
 ### Run and verify
 

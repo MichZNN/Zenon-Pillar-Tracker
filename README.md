@@ -2,7 +2,8 @@
 
 A collector and mobile-first dashboard for Zenon Network Pillars. The application collects current node data, stores snapshots in SQLite, and displays pillar status, 30-day performance, epoch history, events, and live duration.
 
-The existing Telegram channel is still supported as an optional notification output.
+Telegram and Discord are supported as optional notification outputs. A
+subscription can deliver to Telegram, Discord, or both.
 
 ## What is included?
 
@@ -190,7 +191,9 @@ The dashboard shows:
 Available API endpoints:
 
 - `GET /api/overview`
+- `GET /api/collector-status`
 - `GET /api/pillars`
+- `GET /api/performance?days=30`
 - `GET /api/epochs`
 - `GET /api/events`
 - `GET /api/health`
@@ -217,25 +220,32 @@ The main tables are:
 - `notifications` — an outbox and delivery history for notifications.
 - `users` and `sessions` — accounts, roles, password hashes, and expiring web sessions.
 - `app_settings` — runtime configuration edited by administrators.
-- `pillar_subscriptions` — assigned Telegram subscriptions with active flags; records are never deleted.
+- `pillar_subscriptions` — assigned Telegram/Discord subscriptions with active flags; records are never deleted.
 - `audit_log` — administrator and account actions.
 - `schema_meta` — schema version metadata.
 
-## Telegram
+## Notifications
 
-Telegram remains optional. The collector writes notification records to the SQLite outbox and attempts delivery through the configured Telegram wrapper. A failed notification must not invalidate a successful data collection.
+Telegram and Discord remain optional. The collector writes notification
+records to the SQLite outbox and attempts delivery through the configured
+channel wrapper. A failed notification must not invalidate a successful data
+collection.
 
 See [SETUP.md](SETUP.md) for BotFather setup, channel permissions, chat IDs,
 test messages, pinned-message configuration, and troubleshooting. For
 production use, run the collector as a supervised service and review the
 outbox regularly.
 
-### Per-pillar Telegram channels
+### Per-pillar subscriptions
 
-The configured `telegram_channel_id` remains the global channel and continues
-to receive all notifications. Additional pillar subscriptions are created and
-assigned in `/portal`. Each record has an active flag; deactivation is the
-supported alternative to deletion.
+The configured `telegram_channel_id` and `discord_channel_webhook` remain the
+global destinations and continue to receive all notifications. Additional
+subscriptions are created and assigned in `/portal`. Each record may contain
+a Telegram channel ID, a Discord webhook, or both. Each record has an active
+flag; deactivation is the supported alternative to deletion.
+
+Discord subscriptions accept standard HTTPS Discord webhook URLs. Telegram
+subscriptions still require that the bot can post in each additional channel.
 
 An epoch-only subscription can be created by leaving the pillar address list
 empty and selecting only `epoch_available`. The bot must be an administrator
