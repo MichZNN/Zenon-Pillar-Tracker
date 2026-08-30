@@ -25,6 +25,7 @@ def collector_liveness_timeout(poll_interval_seconds: Any = 60) -> int:
 def collector_status(
     node: Mapping[str, Any] | None,
     *,
+    last_run: Mapping[str, Any] | None = None,
     poll_interval_seconds: Any = 60,
     now: datetime | None = None,
 ) -> dict[str, Any]:
@@ -37,15 +38,27 @@ def collector_status(
     dashboard's request path.
     """
     timeout_seconds = collector_liveness_timeout(poll_interval_seconds)
-    health = str((node or {}).get("health") or "unknown").lower()
-    report_at = (node or {}).get("updated_at") or (node or {}).get(
-        "last_success_at"
-    )
+    node = node or {}
+    run = last_run or {}
+    health = str(node.get("health") or "unknown").lower()
+    run_status = str(run.get("status") or "").lower() or None
+    run_error = str(run.get("error") or "").strip() or None
+    last_attempt_at = run.get("completed_at") or run.get("started_at")
+    diagnostic_fields = {
+        "node_health": health,
+        "last_success_at": node.get("last_success_at"),
+        "last_attempt_at": last_attempt_at,
+        "last_attempt_status": run_status,
+        "last_error": run_error,
+        "last_run_id": run.get("id"),
+    }
+    report_at = node.get("updated_at") or node.get("last_success_at")
     if not report_at or (health == "unknown" and not (node or {}).get("last_success_at")):
         return {
             "state": "unknown",
             "label": "Waiting for tracker",
             "description": "The tracker has not reported yet.",
+            **diagnostic_fields,
             "last_report_at": None,
             "age_seconds": None,
             "timeout_seconds": timeout_seconds,
@@ -60,6 +73,7 @@ def collector_status(
             "state": "unknown",
             "label": "Waiting for tracker",
             "description": "The tracker status could not be read.",
+            **diagnostic_fields,
             "last_report_at": str(report_at),
             "age_seconds": None,
             "timeout_seconds": timeout_seconds,
@@ -69,7 +83,11 @@ def collector_status(
     current = now or datetime.now(timezone.utc)
     age_seconds = max(0, int((current - parsed).total_seconds()))
 
-    if age_seconds > timeout_seconds or health == "error":
+    if run_status == "failed" and run_error:
+        state = "red"
+        label = "Collector error"
+        description = "The latest collector check failed."
+    elif age_seconds > timeout_seconds or health == "error":
         state = "red"
         label = "Tracker offline"
         description = "No recent tracker update is available."
@@ -90,6 +108,7 @@ def collector_status(
         "state": state,
         "label": label,
         "description": description,
+        **diagnostic_fields,
         "last_report_at": str(report_at),
         "age_seconds": age_seconds,
         "timeout_seconds": timeout_seconds,

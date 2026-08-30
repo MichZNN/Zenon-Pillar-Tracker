@@ -715,6 +715,11 @@ body.modal-open { overflow: hidden; }
 .collector-control-card .section-heading { margin-bottom: 10px; }
 .collector-control-actions { justify-content: flex-start; margin: 14px 0; }
 .collector-control-actions button:disabled { cursor: not-allowed; opacity: .45; }
+.collector-diagnostics { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
+.collector-diagnostic-heading { align-items: center; display: flex; gap: 10px; justify-content: space-between; }
+.collector-diagnostics p { margin: 7px 0 0; }
+.collector-error { color: var(--plasma-pink); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .72rem; line-height: 1.5; overflow-wrap: anywhere; }
+.status-badge.warning { color: var(--status-orange); background: rgba(245, 165, 36, .12); border-color: rgba(245, 165, 36, .34); }
 .event-options { border: 1px solid var(--line); border-radius: 11px; margin: 0; min-width: 0; padding: 13px; }
 .event-options legend { color: var(--text); font-size: .76rem; font-weight: 800; padding: 0 5px; }
 .event-options > .setting-help { margin: 0 0 9px; }

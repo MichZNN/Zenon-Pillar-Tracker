@@ -49,6 +49,9 @@ services:
     image: ${IMAGE:-ghcr.io/michznn/zenon-pillar-tracker:main}
     restart: unless-stopped
     init: true
+    # Runtime settings may point at a node RPC proxy on the host loopback.
+    # Host networking keeps 127.0.0.1 meaningful for the collector on Linux.
+    network_mode: host
     env_file:
       - .env
     command:
@@ -67,6 +70,10 @@ services:
     cap_drop:
       - ALL
     stop_grace_period: 30s
+    # The image healthcheck targets the web API and does not apply to the
+    # collector process.
+    healthcheck:
+      disable: true
     logging:
       driver: json-file
       options:

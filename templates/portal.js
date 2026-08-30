@@ -92,7 +92,11 @@ function escapeHtml(value) {
 async function getJson(url, options = {}) {
   const response = await fetch(url, { cache: "no-store", ...options });
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || "Request failed");
+  if (!response.ok) {
+    const error = new Error(payload.error || "Request failed");
+    error.payload = payload;
+    throw error;
+  }
   return payload;
 }
 
@@ -486,11 +490,48 @@ async function loadSettings() {
   populateSettingsForm(settings);
 }
 
+function formatDiagnosticDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+}
+
+function renderCollectorDiagnostics(diagnostics) {
+  const badge = $("#collector-data-status");
+  const message = $("#collector-data-message");
+  const attempt = $("#collector-last-attempt");
+  const success = $("#collector-last-success");
+  const error = $("#collector-last-error");
+  if (!badge || !message || !attempt || !success || !error) return;
+
+  const status = diagnostics || {};
+  const state = String(status.state || "unknown").toLowerCase();
+  const badgeClass = state === "green"
+    ? "active"
+    : state === "red" ? "error"
+      : state === "orange" ? "warning" : "inactive";
+  badge.className = `status-badge ${badgeClass}`;
+  badge.textContent = status.label || "Waiting for tracker";
+  message.textContent = status.description || "Collector diagnostics are not available yet.";
+  attempt.textContent = status.last_attempt_at
+    ? `Last attempt: ${formatDiagnosticDate(status.last_attempt_at)}${status.last_attempt_status ? ` (${status.last_attempt_status})` : ""}`
+    : "No collector attempt recorded yet.";
+  success.textContent = status.last_success_at
+    ? `Last successful poll: ${formatDiagnosticDate(status.last_success_at)}`
+    : "No successful poll recorded yet.";
+  error.hidden = !status.last_error;
+  error.textContent = status.last_error ? `Latest error: ${status.last_error}` : "";
+}
+
 async function loadLogs() {
   const payload = await getJson("/api/admin/logs?limit=100");
+  renderCollectorDiagnostics(payload.collector);
   const file = payload.file || {};
-  $("#log-file-info").textContent = `${file.path || "Log file"} · ${file.exists ? (file.size_bytes || 0) + " bytes" : "not created"}`;
-  $("#file-log").textContent = file.error || (file.lines || []).join("\n") || "No log entries yet.";
+  const configuredPath = file.configured_path && file.configured_path !== file.path
+    ? ` · configured: ${file.configured_path}` : "";
+  $("#log-file-info").textContent = `${file.path || "Log file"} · ${file.exists ? (file.size_bytes || 0) + " bytes" : "not created"}${configuredPath}`;
+  const fileNotice = file.error ? `${file.error}\n\n` : "";
+  $("#file-log").textContent = fileNotice + ((file.lines || []).join("\n") || "No log entries yet.");
   $("#audit-list").innerHTML = (payload.audit || []).map((item) =>
     `<tr><td>${escapeHtml(item.created_at)}</td><td>${escapeHtml(item.username || "system")}</td><td>${escapeHtml(item.action)}</td><td>${escapeHtml(item.entity_type + (item.entity_id ? " #" + item.entity_id : ""))}</td><td>${escapeHtml(JSON.stringify(item.details || {}))}</td></tr>`
   ).join("") || '<tr><td colspan="5" class="empty-state">No audit entries.</td></tr>';
@@ -509,6 +550,7 @@ function renderCollectorControl(payload) {
   const badge = $("#collector-process-status");
   const message = $("#collector-control-message");
   if (!badge || !message) return;
+  renderCollectorDiagnostics(payload.diagnostics);
   const collector = payload.collector || {};
   const available = payload.available !== false;
   const running = Boolean(collector.running);
@@ -529,7 +571,11 @@ async function loadCollectorControl() {
   try {
     renderCollectorControl(await getJson("/api/admin/collector-control"));
   } catch (error) {
-    renderCollectorControl({ available: false, error: error.message });
+    renderCollectorControl({
+      ...(error.payload || {}),
+      available: false,
+      error: error.message,
+    });
   }
 }
 
@@ -548,6 +594,7 @@ async function loadCollectorLogs() {
   } catch (error) {
     info.textContent = "Collector container logs";
     viewer.textContent = `Could not load collector logs: ${error.message}`;
+    renderCollectorDiagnostics(error.payload?.diagnostics);
   }
 }
 

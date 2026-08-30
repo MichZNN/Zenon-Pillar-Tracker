@@ -317,18 +317,47 @@ class DashboardHandler(BaseHTTPRequestHandler):
         *,
         tail: int = 200,
     ) -> None:
+        diagnostics = self._collector_diagnostics()
         try:
             result = self.collector_control.request(action, tail=tail)
         except CollectorControlUnavailable as exc:
             self._send_json(
-                {"available": False, "error": str(exc)},
+                {
+                    "available": False,
+                    "error": str(exc),
+                    "diagnostics": diagnostics,
+                },
                 503,
             )
             return
         except CollectorControlError as exc:
-            self._send_json({"available": True, "error": str(exc)}, 502)
+            self._send_json(
+                {
+                    "available": True,
+                    "error": str(exc),
+                    "diagnostics": diagnostics,
+                },
+                502,
+            )
             return
-        self._send_json({"available": True, **result})
+        self._send_json(
+            {
+                "available": True,
+                **result,
+                "diagnostics": self._collector_diagnostics(),
+            }
+        )
+
+    def _collector_diagnostics(self) -> dict[str, Any]:
+        health = self.database.get_health()
+        runtime_config = getattr(self.server, "runtime_config", {})
+        return collector_status(
+            health.get("node"),
+            last_run=health.get("last_run"),
+            poll_interval_seconds=runtime_config.get(
+                "poll_interval_seconds", 60
+            ),
+        )
 
     def _admin_collector_control(
         self,
@@ -344,12 +373,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
             result = self.collector_control.request(action)
         except CollectorControlUnavailable as exc:
             self._send_json(
-                {"available": False, "error": str(exc)},
+                {
+                    "available": False,
+                    "error": str(exc),
+                    "diagnostics": self._collector_diagnostics(),
+                },
                 503,
             )
             return
         except CollectorControlError as exc:
-            self._send_json({"available": True, "error": str(exc)}, 502)
+            self._send_json(
+                {
+                    "available": True,
+                    "error": str(exc),
+                    "diagnostics": self._collector_diagnostics(),
+                },
+                502,
+            )
             return
         self._audit(
             user,
@@ -357,7 +397,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "collector",
             details={"status": result.get("collector", {})},
         )
-        self._send_json({"available": True, **result})
+        self._send_json(
+            {
+                "available": True,
+                **result,
+                "diagnostics": self._collector_diagnostics(),
+            }
+        )
 
     def _api_get(self, parsed) -> None:
         path = parsed.path.rstrip("/") or "/"
@@ -370,23 +416,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json(self.database.get_overview())
             return
         if path == "/api/collector-status":
-            self._send_json(
-                collector_status(
-                    self.database.get_node_state(),
-                    poll_interval_seconds=self.runtime_config.get(
-                        "poll_interval_seconds", 60
-                    ),
-                )
-            )
+            self._send_json(self._collector_diagnostics())
             return
         if path == "/api/health":
             health = self.database.get_health()
-            health["collector"] = collector_status(
-                health.get("node"),
-                poll_interval_seconds=self.runtime_config.get(
-                    "poll_interval_seconds", 60
-                ),
-            )
+            health["collector"] = self._collector_diagnostics()
             self._send_json(health)
             return
         if path == "/api/pillars":
@@ -476,6 +510,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._send_json(
                 {
                     "file": read_log_tail(settings),
+                    "collector": self._collector_diagnostics(),
                     "audit": self.database.get_audit_log(
                         int(query.get("limit", ["100"])[0])
                     ),

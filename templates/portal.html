@@ -119,7 +119,7 @@
             <div class="settings-grid">
               <label class="setting-field setting-field-wide">
                 <span class="setting-label">Node RPC URLs</span>
-                <span class="setting-help">One HTTP(S) JSON-RPC endpoint per line. The first endpoint is primary; the others are used for failover.</span>
+                <span class="setting-help">One HTTP(S) JSON-RPC endpoint per line. The first endpoint is primary; the others are used for failover. A node on this Linux host can use <code>http://127.0.0.1:35997</code>; use <code>https://</code> when the endpoint is behind TLS.</span>
                 <textarea name="node_rpc_urls" data-setting-type="list" rows="3" required></textarea>
               </label>
               <label class="setting-field setting-field-wide">
@@ -352,6 +352,16 @@
             <span id="collector-process-status" class="status-badge">Checking…</span>
           </div>
           <p id="collector-control-message" class="muted">Checking whether the collector is running.</p>
+          <div class="collector-diagnostics" aria-live="polite">
+            <div class="collector-diagnostic-heading">
+              <span class="setting-label">Data collection</span>
+              <span id="collector-data-status" class="status-badge">Checking…</span>
+            </div>
+            <p id="collector-data-message" class="muted">Checking the latest collector poll.</p>
+            <p id="collector-last-attempt" class="muted"></p>
+            <p id="collector-last-success" class="muted"></p>
+            <p id="collector-last-error" class="collector-error" hidden></p>
+          </div>
           <div class="form-actions collector-control-actions">
             <button id="collector-start" class="primary-button" type="button"><i class="fa-solid fa-play" aria-hidden="true"></i>Start</button>
             <button id="collector-stop" class="ghost-button" type="button"><i class="fa-solid fa-stop" aria-hidden="true"></i>Stop</button>

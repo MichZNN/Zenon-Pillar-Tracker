@@ -66,6 +66,29 @@ class CollectorStatusTestCase(unittest.TestCase):
         self.assertEqual(unknown["state"], "unknown")
         self.assertEqual(unknown["label"], "Waiting for tracker")
 
+    def test_latest_failed_poll_exposes_the_exact_collector_error(self):
+        result = collector_status(
+            self.node(health="error"),
+            last_run={
+                "id": 42,
+                "status": "failed",
+                "started_at": "2026-08-27T11:59:30+00:00",
+                "completed_at": "2026-08-27T11:59:31+00:00",
+                "error": (
+                    "All node RPC endpoints failed: "
+                    "http://127.0.0.1:35997: ledger.getFrontierMomentum "
+                    "returned HTTP 400"
+                ),
+            },
+            now=self.NOW,
+        )
+
+        self.assertEqual(result["state"], "red")
+        self.assertEqual(result["label"], "Collector error")
+        self.assertEqual(result["last_attempt_status"], "failed")
+        self.assertEqual(result["last_run_id"], 42)
+        self.assertIn("HTTP 400", result["last_error"])
+
 
 if __name__ == "__main__":
     unittest.main()

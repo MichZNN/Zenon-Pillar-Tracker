@@ -55,6 +55,12 @@ has no accounts yet, it automatically redirects to the first-run setup page at
 - `node_rpc_urls`
 - `reference_reward_address`
 
+The Linux Compose collector uses the host network namespace. A Zenon node or
+reverse proxy listening on the same server can therefore be configured as
+`http://127.0.0.1:35997`. Use `https://` when that port terminates TLS, for
+example `https://zenon.turmin.com:35997`; the two schemes are not
+interchangeable.
+
 `node_rpc_urls` must contain at least one Zenon HTTP(S) JSON-RPC endpoint. This
 application sends JSON-RPC requests with HTTP `POST`; it does not use
 WebSockets.

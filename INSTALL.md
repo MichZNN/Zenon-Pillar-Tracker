@@ -18,6 +18,12 @@ Runtime configuration is stored in SQLite; the application does not read JSON
 configuration at runtime. `.env` is reserved for deployment values and secrets
 that do not belong in the database, such as the optional Telegram bot token.
 
+The Linux Compose collector uses the host network namespace. A Zenon node or
+reverse proxy listening on the same server can therefore be configured as
+`http://127.0.0.1:35997`. Use `https://` when that port terminates TLS, for
+example `https://zenon.turmin.com:35997`; the two schemes are not
+interchangeable.
+
 The application image uses Python `3.14.5`. The application runs as UID/GID
 `10001` (`tracker`) without root privileges. Only the mounted data directory is
 writable. The application log rotates according to the settings in the admin
@@ -382,6 +388,12 @@ change the maximum size and backup count in the portal. Docker stdout/stderr
 logs additionally have a fixed limit of 10 MB × 3 per container in
 `compose.yaml`.
 
+The Operations section also displays the last collector attempt, the last
+successful poll, and the exact error from the latest failed node RPC check.
+If an old database contains a log path that is not writable inside the
+container, logging falls back to the mounted `data_store` path and the portal
+labels both the configured and active paths.
+
 Prefer backing up SQLite and logs while the containers are briefly stopped:
 
 ```sh
@@ -418,6 +430,12 @@ sudo cp /srv/zenon-pillar-tracker-dev/deploy/systemd/zenon-pillar-tracker-contro
 sudo systemctl daemon-reload
 sudo systemctl enable --now zenon-pillar-tracker-control.service
 ```
+
+The automatic workflow uploads the selected production or development unit
+under the common filename `zenon-pillar-tracker-control.service`, so that is
+the filename to use after a GitHub deployment. During a manual first setup,
+copy the source unit to that common filename as shown in the environment's
+setup section.
 
 The workflow uploads the matching bridge script and unit on every deployment,
 but it cannot install or replace a systemd unit in `/etc` without host-root

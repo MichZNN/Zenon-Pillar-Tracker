@@ -193,6 +193,33 @@ class AdminFeatureTestCase(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "start, stop, or restart"):
             handler._admin_collector_control(self.admin, {"action": "exec"})
 
+    def test_collector_diagnostics_are_available_without_control_bridge(self):
+        poll_id = self.database.begin_poll()
+        self.database.finish_poll(
+            poll_id,
+            "failed",
+            error=(
+                "All node RPC endpoints failed: "
+                "http://127.0.0.1:35997: returned HTTP 400"
+            ),
+        )
+        self.database.update_node_state(
+            height=None,
+            momentum_hash=None,
+            momentum_timestamp=None,
+            health="error",
+            stale_count=0,
+            last_success_at=None,
+        )
+
+        handler = object.__new__(DashboardHandler)
+        handler.server = SimpleNamespace(database=self.database)
+
+        diagnostics = handler._collector_diagnostics()
+
+        self.assertEqual(diagnostics["label"], "Collector error")
+        self.assertIn("HTTP 400", diagnostics["last_error"])
+
 
 if __name__ == "__main__":
     unittest.main()

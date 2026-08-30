@@ -24,6 +24,8 @@ class DeploymentFilesTests(unittest.TestCase):
         self.assertIn("./control:/run/zenon-control", compose)
         self.assertIn("restart: unless-stopped", compose)
         self.assertIn("max-size: 10m", compose)
+        self.assertIn("network_mode: host", compose)
+        self.assertIn("healthcheck:\n      disable: true", compose)
 
     def test_systemd_unit_manages_compose_without_ubuntu_specific_paths(self) -> None:
         unit = self.read("deploy/systemd/zenon-pillar-tracker.service")
