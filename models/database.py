@@ -5,10 +5,11 @@ import sqlite3
 from secrets import token_urlsafe
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from threading import Lock
 from typing import Any, Iterable, Mapping
 
 
-SCHEMA_VERSION = "6"
+SCHEMA_VERSION = "8"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -158,6 +159,7 @@ CREATE TABLE IF NOT EXISTS pillar_subscriptions (
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     label TEXT NOT NULL DEFAULT '',
     channel_id TEXT NOT NULL,
+    discord_webhook TEXT NOT NULL DEFAULT '',
     pillar_owner_addresses_json TEXT NOT NULL DEFAULT '[]',
     events_json TEXT NOT NULL DEFAULT '[]',
     active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
@@ -182,6 +184,15 @@ CREATE INDEX IF NOT EXISTS idx_poll_runs_started_at
     ON poll_runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_snapshots_owner_time
     ON pillar_snapshots(owner_address, observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_snapshots_performance
+    ON pillar_snapshots(
+        owner_address,
+        observed_at,
+        id,
+        epoch,
+        produced_momentums,
+        expected_momentums
+    );
 CREATE INDEX IF NOT EXISTS idx_events_time
     ON events(observed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_owner_time
@@ -337,6 +348,17 @@ def initialize_database(database_path: str | Path) -> Path:
                 "ALTER TABLE epochs ADD COLUMN epoch_start_inferred "
                 "INTEGER NOT NULL DEFAULT 1"
             )
+        subscription_columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(pillar_subscriptions)"
+            ).fetchall()
+        }
+        if "discord_webhook" not in subscription_columns:
+            connection.execute(
+                "ALTER TABLE pillar_subscriptions ADD COLUMN "
+                "discord_webhook TEXT NOT NULL DEFAULT ''"
+            )
         connection.execute(
             """
             INSERT INTO schema_meta(key, value) VALUES ('schema_version', ?)
@@ -353,6 +375,10 @@ def initialize_database(database_path: str | Path) -> Path:
 class Database:
     def __init__(self, database_path: str | Path):
         self.path = initialize_database(database_path)
+        self._performance_cache: dict[
+            tuple[int, int], dict[str, dict[str, Any]]
+        ] = {}
+        self._performance_cache_lock = Lock()
 
     def ensure_settings(self, defaults: Mapping[str, Any]) -> None:
         """Persist code defaults once without replacing administrator values."""
@@ -853,7 +879,9 @@ class Database:
     def get_active_subscription_config(self) -> list[dict[str, Any]]:
         return [
             {
+                "id": row["id"],
                 "channel_id": row["channel_id"],
+                "discord_webhook": row["discord_webhook"],
                 "pillar_owner_addresses": row["pillar_owner_addresses"],
                 "events": row["events"],
             }
@@ -864,16 +892,20 @@ class Database:
         self,
         *,
         user_id: int | None,
-        channel_id: str,
+        channel_id: str = "",
+        discord_webhook: str = "",
         pillar_owner_addresses: Iterable[str] = (),
         events: Iterable[str] | None = None,
         label: str = "",
         active: bool = True,
         changed_by: int | None = None,
     ) -> dict[str, Any]:
-        channel_id = str(channel_id).strip()
-        if not channel_id:
-            raise ValueError("Channel ID is required")
+        channel_id = str(channel_id or "").strip()
+        discord_webhook = str(discord_webhook or "").strip()
+        if not channel_id and not discord_webhook:
+            raise ValueError(
+                "Provide a Telegram channel ID, a Discord webhook, or both"
+            )
         owners = _string_values(pillar_owner_addresses)
         event_values = (
             _string_values(events)
@@ -885,15 +917,16 @@ class Database:
             cursor = connection.execute(
                 """
                 INSERT INTO pillar_subscriptions(
-                    user_id, label, channel_id,
+                    user_id, label, channel_id, discord_webhook,
                     pillar_owner_addresses_json, events_json, active,
                     created_at, updated_at, created_by, updated_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
                     str(label).strip(),
                     channel_id,
+                    discord_webhook,
                     _json(owners),
                     _json(event_values),
                     1 if active else 0,
@@ -912,6 +945,7 @@ class Database:
         *,
         user_id: int | None | object = _UNSET,
         channel_id: str | object = _UNSET,
+        discord_webhook: str | object = _UNSET,
         pillar_owner_addresses: Iterable[str] | object = _UNSET,
         events: Iterable[str] | object = _UNSET,
         label: str | object = _UNSET,
@@ -928,13 +962,26 @@ class Database:
         if current is None:
             raise ValueError("Subscription not found")
         changes: dict[str, Any] = {}
+        next_channel_id = (
+            str(current.get("channel_id") or "").strip()
+            if channel_id is _UNSET
+            else str(channel_id or "").strip()
+        )
+        next_discord_webhook = (
+            str(current.get("discord_webhook") or "").strip()
+            if discord_webhook is _UNSET
+            else str(discord_webhook or "").strip()
+        )
+        if not next_channel_id and not next_discord_webhook:
+            raise ValueError(
+                "Provide a Telegram channel ID, a Discord webhook, or both"
+            )
         if user_id is not _UNSET:
             changes["user_id"] = None if user_id is None else int(user_id)
         if channel_id is not _UNSET:
-            channel_id = str(channel_id).strip()
-            if not channel_id:
-                raise ValueError("Channel ID is required")
-            changes["channel_id"] = channel_id
+            changes["channel_id"] = next_channel_id
+        if discord_webhook is not _UNSET:
+            changes["discord_webhook"] = next_discord_webhook
         if pillar_owner_addresses is not _UNSET:
             changes["pillar_owner_addresses_json"] = _json(
                 _string_values(pillar_owner_addresses)
@@ -1201,7 +1248,9 @@ class Database:
         )
         event_id = int(cursor.lastrowid)
         for channel in notification_channels:
-            channel = str(channel).strip().lower()
+            # Keep route values case-preserving. Discord webhook tokens are
+            # opaque and must not be lower-cased before delivery.
+            channel = str(channel).strip()
             if not channel:
                 continue
             connection.execute(
@@ -1818,6 +1867,7 @@ class Database:
         search: str | None = None,
         limit: int = 200,
         offset: int = 0,
+        include_performance: bool = True,
     ) -> dict[str, Any]:
         clauses: list[str] = []
         params: list[Any] = []
@@ -1851,12 +1901,13 @@ class Database:
                 [*params, safe_limit, safe_offset],
             ).fetchall()
         items = [self._pillar_json(row) for row in rows]
-        performance = self.get_pillar_performance(period_days=30)
-        for item in items:
-            item["performance_last_30_days"] = performance.get(
-                item["owner_address"],
-                _empty_performance(),
-            )
+        if include_performance:
+            performance = self.get_pillar_performance(period_days=30)
+            for item in items:
+                item["performance_last_30_days"] = performance.get(
+                    item["owner_address"],
+                    _empty_performance(),
+                )
         return {
             "items": items,
             "total": total,
@@ -1869,6 +1920,28 @@ class Database:
         *,
         period_days: int = 30,
     ) -> dict[str, dict[str, Any]]:
+        period_days = max(1, min(int(period_days), 3650))
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT MAX(id) AS latest_id FROM pillar_snapshots"
+            ).fetchone()
+        latest_snapshot_id = int(row["latest_id"] or 0)
+        cache_key = (period_days, latest_snapshot_id)
+
+        with self._performance_cache_lock:
+            cached = self._performance_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            result = self._calculate_pillar_performance(period_days)
+            self._performance_cache[cache_key] = result
+            while len(self._performance_cache) > 8:
+                self._performance_cache.pop(next(iter(self._performance_cache)))
+            return result
+
+    def _calculate_pillar_performance(
+        self,
+        period_days: int,
+    ) -> dict[str, dict[str, Any]]:
         """Calculate aggregate and daily production performance.
 
         Pillar counters reset at epoch boundaries, so raw snapshot values must
@@ -1877,7 +1950,6 @@ class Database:
         available. Daily points use the same valid intervals and are assigned
         to the day of the later snapshot.
         """
-        period_days = max(1, min(int(period_days), 3650))
         now = datetime.now(timezone.utc)
         cutoff = (now - timedelta(days=period_days)).isoformat(
             timespec="seconds"
@@ -1896,19 +1968,45 @@ class Database:
                     GROUP BY owner_address
                 ),
                 baseline AS (
-                    SELECT snapshot.*
+                    SELECT
+                        snapshot.id,
+                        snapshot.owner_address,
+                        snapshot.observed_at,
+                        snapshot.epoch,
+                        snapshot.produced_momentums,
+                        snapshot.expected_momentums
                     FROM pillar_snapshots snapshot
                     JOIN baseline_ids
                       ON baseline_ids.id = snapshot.id
                 ),
                 recent AS (
-                    SELECT snapshot.*
+                    SELECT
+                        snapshot.id,
+                        snapshot.owner_address,
+                        snapshot.observed_at,
+                        snapshot.epoch,
+                        snapshot.produced_momentums,
+                        snapshot.expected_momentums
                     FROM pillar_snapshots snapshot
                     WHERE observed_at >= ?
                 )
-                SELECT * FROM baseline
+                SELECT
+                    id,
+                    owner_address,
+                    observed_at,
+                    epoch,
+                    produced_momentums,
+                    expected_momentums
+                FROM baseline
                 UNION ALL
-                SELECT * FROM recent
+                SELECT
+                    id,
+                    owner_address,
+                    observed_at,
+                    epoch,
+                    produced_momentums,
+                    expected_momentums
+                FROM recent
                 ORDER BY owner_address, observed_at, id
                 """,
                 (cutoff, cutoff),

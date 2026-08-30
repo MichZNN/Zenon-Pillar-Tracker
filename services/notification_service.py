@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
+from functions.subscriptions import normalise_discord_webhook
 from models.database import Database
 from utils.discord_wrapper import DiscordWrapper
 from utils.env_loader import get_env_value
@@ -124,6 +125,7 @@ class NotificationDispatcher:
         self.discord_webhook = str(
             config.get("discord_channel_webhook", "")
         ).strip()
+        self.discord_subscription_webhooks: dict[str, str] = {}
         (
             self.pillar_event_channels,
             self.network_event_channels,
@@ -147,9 +149,8 @@ class NotificationDispatcher:
         dict[str, dict[str, tuple[str, ...]]],
         dict[str, tuple[str, ...]],
     ]:
-        """Build per-owner and network-wide Telegram routes."""
-        if not self.telegram.enabled:
-            return {}, {}
+        """Build per-owner and network-wide routes for all destinations."""
+        self.discord_subscription_webhooks = {}
         configured = (
             self.database.get_active_subscription_config()
             if self.database.has_subscriptions()
@@ -169,14 +170,14 @@ class NotificationDispatcher:
                     f"telegram_pillar_subscriptions[{index}] must be an object"
                 )
             channel_id = str(subscription.get("channel_id", "")).strip()
-            if not channel_id:
+            discord_webhook = normalise_discord_webhook(
+                subscription.get("discord_webhook")
+            )
+            if not channel_id and not discord_webhook:
                 raise ValueError(
-                    f"telegram_pillar_subscriptions[{index}].channel_id is required"
+                    f"telegram_pillar_subscriptions[{index}] must contain "
+                    "a Telegram channel ID, a Discord webhook, or both"
                 )
-            if channel_id.casefold() == global_channel_id and global_channel_id:
-                # The global route already sends to this channel. Avoid duplicate
-                # messages when a user lists the main channel as a subscription.
-                continue
 
             owners = self._string_list(
                 subscription.get("pillar_owner_addresses", []),
@@ -199,10 +200,37 @@ class NotificationDispatcher:
                     f"Unsupported pillar notification event(s): {invalid}"
                 )
 
-            route = f"telegram_chat:{channel_id}"
+            routes: list[str] = []
+            if (
+                channel_id
+                and self.telegram.enabled
+                and channel_id.casefold() != global_channel_id
+            ):
+                # The global route already sends to this channel. Avoid a
+                # duplicate while still allowing a Discord route on the same
+                # subscription.
+                routes.append(f"telegram_chat:{channel_id}")
+
+            if discord_webhook and discord_webhook != self.discord_webhook:
+                subscription_id = subscription.get("id")
+                if subscription_id is None:
+                    route = f"discord_webhook:{discord_webhook}"
+                else:
+                    try:
+                        route = f"discord_subscription:{int(subscription_id)}"
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError(
+                            f"telegram_pillar_subscriptions[{index}].id must be an integer"
+                        ) from exc
+                    self.discord_subscription_webhooks[route] = discord_webhook
+                routes.append(route)
+
+            if not routes:
+                continue
+
             for event_type in events:
                 if event_type in NETWORK_NOTIFICATION_EVENT_TYPES:
-                    network_result.setdefault(event_type, []).append(route)
+                    network_result.setdefault(event_type, []).extend(routes)
                     continue
                 if not owners:
                     raise ValueError(
@@ -212,7 +240,7 @@ class NotificationDispatcher:
                 for owner in owners:
                     owner_key = owner.casefold()
                     owner_events = result.setdefault(owner_key, {})
-                    owner_events.setdefault(event_type, []).append(route)
+                    owner_events.setdefault(event_type, []).extend(routes)
 
         return (
             {
@@ -275,6 +303,34 @@ class NotificationDispatcher:
                 elif channel == "discord":
                     response = self.discord.webhook_send_message_to_channel(
                         self.discord_webhook,
+                        message,
+                    )
+                    if not 200 <= response.status_code < 300:
+                        raise RuntimeError(
+                            f"Discord returned HTTP {response.status_code}"
+                        )
+                elif channel.startswith("discord_subscription:"):
+                    webhook = self.discord_subscription_webhooks.get(channel)
+                    if not webhook:
+                        raise RuntimeError(
+                            "Discord subscription route has no webhook"
+                        )
+                    response = self.discord.webhook_send_message_to_channel(
+                        webhook,
+                        message,
+                    )
+                    if not 200 <= response.status_code < 300:
+                        raise RuntimeError(
+                            f"Discord returned HTTP {response.status_code}"
+                        )
+                elif channel.startswith("discord_webhook:"):
+                    webhook = channel.split(":", 1)[1]
+                    if not webhook:
+                        raise RuntimeError(
+                            "Discord notification route has no webhook"
+                        )
+                    response = self.discord.webhook_send_message_to_channel(
+                        webhook,
                         message,
                     )
                     if not 200 <= response.status_code < 300:
