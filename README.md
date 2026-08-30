@@ -233,6 +233,10 @@ The main tables are:
 
 ## Notifications
 
+Application logs are always written to `data_store/pillar_tracker.log`, the
+writable persistent data mount. The path is fixed; administrators can adjust
+only log rotation size, backup count, and log level in the portal.
+
 Telegram and Discord remain optional. The collector writes notification
 records to the SQLite outbox and attempts delivery through the configured
 channel wrapper. A failed notification must not invalidate a successful data

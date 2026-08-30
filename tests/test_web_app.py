@@ -119,6 +119,8 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn('/static/vendor/font-awesome/7.3.1/css/all.min.css', portal)
         self.assertIn('id="settings-form"', portal)
         self.assertIn('id="logging-settings-form"', portal)
+        self.assertIn("Fixed location: <code>data_store/pillar_tracker.log</code>", portal)
+        self.assertNotIn('name="log_path"', portal)
         self.assertIn('id="session-settings-form"', portal)
         self.assertIn('id="toast-container"', portal)
         self.assertIn("Save runtime settings", portal)

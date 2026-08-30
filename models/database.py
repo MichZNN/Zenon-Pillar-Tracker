@@ -420,6 +420,9 @@ class Database:
     ) -> dict[str, Any]:
         settings = dict(defaults or {})
         settings.update(self.get_settings())
+        # Hide the obsolete configurable path from the admin API. Existing
+        # databases can retain the row, but logging no longer reads it.
+        settings.pop("log_path", None)
         # The database path is bootstrap metadata, not an editable runtime
         # setting. It is useful in the admin UI, but must not be moved by an
         # HTTP request while this process is using the current database.
@@ -445,6 +448,7 @@ class Database:
             "telegram_bot_api_key",
             "telegram_bot_token",
             "telegram_pillar_subscriptions",
+            "log_path",
         }
         now = utc_now()
         connection = self._connect()

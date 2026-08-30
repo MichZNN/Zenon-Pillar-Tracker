@@ -26,9 +26,10 @@ interchangeable.
 
 The application image uses Python `3.14.5`. The application runs as UID/GID
 `10001` (`tracker`) without root privileges. Only the mounted data directory is
-writable. The application log rotates according to the settings in the admin
-portal. Compose additionally limits Docker stdout/stderr logs to 10 MB with a
-maximum of three files per container.
+writable. The application log always uses the fixed path
+`data_store/pillar_tracker.log`; only rotation size, backup count, and log level
+are editable in the admin portal. Compose additionally limits Docker
+stdout/stderr logs to 10 MB with a maximum of three files per container.
 
 Systemd does not run inside a container. If the Linux host uses systemd, one
 host unit manages the Compose stack. On a Linux host without systemd, the same
@@ -302,8 +303,10 @@ before using `/dev`.
    `development` to `main`) builds and deploys the production environment.
 3. Each image is published to GHCR with its channel tag (`development` or
    `main`) and an immutable full commit-SHA tag.
-4. The deployment job uploads `compose.yaml`, the deployment script, and the
-   environment-specific systemd template to the selected server path.
+4. The deployment job uploads `compose.yaml`, the deployment script, the
+   bridge script, and the selected environment's systemd templates to the
+   selected server path. The control unit is uploaded under the common name
+   `zenon-pillar-tracker-control.service`.
 5. The script pulls the SHA-tagged image and runs `docker compose up -d`.
    Changed containers are replaced/restarted while SQLite and logs remain in
    `DATA_DIR`.
@@ -382,17 +385,16 @@ cd /srv/zenon-pillar-tracker
 docker compose logs --tail=200 web collector
 ```
 
-The application log is stored by default at
-`/srv/zenon-pillar-tracker/data_store/pillar_tracker.log`. An administrator can
-change the maximum size and backup count in the portal. Docker stdout/stderr
-logs additionally have a fixed limit of 10 MB × 3 per container in
-`compose.yaml`.
+The application log is always stored at
+`/srv/zenon-pillar-tracker/data_store/pillar_tracker.log`. The path is fixed;
+an administrator can change only the maximum size, backup count, and log level
+in the portal. Docker stdout/stderr logs additionally have a fixed limit of
+10 MB × 3 per container in `compose.yaml`.
 
 The Operations section also displays the last collector attempt, the last
 successful poll, and the exact error from the latest failed node RPC check.
-If an old database contains a log path that is not writable inside the
-container, logging falls back to the mounted `data_store` path and the portal
-labels both the configured and active paths.
+Databases from older releases may still contain a `log_path` row, but it is
+ignored; the application always writes to the fixed `data_store` path above.
 
 Prefer backing up SQLite and logs while the containers are briefly stopped:
 
@@ -417,7 +419,9 @@ Install the production bridge once on the host after the deployment files have
 been copied by the workflow:
 
 ```sh
-sudo cp /srv/zenon-pillar-tracker/deploy/systemd/zenon-pillar-tracker-control.service /etc/systemd/system/zenon-pillar-tracker-control.service
+sudo install -o root -g root -m 0644 \
+  /srv/zenon-pillar-tracker/deploy/systemd/zenon-pillar-tracker-control.service \
+  /etc/systemd/system/zenon-pillar-tracker-control.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now zenon-pillar-tracker-control.service
 sudo systemctl status zenon-pillar-tracker-control.service
@@ -426,16 +430,22 @@ sudo systemctl status zenon-pillar-tracker-control.service
 For the isolated development deployment, use the development unit instead:
 
 ```sh
-sudo cp /srv/zenon-pillar-tracker-dev/deploy/systemd/zenon-pillar-tracker-control.service /etc/systemd/system/zenon-pillar-tracker-control.service
+sudo install -o root -g root -m 0644 \
+  /srv/zenon-pillar-tracker-dev/deploy/systemd/zenon-pillar-tracker-control.service \
+  /etc/systemd/system/zenon-pillar-tracker-control.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now zenon-pillar-tracker-control.service
+sudo systemctl status zenon-pillar-tracker-control.service
 ```
 
 The automatic workflow uploads the selected production or development unit
 under the common filename `zenon-pillar-tracker-control.service`, so that is
 the filename to use after a GitHub deployment. During a manual first setup,
-copy the source unit to that common filename as shown in the environment's
-setup section.
+install the source unit to `/etc/systemd/system` as shown above.
+`systemctl daemon-reload` only reloads units that are already installed; it does not copy
+the unit into `/etc/systemd/system`. If the source file is missing under the
+deployment directory, the GitHub deployment that uploads the control files has
+not completed yet.
 
 The workflow uploads the matching bridge script and unit on every deployment,
 but it cannot install or replace a systemd unit in `/etc` without host-root

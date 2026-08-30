@@ -527,9 +527,7 @@ async function loadLogs() {
   const payload = await getJson("/api/admin/logs?limit=100");
   renderCollectorDiagnostics(payload.collector);
   const file = payload.file || {};
-  const configuredPath = file.configured_path && file.configured_path !== file.path
-    ? ` · configured: ${file.configured_path}` : "";
-  $("#log-file-info").textContent = `${file.path || "Log file"} · ${file.exists ? (file.size_bytes || 0) + " bytes" : "not created"}${configuredPath}`;
+  $("#log-file-info").textContent = `${file.path || "data_store/pillar_tracker.log"} · ${file.exists ? (file.size_bytes || 0) + " bytes" : "not created"}`;
   const fileNotice = file.error ? `${file.error}\n\n` : "";
   $("#file-log").textContent = fileNotice + ((file.lines || []).join("\n") || "No log entries yet.");
   $("#audit-list").innerHTML = (payload.audit || []).map((item) =>

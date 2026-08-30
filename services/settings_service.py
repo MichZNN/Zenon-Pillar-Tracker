@@ -41,7 +41,6 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "telegram_dev_channel_id": "",
     "discord_channel_webhook": "",
     "reference_reward_address": "",
-    "log_path": "data_store/pillar_tracker.log",
     "log_max_bytes": 5 * 1024 * 1024,
     "log_backup_count": 5,
     "log_level": "INFO",
@@ -53,6 +52,10 @@ def validate_settings(settings: Mapping[str, Any]) -> None:
     """Validate values that can otherwise make a running service unusable."""
     if not isinstance(settings, Mapping):
         raise ValueError("Settings must be a JSON object")
+    if "log_path" in settings:
+        raise ValueError(
+            "log_path is fixed at data_store/pillar_tracker.log and cannot be changed"
+        )
     urls = settings.get("node_rpc_urls")
     if urls is not None and (
         not isinstance(urls, list)
@@ -140,6 +143,10 @@ def load_runtime_config(
 
     runtime = dict(DEFAULT_SETTINGS)
     runtime.update(database.get_settings())
+    # Databases created by older releases may still contain this setting. It
+    # is no longer part of the runtime configuration; logs always use the
+    # writable data_store mount.
+    runtime.pop("log_path", None)
     runtime["database_path"] = str(selected_database_path)
     runtime["telegram_pillar_subscriptions"] = (
         database.get_active_subscription_config()
@@ -156,6 +163,7 @@ def load_runtime_database(
     database.ensure_settings(DEFAULT_SETTINGS)
     runtime = dict(DEFAULT_SETTINGS)
     runtime.update(database.get_settings())
+    runtime.pop("log_path", None)
     runtime["database_path"] = str(selected_database_path)
     runtime["telegram_pillar_subscriptions"] = (
         database.get_active_subscription_config()

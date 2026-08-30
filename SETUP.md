@@ -234,8 +234,10 @@ Stop the dashboard with `Ctrl+C`.
 
 ## 7. Logging
 
-The collector and dashboard write to `data_store/pillar_tracker.log` by
-default. The file is rotated automatically using these SQLite settings:
+The collector and dashboard always write to the fixed path
+`data_store/pillar_tracker.log`. The path is not a runtime setting and cannot
+be changed from the portal. The file is rotated automatically using these
+SQLite settings:
 
 - `log_max_bytes` — maximum size of one log file (default 5 MiB);
 - `log_backup_count` — number of rotated files (default 5);
@@ -245,10 +247,10 @@ The application creates the `data_store` directory and the log file with the
 process umask, normally resulting in a directory mode around `750` and a file
 mode around `640`. On Linux, run the service as the account that owns the
 application data directory, or grant that service account write permission.
-If the configured path is not writable, the process continues with stderr
-logging and records the reason; the portal reports the log-file status to
-administrators. The latest file tail and database audit trail are available in
-the administrator section of `/portal`.
+If the fixed data directory is not writable, the process continues with stderr
+logging and records the reason. On Linux, make sure the mounted data directory
+is owned by the container user (`10001:10001`). The latest file tail and
+database audit trail are available in the administrator section of `/portal`.
 
 Normal successful `GET` and `HEAD` requests are intentionally not written to
 the application log, including static files. Successful writes such as login

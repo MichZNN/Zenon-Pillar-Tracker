@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 from functions.subscriptions import normalise_subscription
 from services.auth_service import hash_password, verify_password
-from services.settings_service import DEFAULT_SETTINGS
+from services.settings_service import DEFAULT_SETTINGS, validate_settings
 from models.database import Database
 from controllers.web_controller import DashboardHandler
 
@@ -102,6 +102,16 @@ class AdminFeatureTestCase(unittest.TestCase):
                     "pillar_owner_addresses": ["z1alpha"],
                 }
             )
+
+    def test_log_path_is_fixed_and_not_exposed_as_a_setting(self):
+        self.assertNotIn(
+            "log_path",
+            self.database.get_admin_settings(DEFAULT_SETTINGS),
+        )
+        with self.assertRaisesRegex(ValueError, "log_path is fixed"):
+            validate_settings({"log_path": "/tmp/other.log"})
+        with self.assertRaisesRegex(ValueError, "log_path"):
+            self.database.set_settings({"log_path": "/tmp/other.log"})
 
     def test_user_can_update_display_name_and_password_with_current_password(self):
         handler = object.__new__(DashboardHandler)

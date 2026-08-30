@@ -17,9 +17,15 @@ _HANDLER_MARKER = "_zenon_pillar_tracker_handler"
 
 
 def resolve_log_path(config: Mapping[str, Any] | None = None) -> Path:
-    configured = (config or {}).get("log_path", "data_store/pillar_tracker.log")
-    path = Path(str(configured).strip() or "data_store/pillar_tracker.log")
-    return path if path.is_absolute() else PROJECT_ROOT / path
+    """Return the one supported application log path.
+
+    ``config`` remains an accepted argument for callers from older releases,
+    but the path is deliberately not configurable. The container only mounts
+    ``data_store`` as writable, so allowing an arbitrary path made logging
+    appear to work while silently pointing it at the read-only image layer.
+    """
+    del config
+    return DEFAULT_LOG_PATH
 
 
 def _ensure_log_file(path: Path) -> None:
@@ -79,8 +85,7 @@ def configure_logging(config: Mapping[str, Any] | None = None) -> dict[str, Any]
         backup_count = max(0, min(20, int(config.get("log_backup_count", 5))))
     except (TypeError, ValueError):
         backup_count = 5
-    configured_path = resolve_log_path(config)
-    path = configured_path
+    path = resolve_log_path()
     file_enabled = True
     error = None
     try:
@@ -90,34 +95,9 @@ def configure_logging(config: Mapping[str, Any] | None = None) -> dict[str, Any]
             backup_count=backup_count,
         )
     except (OSError, ValueError) as exc:
-        # A legacy or host-specific path may point at a read-only location in
-        # the container. Fall back to the mounted data directory so both the
-        # collector and dashboard retain a readable operational log.
-        fallback_path = DEFAULT_LOG_PATH
-        original_error = str(exc)
-        if fallback_path != configured_path:
-            try:
-                handler = _create_file_handler(
-                    fallback_path,
-                    max_bytes=max_bytes,
-                    backup_count=backup_count,
-                )
-                path = fallback_path
-                error = (
-                    f"Configured log path {configured_path} is unavailable "
-                    f"({original_error}); using fallback {fallback_path}."
-                )
-            except (OSError, ValueError) as fallback_error:
-                file_enabled = False
-                error = (
-                    f"{original_error}; fallback log path {fallback_path} "
-                    f"is also unavailable: {fallback_error}"
-                )
-                handler = logging.StreamHandler(sys.stderr)
-        else:
-            file_enabled = False
-            error = original_error
-            handler = logging.StreamHandler(sys.stderr)
+        file_enabled = False
+        error = str(exc)
+        handler = logging.StreamHandler(sys.stderr)
 
     handler.setFormatter(formatter)
     setattr(handler, _HANDLER_MARKER, True)
@@ -130,10 +110,8 @@ def configure_logging(config: Mapping[str, Any] | None = None) -> dict[str, Any]
         root.addHandler(console_handler)
     logging.captureWarnings(True)
     logger = logging.getLogger("logging_setup")
-    if error and file_enabled and path != configured_path:
-        logger.error("Could not open configured log file: %s", error)
-    elif error:
-        logger.error("Could not open log file %s: %s", path, error)
+    if error:
+        logger.error("Could not open fixed log file %s: %s", path, error)
     else:
         logger.info(
             "File logging enabled at %s (max %d bytes, %d backups)",
@@ -143,7 +121,6 @@ def configure_logging(config: Mapping[str, Any] | None = None) -> dict[str, Any]
         )
     return {
         "path": str(path),
-        "configured_path": str(configured_path),
         "max_bytes": max_bytes,
         "backup_count": backup_count,
         "level": logging.getLevelName(level),
@@ -158,46 +135,32 @@ def read_log_tail(
     lines: int = 300,
     max_bytes: int = 512 * 1024,
 ) -> dict[str, Any]:
-    configured_path = resolve_log_path(config)
-    path = configured_path
+    del config
+    path = resolve_log_path()
     lines = max(1, min(int(lines), 1000))
     max_bytes = max(4096, min(int(max_bytes), 2 * 1024 * 1024))
-    candidates = [configured_path]
-    if DEFAULT_LOG_PATH != configured_path:
-        candidates.append(DEFAULT_LOG_PATH)
-    last_error = None
-    for candidate in candidates:
-        if not candidate.exists():
-            continue
-        try:
-            size = candidate.stat().st_size
-            with candidate.open("rb") as file:
-                file.seek(max(0, size - max_bytes))
-                text = file.read(max_bytes).decode("utf-8", errors="replace")
-        except OSError as exc:
-            last_error = str(exc)
-            continue
-        result = {
-            "path": str(candidate),
-            "configured_path": str(configured_path),
-            "exists": True,
-            "size_bytes": size,
-            "lines": list(deque(text.splitlines(), maxlen=lines)),
+    if not path.exists():
+        return {
+            "path": str(path),
+            "exists": False,
+            "lines": [],
         }
-        if candidate != configured_path:
-            result["error"] = (
-                f"Configured log path {configured_path} is unavailable; "
-                f"showing fallback log {candidate}."
-            )
-        return result
-
-    fallback_path = DEFAULT_LOG_PATH if DEFAULT_LOG_PATH != configured_path else path
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as file:
+            file.seek(max(0, size - max_bytes))
+            text = file.read(max_bytes).decode("utf-8", errors="replace")
+    except OSError as exc:
+        return {
+            "path": str(path),
+            "exists": False,
+            "lines": [],
+            "error": str(exc),
+        }
     result = {
-        "path": str(fallback_path),
-        "configured_path": str(configured_path),
-        "exists": False,
-        "lines": [],
+        "path": str(path),
+        "exists": True,
+        "size_bytes": size,
+        "lines": list(deque(text.splitlines(), maxlen=lines)),
     }
-    if last_error:
-        result["error"] = last_error
     return result

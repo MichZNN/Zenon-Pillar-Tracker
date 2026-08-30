@@ -311,11 +311,10 @@
         <div class="section-heading"><div><p class="eyebrow">Application logs</p><h2>Log rotation</h2></div></div>
         <form id="logging-settings-form" class="settings-form" data-settings-form data-settings-label="Log settings">
           <div class="settings-grid">
-            <label class="setting-field setting-field-wide">
-              <span class="setting-label">Log path</span>
-              <span class="setting-help">File path for application errors and operational events.</span>
-              <input name="log_path" type="text" spellcheck="false">
-            </label>
+            <div class="setting-field setting-field-wide">
+              <span class="setting-label">Log file</span>
+              <span class="setting-help">Fixed location: <code>data_store/pillar_tracker.log</code>. This location is managed by the application and cannot be changed.</span>
+            </div>
             <label class="setting-field">
               <span class="setting-label">Maximum log size (bytes)</span>
               <span class="setting-help">The active log rotates after reaching this size.</span>

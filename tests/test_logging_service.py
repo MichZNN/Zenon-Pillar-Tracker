@@ -17,39 +17,49 @@ class LoggingServiceTestCase(unittest.TestCase):
                 root.removeHandler(handler)
                 handler.close()
 
-    def test_read_log_tail_uses_data_directory_fallback(self):
+    def test_resolve_log_path_ignores_legacy_setting(self):
+        with patch.object(
+            logging_service,
+            "DEFAULT_LOG_PATH",
+            Path("/fixed/data_store/pillar_tracker.log"),
+        ):
+            self.assertEqual(
+                logging_service.resolve_log_path(
+                    {"log_path": "/tmp/legacy/pillar_tracker.log"}
+                ),
+                Path("/fixed/data_store/pillar_tracker.log"),
+            )
+
+    def test_read_log_tail_uses_fixed_data_store_path(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            configured = root / "legacy" / "pillar_tracker.log"
-            fallback = root / "data_store" / "pillar_tracker.log"
-            fallback.parent.mkdir()
-            fallback.write_text("fallback diagnostic\n", encoding="utf-8")
+            fixed_path = root / "data_store" / "pillar_tracker.log"
+            fixed_path.parent.mkdir()
+            fixed_path.write_text("fixed diagnostic\n", encoding="utf-8")
 
-            with patch.object(logging_service, "DEFAULT_LOG_PATH", fallback):
+            with patch.object(logging_service, "DEFAULT_LOG_PATH", fixed_path):
                 result = logging_service.read_log_tail(
-                    {"log_path": str(configured)},
+                    {"log_path": str(root / "legacy" / "pillar_tracker.log")},
                 )
 
-            self.assertEqual(result["path"], str(fallback))
-            self.assertEqual(result["configured_path"], str(configured))
+            self.assertEqual(result["path"], str(fixed_path))
             self.assertTrue(result["exists"])
-            self.assertEqual(result["lines"], ["fallback diagnostic"])
-            self.assertIn("fallback", result["error"])
+            self.assertEqual(result["lines"], ["fixed diagnostic"])
+            self.assertNotIn("configured_path", result)
 
-    def test_configure_logging_falls_back_when_configured_path_fails(self):
+    def test_configure_logging_always_uses_fixed_data_store_path(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            configured = root / "legacy" / "pillar_tracker.log"
-            fallback = root / "data_store" / "pillar_tracker.log"
-            real_ensure = logging_service._ensure_log_file
+            fixed_path = root / "data_store" / "pillar_tracker.log"
+            ensured_paths = []
 
             def ensure(path: Path) -> None:
-                if path == configured:
-                    raise OSError("read-only test path")
-                real_ensure(path)
+                ensured_paths.append(path)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch(exist_ok=True)
 
             with (
-                patch.object(logging_service, "DEFAULT_LOG_PATH", fallback),
+                patch.object(logging_service, "DEFAULT_LOG_PATH", fixed_path),
                 patch.object(
                     logging_service,
                     "_ensure_log_file",
@@ -57,13 +67,13 @@ class LoggingServiceTestCase(unittest.TestCase):
                 ),
             ):
                 result = logging_service.configure_logging(
-                    {"log_path": str(configured)},
+                    {"log_path": str(root / "legacy" / "pillar_tracker.log")},
                 )
 
             self.assertTrue(result["file_enabled"])
-            self.assertEqual(result["path"], str(fallback))
-            self.assertIn("using fallback", result["error"])
-            self.assertTrue(fallback.exists())
+            self.assertEqual(result["path"], str(fixed_path))
+            self.assertEqual(ensured_paths, [fixed_path])
+            self.assertTrue(fixed_path.exists())
 
 
 if __name__ == "__main__":
