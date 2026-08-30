@@ -459,6 +459,7 @@ td { font-size: .78rem; }
   height: var(--control-height);
   max-width: 240px;
   padding: 0 10px;
+  text-align: left;
 }
 .user-menu-toggle:hover, .user-menu-toggle[aria-expanded="true"] { border-color: rgba(120, 226, 180, .55); color: var(--text); }
 .user-menu-toggle > i:first-child { color: var(--accent); font-size: .9rem; }
@@ -471,11 +472,13 @@ td { font-size: .78rem; }
   box-shadow: 0 16px 36px rgba(0, 0, 0, .28);
   display: grid;
   gap: 3px;
-  min-width: 180px;
+  left: 0;
+  max-width: min(240px, calc(100vw - 32px));
+  min-width: 0;
   padding: 6px;
   position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
+  width: max-content;
   z-index: 20;
 }
 .user-menu-dropdown[hidden] { display: none; }
@@ -518,13 +521,13 @@ body.modal-open { overflow: hidden; }
   padding: 0 10px;
   text-align: left;
   text-decoration: none;
-  width: 100%;
+  white-space: nowrap;
 }
 .user-menu-link[hidden] { display: none; }
 .user-menu-link i { color: var(--muted); width: 1rem; }
 .user-menu-link:hover { background: rgba(111, 214, 174, .1); color: var(--text); }
 .user-menu-link:hover i { color: var(--accent); }
-.user-name { flex: 1 1 auto; max-width: 220px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-name { flex: 0 1 auto; max-width: 220px; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .header-action-link { gap: 8px; white-space: nowrap; }
 .site-nav a { color: var(--muted); font-size: .72rem; font-weight: 800; text-decoration: none; }
 .site-nav a:hover { color: var(--accent); }
