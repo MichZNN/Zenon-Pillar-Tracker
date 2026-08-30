@@ -18,26 +18,58 @@
     <div class="header-inner">
       <div><p class="eyebrow">Secure workspace</p><h1>Zenon Pillar Tracker</h1></div>
       <div class="header-actions">
-        <div class="user-identity"><i class="fa-solid fa-circle-user" aria-hidden="true"></i><span id="user-name" class="muted user-name"></span></div>
+        <div id="user-menu" class="user-menu">
+          <button id="user-menu-toggle" class="user-menu-toggle" type="button" aria-expanded="false" aria-haspopup="menu" aria-controls="user-menu-dropdown">
+            <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
+            <span id="user-name" class="user-name"></span>
+            <i class="fa-solid fa-chevron-down user-menu-chevron" aria-hidden="true"></i>
+          </button>
+          <div id="user-menu-dropdown" class="user-menu-dropdown" role="menu" hidden>
+            <a id="account-menu-link" class="user-menu-link" href="#account-modal" role="menuitem" hidden>
+              <i class="fa-solid fa-user-gear" aria-hidden="true"></i>
+              <span>My account</span>
+            </a>
+            <button id="logout" class="user-menu-link" type="button" role="menuitem">
+              <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+              <span>Log out</span>
+            </button>
+          </div>
+        </div>
         <a class="ghost-button header-action-link" href="/"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Dashboard</span></a>
-        <button id="logout" class="ghost-button header-action-link" type="button"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i><span>Log out</span></button>
       </div>
     </div>
   </header>
+  <div id="account-modal" class="modal-backdrop" hidden>
+    <section id="account-settings-section" class="section-block modal-dialog" role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
+      <div class="section-heading modal-heading">
+        <div><p class="eyebrow">Personal access</p><h2 id="account-modal-title">My account</h2></div>
+        <button id="close-account-modal" class="ghost-button modal-close" type="button" aria-label="Close My account"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </div>
+      <p class="muted">Update your display name or change your password. Your current password is required when changing the password.</p>
+      <form id="account-form" class="form-grid compact-form account-form" autocomplete="off">
+        <label>Display name<input name="display_name" maxlength="120" autocomplete="name" placeholder="How your name appears in the portal"></label>
+        <label>Current password<input name="current_password" type="password" autocomplete="off" placeholder="Required to change password"></label>
+        <label>New password<input name="new_password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" placeholder="At least 12 characters"></label>
+        <label>Repeat new password<input name="new_password_confirmation" type="password" minlength="12" maxlength="1024" autocomplete="new-password" placeholder="Repeat your new password"></label>
+        <div class="form-actions full-width"><button class="primary-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save account</button></div>
+      </form>
+    </section>
+  </div>
   <main class="page-shell admin-shell">
     <div id="portal-message" class="sr-only" role="status"></div>
 
     <section id="user-subscriptions-section" class="section-block" hidden>
-      <div class="section-heading"><div><p class="eyebrow">Personal access</p><h2>My Telegram subscriptions</h2></div></div>
-      <p class="muted">You can view and change subscriptions assigned to your account. Deactivation keeps the record and its history.</p>
-      <form id="subscription-form" class="form-grid">
+      <div class="section-heading"><div><p class="eyebrow">Personal access</p><h2>My subscriptions</h2></div></div>
+      <p class="muted">Enter a Telegram channel, a Discord webhook, or both. Notifications are sent to every destination you fill in.</p>
+      <form id="subscription-form" class="form-grid subscription-form">
         <input name="id" type="hidden">
         <label>Label<input name="label" maxlength="120" placeholder="Optional description"></label>
-        <label>Telegram channel ID<input name="channel_id" required maxlength="255" placeholder="@channel or -100…"></label>
+        <label>Telegram channel ID<input name="channel_id" maxlength="255" placeholder="Optional: @channel or -100…"></label>
+        <label>Discord webhook<input name="discord_webhook" type="url" inputmode="url" maxlength="2048" placeholder="Optional: https://discord.com/api/webhooks/…"></label>
         <label class="full-width">Pillar owner addresses<input name="pillar_owner_addresses" placeholder="One address per line or comma-separated"></label>
         <fieldset class="event-options full-width">
           <legend>Events</legend>
-          <p class="setting-help">Choose which events should be sent to this channel.</p>
+          <p class="setting-help">Choose which events should be sent to these destinations.</p>
           <div class="checkbox-grid">
             <label><input name="events" type="checkbox" value="pillar_created"><span>Pillar created</span></label>
             <label><input name="events" type="checkbox" value="pillar_dismantled"><span>Pillar dismantled</span></label>
@@ -51,7 +83,7 @@
         <label class="checkbox-label"><input name="active" type="checkbox" checked> Active</label>
         <div class="form-actions full-width"><button class="primary-button" type="submit">Save subscription</button><button id="cancel-edit" class="ghost-button" type="button" hidden>Cancel edit</button></div>
       </form>
-      <div class="table-wrap"><table><thead><tr><th>Channel</th><th>Pillars</th><th>Events</th><th>Status</th><th></th></tr></thead><tbody id="subscription-list"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Destinations</th><th>Pillars</th><th>Events</th><th>Status</th><th></th></tr></thead><tbody id="subscription-list"></tbody></table></div>
     </section>
 
     <div id="admin-area" hidden>
@@ -219,15 +251,16 @@
       <section id="subscription-settings" class="section-block">
         <div class="section-heading"><div><p class="eyebrow">Notification routing</p><h2>All pillar subscriptions</h2></div></div>
         <p class="muted">Subscriptions are never deleted. Assign them to a user, edit them, or deactivate them.</p>
-        <form id="admin-subscription-form" class="form-grid">
+        <form id="admin-subscription-form" class="form-grid subscription-form">
           <input name="id" type="hidden">
           <label>Owner<select name="owner_user_id" id="owner-user"><option value="">Unassigned</option></select></label>
           <label>Label<input name="label" maxlength="120"></label>
-          <label>Telegram channel ID<input name="channel_id" required maxlength="255"></label>
+          <label>Telegram channel ID<input name="channel_id" maxlength="255" placeholder="Optional: @channel or -100…"></label>
+          <label>Discord webhook<input name="discord_webhook" type="url" inputmode="url" maxlength="2048" placeholder="Optional: https://discord.com/api/webhooks/…"></label>
           <label class="full-width">Pillar owner addresses<input name="pillar_owner_addresses" placeholder="One address per line or comma-separated"></label>
           <fieldset class="event-options full-width">
             <legend>Events</legend>
-            <p class="setting-help">Choose which events should be sent to this channel.</p>
+            <p class="setting-help">Choose which events should be sent to these destinations.</p>
             <div class="checkbox-grid">
               <label><input name="events" type="checkbox" value="pillar_created"><span>Pillar created</span></label>
               <label><input name="events" type="checkbox" value="pillar_dismantled"><span>Pillar dismantled</span></label>
@@ -241,7 +274,7 @@
           <label class="checkbox-label"><input name="active" type="checkbox" checked> Active</label>
           <div class="form-actions full-width"><button class="primary-button" type="submit">Save subscription</button><button id="cancel-subscription" class="ghost-button" type="button" hidden>Cancel edit</button></div>
         </form>
-        <div class="table-wrap"><table><thead><tr><th>Owner</th><th>Channel</th><th>Pillars</th><th>Events</th><th>Status</th><th></th></tr></thead><tbody id="admin-subscription-list"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Owner</th><th>Destinations</th><th>Pillars</th><th>Events</th><th>Status</th><th></th></tr></thead><tbody id="admin-subscription-list"></tbody></table></div>
       </section>
 
       <section id="user-settings" class="section-block">

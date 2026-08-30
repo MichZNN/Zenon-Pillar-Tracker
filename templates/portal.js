@@ -21,6 +21,69 @@ const EVENT_LABELS = {
 
 function $(selector) { return document.querySelector(selector); }
 
+function initialiseUserMenu() {
+  const menu = $("#user-menu");
+  const toggle = $("#user-menu-toggle");
+  const dropdown = $("#user-menu-dropdown");
+  if (!menu || !toggle || !dropdown) return;
+
+  const setOpen = (open) => {
+    menu.classList.toggle("is-open", open);
+    dropdown.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+  };
+
+  toggle.addEventListener("click", () => setOpen(!menu.classList.contains("is-open")));
+  dropdown.querySelectorAll("a, button").forEach((item) => {
+    item.addEventListener("click", () => setOpen(false));
+  });
+  document.addEventListener("click", (event) => {
+    if (!menu.contains(event.target)) setOpen(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && menu.classList.contains("is-open")) {
+      setOpen(false);
+      toggle.focus();
+    }
+  });
+}
+
+function setAccountModalOpen(open) {
+  const modal = $("#account-modal");
+  const close = $("#close-account-modal");
+  const menuToggle = $("#user-menu-toggle");
+  const accountForm = $("#account-form");
+  if (!modal) return;
+  if (accountForm) {
+    accountForm.elements.current_password.value = "";
+    accountForm.elements.new_password.value = "";
+    accountForm.elements.new_password_confirmation.value = "";
+  }
+  modal.hidden = !open;
+  document.body.classList.toggle("modal-open", open);
+  if (open) close?.focus();
+  else menuToggle?.focus();
+}
+
+function initialiseAccountModal() {
+  const modal = $("#account-modal");
+  const accountLink = $("#account-menu-link");
+  const close = $("#close-account-modal");
+  if (!modal || !accountLink || !close) return;
+
+  accountLink.addEventListener("click", (event) => {
+    event.preventDefault();
+    setAccountModalOpen(true);
+  });
+  close.addEventListener("click", () => setAccountModalOpen(false));
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) setAccountModalOpen(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !modal.hidden) setAccountModalOpen(false);
+  });
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
@@ -51,6 +114,19 @@ function setSelectedEvents(form, events = DEFAULT_SUBSCRIPTION_EVENTS) {
 
 function displayEvents(events) {
   return (events || []).map((event) => EVENT_LABELS[event] || event).join(", ");
+}
+
+function subscriptionDestinations(item) {
+  const destinations = [];
+  if (item.channel_id) destinations.push(`Telegram: ${item.channel_id}`);
+  if (item.discord_webhook) destinations.push("Discord webhook");
+  return destinations.join(" · ") || "No destination";
+}
+
+function requireSubscriptionDestination(form) {
+  if (!form.elements.channel_id.value.trim() && !form.elements.discord_webhook.value.trim()) {
+    throw new Error("Enter a Telegram channel ID, a Discord webhook, or both.");
+  }
 }
 
 function settingsForms() {
@@ -233,7 +309,7 @@ function renderOwnSubscriptions() {
     return;
   }
   target.innerHTML = ownSubscriptions.map((item) =>
-    `<tr><td><strong>${escapeHtml(item.label || item.channel_id)}</strong>${item.label ? `<small>${escapeHtml(item.channel_id)}</small>` : ""}</td>` +
+    `<tr><td><strong>${escapeHtml(item.label || subscriptionDestinations(item))}</strong>${item.label ? `<small>${escapeHtml(subscriptionDestinations(item))}</small>` : ""}</td>` +
     `<td>${escapeHtml((item.pillar_owner_addresses || []).join(", ") || "Network events")}</td>` +
     `<td>${escapeHtml(displayEvents(item.events))}</td>` +
     `<td><span class="status-badge ${item.active ? "active" : "inactive"}">${item.active ? "Active" : "Inactive"}</span></td>` +
@@ -251,6 +327,7 @@ function editOwnSubscription(id) {
   form.elements.id.value = item.id;
   form.elements.label.value = item.label || "";
   form.elements.channel_id.value = item.channel_id || "";
+  form.elements.discord_webhook.value = item.discord_webhook || "";
   form.elements.pillar_owner_addresses.value = (item.pillar_owner_addresses || []).join("\n");
   setSelectedEvents(form, item.events);
   form.elements.active.checked = Boolean(item.active);
@@ -263,18 +340,55 @@ async function loadOwnSubscriptions() {
   renderOwnSubscriptions();
 }
 
+async function saveAccount(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const newPassword = form.elements.new_password.value;
+  const confirmation = form.elements.new_password_confirmation.value;
+  if (newPassword !== confirmation) {
+    showMessage("New passwords do not match.", true);
+    return;
+  }
+  if ((newPassword || confirmation) && !form.elements.current_password.value) {
+    showMessage("Enter your current password to change your password.", true);
+    return;
+  }
+  try {
+    const updated = await getJson("/api/account", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({
+        display_name: form.elements.display_name.value,
+        current_password: form.elements.current_password.value,
+        new_password: newPassword,
+        new_password_confirmation: confirmation,
+      }),
+    });
+    form.elements.display_name.value = updated.display_name || "";
+    form.elements.current_password.value = "";
+    form.elements.new_password.value = "";
+    form.elements.new_password_confirmation.value = "";
+    $("#user-name").textContent = updated.display_name || updated.username;
+    showMessage("Account saved.");
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
 async function saveOwnSubscription(event) {
   event.preventDefault();
   const form = event.currentTarget;
-  const body = {
-    label: form.elements.label.value,
-    channel_id: form.elements.channel_id.value,
-    pillar_owner_addresses: listValue(form.elements.pillar_owner_addresses.value),
-    events: selectedEvents(form),
-    active: form.elements.active.checked,
-  };
-  const id = form.elements.id.value;
   try {
+    requireSubscriptionDestination(form);
+    const body = {
+      label: form.elements.label.value,
+      channel_id: form.elements.channel_id.value,
+      discord_webhook: form.elements.discord_webhook.value,
+      pillar_owner_addresses: listValue(form.elements.pillar_owner_addresses.value),
+      events: selectedEvents(form),
+      active: form.elements.active.checked,
+    };
+    const id = form.elements.id.value;
     await getJson(id ? `/api/subscriptions/${id}` : "/api/subscriptions", {
       method: id ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
@@ -341,7 +455,7 @@ function resetAdminSubscriptionForm() {
 
 function renderAdminSubscriptions() {
   $("#admin-subscription-list").innerHTML = adminSubscriptions.length ? adminSubscriptions.map((item) =>
-    `<tr><td>${escapeHtml(item.owner_username || "Unassigned")}</td><td><strong>${escapeHtml(item.label || item.channel_id)}</strong>${item.label ? `<small>${escapeHtml(item.channel_id)}</small>` : ""}</td>` +
+    `<tr><td>${escapeHtml(item.owner_username || "Unassigned")}</td><td><strong>${escapeHtml(item.label || subscriptionDestinations(item))}</strong>${item.label ? `<small>${escapeHtml(subscriptionDestinations(item))}</small>` : ""}</td>` +
     `<td>${escapeHtml((item.pillar_owner_addresses || []).join(", ") || "Network events")}</td>` +
     `<td>${escapeHtml(displayEvents(item.events))}</td><td><span class="status-badge ${item.active ? "active" : "inactive"}">${item.active ? "Active" : "Inactive"}</span></td>` +
     `<td><button class="ghost-button small-button" data-edit-subscription="${item.id}" type="button">Edit</button></td></tr>`
@@ -358,7 +472,8 @@ function editAdminSubscription(id) {
   form.elements.id.value = item.id;
   form.elements.owner_user_id.value = item.user_id ?? "";
   form.elements.label.value = item.label || "";
-  form.elements.channel_id.value = item.channel_id;
+  form.elements.channel_id.value = item.channel_id || "";
+  form.elements.discord_webhook.value = item.discord_webhook || "";
   form.elements.pillar_owner_addresses.value = (item.pillar_owner_addresses || []).join("\n");
   setSelectedEvents(form, item.events);
   form.elements.active.checked = Boolean(item.active);
@@ -437,16 +552,18 @@ async function saveUser(event) {
 async function saveAdminSubscription(event) {
   event.preventDefault();
   const form = event.currentTarget;
-  const id = form.elements.id.value;
-  const body = {
-    owner_user_id: form.elements.owner_user_id.value || null,
-    label: form.elements.label.value,
-    channel_id: form.elements.channel_id.value,
-    pillar_owner_addresses: listValue(form.elements.pillar_owner_addresses.value),
-    events: selectedEvents(form),
-    active: form.elements.active.checked,
-  };
   try {
+    requireSubscriptionDestination(form);
+    const id = form.elements.id.value;
+    const body = {
+      owner_user_id: form.elements.owner_user_id.value || null,
+      label: form.elements.label.value,
+      channel_id: form.elements.channel_id.value,
+      discord_webhook: form.elements.discord_webhook.value,
+      pillar_owner_addresses: listValue(form.elements.pillar_owner_addresses.value),
+      events: selectedEvents(form),
+      active: form.elements.active.checked,
+    };
     await getJson(id ? `/api/admin/subscriptions/${id}` : "/api/admin/subscriptions", {
       method: id ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
@@ -483,6 +600,10 @@ async function initialise() {
   csrfToken = me.csrf_token || "";
   $("#user-name").textContent = me.user.display_name || me.user.username;
   if (me.user.role !== "admin") {
+    const accountMenuLink = $("#account-menu-link");
+    accountMenuLink.hidden = false;
+    $("#account-form").elements.display_name.value = me.user.display_name || "";
+    $("#account-form").addEventListener("submit", saveAccount);
     $("#user-subscriptions-section").hidden = false;
     $("#subscription-form").addEventListener("submit", saveOwnSubscription);
     $("#cancel-edit").addEventListener("click", resetOwnSubscriptionForm);
@@ -505,6 +626,8 @@ async function initialise() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  initialiseUserMenu();
+  initialiseAccountModal();
   $("#logout").addEventListener("click", logout);
   settingsForms().forEach((form) => form.addEventListener("submit", saveSettings));
   installValidationNotifications();

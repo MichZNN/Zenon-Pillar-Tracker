@@ -310,14 +310,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._api_auth_me()
             return
         if path == "/api/overview":
-            overview = self.database.get_overview()
-            overview["collector"] = collector_status(
-                overview.get("node"),
-                poll_interval_seconds=self.runtime_config.get(
-                    "poll_interval_seconds", 60
-                ),
+            self._send_json(self.database.get_overview())
+            return
+        if path == "/api/collector-status":
+            self._send_json(
+                collector_status(
+                    self.database.get_node_state(),
+                    poll_interval_seconds=self.runtime_config.get(
+                        "poll_interval_seconds", 60
+                    ),
+                )
             )
-            self._send_json(overview)
             return
         if path == "/api/health":
             health = self.database.get_health()
@@ -334,13 +337,25 @@ class DashboardHandler(BaseHTTPRequestHandler):
             search = query.get("q", query.get("search", [None]))[0]
             limit = int(query.get("limit", ["200"])[0])
             offset = int(query.get("offset", ["0"])[0])
+            include_performance = _as_bool(query.get("performance", [None])[0])
+            if include_performance is None:
+                include_performance = True
             self._send_json(
                 self.database.get_pillars(
                     status=status,
                     search=search,
                     limit=limit,
                     offset=offset,
+                    include_performance=include_performance,
                 )
+            )
+            return
+        if path == "/api/performance":
+            period_days = int(
+                query.get("days", query.get("period_days", ["30"]))[0]
+            )
+            self._send_json(
+                self.database.get_pillar_performance(period_days=period_days)
             )
             return
         if path.startswith("/api/pillars/"):
@@ -613,6 +628,71 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self._audit(user, "update", "user", user_id, {"fields": sorted(payload)})
         self._send_json(updated)
 
+    def _account_update(
+        self,
+        user: Mapping[str, Any],
+        payload: Mapping[str, Any],
+    ) -> None:
+        """Update the signed-in user's profile without exposing password data."""
+        if not self._require_csrf(user):
+            return
+
+        has_display_name = "display_name" in payload
+        display_name: str | None = None
+        if has_display_name:
+            raw_display_name = payload.get("display_name")
+            if not isinstance(raw_display_name, str):
+                raise ValueError("Display name must be text")
+            display_name = raw_display_name.strip()
+            if len(display_name) > 120:
+                raise ValueError("Display name must be 120 characters or fewer")
+
+        current_password = payload.get("current_password", "")
+        new_password = payload.get("new_password", "")
+        confirmation = payload.get("new_password_confirmation", "")
+        if not isinstance(current_password, str):
+            raise ValueError("Current password is invalid")
+        if not isinstance(new_password, str) or not isinstance(confirmation, str):
+            raise ValueError("New password fields are invalid")
+        if new_password != confirmation:
+            raise ValueError("New passwords do not match")
+
+        password_hash: str | None = None
+        if new_password:
+            if not password_is_acceptable(new_password):
+                raise ValueError("Password must contain at least 12 characters")
+            if not current_password:
+                raise ValueError("Current password is required to change your password")
+            credentials = self.database.get_user_credentials(str(user["username"]))
+            if (
+                credentials is None
+                or not verify_password(current_password, credentials.get("password_hash", ""))
+            ):
+                raise ValueError("Current password is incorrect")
+            password_hash = hash_password(new_password)
+
+        if not has_display_name and password_hash is None:
+            raise ValueError("No account changes provided")
+
+        updated = self.database.update_user(
+            int(user["id"]),
+            display_name=display_name,
+            password_hash=password_hash,
+        )
+        changed_fields = []
+        if has_display_name:
+            changed_fields.append("display_name")
+        if password_hash is not None:
+            changed_fields.append("password")
+        self._audit(
+            user,
+            "update",
+            "user",
+            int(user["id"]),
+            {"fields": changed_fields},
+        )
+        self._send_json(updated)
+
     def _subscription_for_write(
         self,
         user: Mapping[str, Any],
@@ -626,6 +706,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 key: payload[key]
                 for key in (
                     "channel_id",
+                    "discord_webhook",
                     "pillar_owner_addresses",
                     "events",
                     "label",
@@ -663,6 +744,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         created = self.database.create_pillar_subscription(
             user_id=owner_id,  # type: ignore[arg-type]
             channel_id=normalised["channel_id"],
+            discord_webhook=normalised["discord_webhook"],
             pillar_owner_addresses=normalised["pillar_owner_addresses"],
             events=normalised["events"],
             label=normalised["label"],
@@ -693,6 +775,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             raise PermissionError("This subscription belongs to another user")
         update_kwargs = {
             "channel_id": normalised["channel_id"],
+            "discord_webhook": normalised["discord_webhook"],
             "pillar_owner_addresses": normalised["pillar_owner_addresses"],
             "events": normalised["events"],
             "label": normalised["label"],
@@ -737,6 +820,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if user is not None:
                 user_id = int(path.rsplit("/", 1)[1])
                 self._admin_user_update(user, user_id, payload)
+            return
+        if path == "/api/account" and method == "PATCH":
+            user = self._require_user()
+            if user is not None:
+                self._account_update(user, payload)
             return
         if path == "/api/subscriptions" and method == "POST":
             user = self._require_user()
