@@ -23,9 +23,18 @@
       <p class="eyebrow">Secure access</p>
       <h1>Welcome back</h1>
       <p class="muted">Login to manage your pillar subscriptions.</p>
-      <form id="login-form" class="form-stack">
-        <label><span class="field-label">Username</span><input name="username" autocomplete="username" required></label>
-        <label><span class="field-label">Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+      <form id="login-form" class="form-stack auth-form">
+        <div class="auth-input-wrap">
+          <i class="fa-solid fa-user auth-input-icon" aria-hidden="true"></i>
+          <input name="username" aria-label="Username" placeholder="Username" autocomplete="username" required>
+        </div>
+        <div class="auth-input-wrap">
+          <i class="fa-solid fa-lock auth-input-icon" aria-hidden="true"></i>
+          <input id="login-password" name="password" type="password" aria-label="Password" placeholder="Password" autocomplete="current-password" required>
+          <button id="toggle-login-password" class="password-toggle" type="button" aria-label="Show password" aria-pressed="false">
+            <i class="fa-solid fa-eye" aria-hidden="true"></i>
+          </button>
+        </div>
         <button class="primary-button" type="submit"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i> Login</button>
       </form>
       <p id="login-message" class="form-message" role="status"></p>

@@ -17,6 +17,18 @@ function nextLocation() {
 }
 
 async function initialiseLogin() {
+  const passwordInput = $("#login-password");
+  const passwordToggle = $("#toggle-login-password");
+  passwordToggle.addEventListener("click", () => {
+    const showing = passwordInput.type === "password";
+    passwordInput.type = showing ? "text" : "password";
+    passwordToggle.setAttribute("aria-label", showing ? "Hide password" : "Show password");
+    passwordToggle.setAttribute("aria-pressed", String(showing));
+    const icon = passwordToggle.querySelector("i");
+    icon.classList.toggle("fa-eye", !showing);
+    icon.classList.toggle("fa-eye-slash", showing);
+  });
+
   try {
     const me = await getJson("/api/auth/me");
     if (me.authenticated) location.replace(nextLocation());
