@@ -55,7 +55,8 @@ class DatabaseTestCase(unittest.TestCase):
 
     def test_existing_subscription_table_is_migrated_for_discord_webhooks(self):
         legacy_path = Path(self.temp_dir.name) / "legacy.sqlite3"
-        with sqlite3.connect(legacy_path) as connection:
+        connection = sqlite3.connect(legacy_path)
+        try:
             connection.execute(
                 """
                 CREATE TABLE pillar_subscriptions (
@@ -73,6 +74,9 @@ class DatabaseTestCase(unittest.TestCase):
                 )
                 """
             )
+            connection.commit()
+        finally:
+            connection.close()
 
         migrated = Database(legacy_path)
         with migrated._connect() as connection:
