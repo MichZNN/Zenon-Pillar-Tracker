@@ -18,10 +18,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.14.5"
           cache: pip
@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up QEMU for ARM64
         uses: docker/setup-qemu-action@v3
@@ -67,7 +67,7 @@ jobs:
       image: ${{ steps.image.outputs.name }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Resolve image name and channel
         id: image
@@ -126,7 +126,7 @@ jobs:
       GHCR_DEPLOY_TOKEN: ${{ secrets.GHCR_DEPLOY_TOKEN }}
     steps:
       - name: Check out deployment files
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Validate deployment settings
         env:
