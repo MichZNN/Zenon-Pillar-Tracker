@@ -117,14 +117,56 @@ function setSelectedEvents(form, events = DEFAULT_SUBSCRIPTION_EVENTS) {
 }
 
 function displayEvents(events) {
-  return (events || []).map((event) => EVENT_LABELS[event] || event).join(", ");
+  return (Array.isArray(events) ? events : []).map((event) => EVENT_LABELS[event] || event).join(", ");
+}
+
+function destinationTypes(item) {
+  const destinations = [];
+  if (item.channel_id) destinations.push("Telegram");
+  if (item.discord_webhook) destinations.push("Discord");
+  return destinations.join(" + ") || "No destination";
+}
+
+function destinationTooltip(item) {
+  const destinations = [];
+  if (item.channel_id) destinations.push(`Telegram channel: ${item.channel_id}`);
+  if (item.discord_webhook) destinations.push("Discord webhook configured");
+  return destinations.join(" · ") || "No notification destination configured";
 }
 
 function subscriptionDestinations(item) {
-  const destinations = [];
-  if (item.channel_id) destinations.push(`Telegram: ${item.channel_id}`);
-  if (item.discord_webhook) destinations.push("Discord webhook");
-  return destinations.join(" · ") || "No destination";
+  return destinationTooltip(item);
+}
+
+function pillarSummary(item) {
+  const count = Array.isArray(item.pillar_owner_addresses)
+    ? item.pillar_owner_addresses.length : 0;
+  return count ? `${count} pillar${count === 1 ? "" : "s"}` : "All pillars";
+}
+
+function pillarTooltip(item) {
+  const addresses = Array.isArray(item.pillar_owner_addresses)
+    ? item.pillar_owner_addresses.filter(Boolean) : [];
+  return addresses.length ? addresses.join("\n") : "Notifications for all pillars";
+}
+
+function eventSummary(item) {
+  const count = Array.isArray(item.events) ? item.events.length : 0;
+  return `${count} event${count === 1 ? "" : "s"}`;
+}
+
+function eventTooltip(item) {
+  return displayEvents(item.events) || "No events selected";
+}
+
+function subscriptionInfo(summary, tooltip, className = "") {
+  return `<span class="table-info ${className}" tabindex="0" title="${escapeHtml(tooltip)}" data-tooltip="${escapeHtml(tooltip)}">${escapeHtml(summary)}<i class="fa-solid fa-circle-info" aria-hidden="true"></i></span>`;
+}
+
+function subscriptionDestinationCell(item) {
+  const label = item.label || destinationTypes(item);
+  const types = item.label ? destinationTypes(item) : "";
+  return `<div class="table-info subscription-destination" tabindex="0" title="${escapeHtml(destinationTooltip(item))}" data-tooltip="${escapeHtml(destinationTooltip(item))}"><strong>${escapeHtml(label)}</strong>${types ? `<small>${escapeHtml(types)}</small>` : ""}</div>`;
 }
 
 function requireSubscriptionDestination(form) {
@@ -313,11 +355,11 @@ function renderOwnSubscriptions() {
     return;
   }
   target.innerHTML = ownSubscriptions.map((item) =>
-    `<tr><td><strong>${escapeHtml(item.label || subscriptionDestinations(item))}</strong>${item.label ? `<small>${escapeHtml(subscriptionDestinations(item))}</small>` : ""}</td>` +
-    `<td>${escapeHtml((item.pillar_owner_addresses || []).join(", ") || "Network events")}</td>` +
-    `<td>${escapeHtml(displayEvents(item.events))}</td>` +
-    `<td><span class="status-badge ${item.active ? "active" : "inactive"}">${item.active ? "Active" : "Inactive"}</span></td>` +
-    `<td><button class="ghost-button small-button" data-edit-own="${item.id}" type="button">Edit</button></td></tr>`
+    `<tr><td data-label="Destinations">${subscriptionDestinationCell(item)}</td>` +
+    `<td data-label="Pillars">${subscriptionInfo(pillarSummary(item), pillarTooltip(item))}</td>` +
+    `<td data-label="Events">${subscriptionInfo(eventSummary(item), eventTooltip(item), "event-count")}</td>` +
+    `<td data-label="Status"><span class="status-badge ${item.active ? "active" : "inactive"}">${item.active ? "Active" : "Inactive"}</span></td>` +
+    `<td data-label=""><button class="ghost-button small-button" data-edit-own="${item.id}" type="button">Edit</button></td></tr>`
   ).join("");
   target.querySelectorAll("[data-edit-own]").forEach((button) => {
     button.addEventListener("click", () => editOwnSubscription(Number(button.dataset.editOwn)));
@@ -459,10 +501,12 @@ function resetAdminSubscriptionForm() {
 
 function renderAdminSubscriptions() {
   $("#admin-subscription-list").innerHTML = adminSubscriptions.length ? adminSubscriptions.map((item) =>
-    `<tr><td>${escapeHtml(item.owner_username || "Unassigned")}</td><td><strong>${escapeHtml(item.label || subscriptionDestinations(item))}</strong>${item.label ? `<small>${escapeHtml(subscriptionDestinations(item))}</small>` : ""}</td>` +
-    `<td>${escapeHtml((item.pillar_owner_addresses || []).join(", ") || "Network events")}</td>` +
-    `<td>${escapeHtml(displayEvents(item.events))}</td><td><span class="status-badge ${item.active ? "active" : "inactive"}">${item.active ? "Active" : "Inactive"}</span></td>` +
-    `<td><button class="ghost-button small-button" data-edit-subscription="${item.id}" type="button">Edit</button></td></tr>`
+    `<tr><td data-label="Owner">${escapeHtml(item.owner_username || "Unassigned")}</td>` +
+    `<td data-label="Destinations">${subscriptionDestinationCell(item)}</td>` +
+    `<td data-label="Pillars">${subscriptionInfo(pillarSummary(item), pillarTooltip(item))}</td>` +
+    `<td data-label="Events">${subscriptionInfo(eventSummary(item), eventTooltip(item), "event-count")}</td>` +
+    `<td data-label="Status"><span class="status-badge ${item.active ? "active" : "inactive"}">${item.active ? "Active" : "Inactive"}</span></td>` +
+    `<td data-label=""><button class="ghost-button small-button" data-edit-subscription="${item.id}" type="button">Edit</button></td></tr>`
   ).join("") : '<tr><td colspan="6" class="empty-state">No subscriptions.</td></tr>';
   $("#admin-subscription-list").querySelectorAll("[data-edit-subscription]").forEach((button) => {
     button.addEventListener("click", () => editAdminSubscription(Number(button.dataset.editSubscription)));

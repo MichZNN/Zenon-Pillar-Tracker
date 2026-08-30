@@ -705,6 +705,72 @@ body.modal-open { overflow: hidden; }
 .table-wrap { overflow-x: auto; margin-top: 20px; }
 .table-wrap table { min-width: 700px; }
 .table-wrap small { color: var(--muted); display: block; font-size: .68rem; margin-top: 3px; }
+.table-wrap .subscription-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+.subscription-table th,
+.subscription-table td {
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+.subscription-table-own th:nth-child(1) { width: 34%; }
+.subscription-table-own th:nth-child(2) { width: 20%; }
+.subscription-table-own th:nth-child(3) { width: 20%; }
+.subscription-table-own th:nth-child(4) { width: 14%; }
+.subscription-table-own th:nth-child(5) { width: 12%; }
+.subscription-table-admin th:nth-child(1) { width: 14%; }
+.subscription-table-admin th:nth-child(2) { width: 27%; }
+.subscription-table-admin th:nth-child(3) { width: 18%; }
+.subscription-table-admin th:nth-child(4) { width: 18%; }
+.subscription-table-admin th:nth-child(5) { width: 13%; }
+.subscription-table-admin th:nth-child(6) { width: 10%; }
+.subscription-table .table-info {
+  align-items: center;
+  color: var(--text);
+  cursor: help;
+  display: inline-flex;
+  gap: 6px;
+  max-width: 100%;
+  position: relative;
+}
+.subscription-table .table-info > i { color: var(--muted); font-size: .7rem; }
+.subscription-table .table-info::after {
+  background: rgba(18, 30, 37, .98);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  bottom: calc(100% + 8px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .32);
+  color: var(--text);
+  content: attr(data-tooltip);
+  font-size: .7rem;
+  font-weight: 500;
+  left: 0;
+  line-height: 1.4;
+  max-width: min(320px, calc(100vw - 40px));
+  opacity: 0;
+  padding: 8px 10px;
+  pointer-events: none;
+  position: absolute;
+  transform: translateY(4px);
+  transition: opacity .16s ease, transform .16s ease;
+  white-space: pre-line;
+  width: max-content;
+  z-index: 30;
+}
+.subscription-table .table-info:hover::after,
+.subscription-table .table-info:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+.subscription-destination {
+  display: inline-block !important;
+  cursor: help;
+}
+.subscription-destination strong,
+.subscription-destination small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.subscription-destination strong { display: block; }
+.subscription-destination small { color: var(--muted); white-space: nowrap; }
 .code-editor { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; min-height: 360px; resize: vertical; }
 .log-viewer { background: rgba(10, 10, 10, .75); border: 1px solid var(--line); border-radius: 10px; color: #c9eec2; font: .72rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 420px; min-height: 110px; overflow: auto; padding: 13px; white-space: pre-wrap; word-break: break-word; }
 .admin-shell h3 { font-size: .9rem; margin: 24px 0 10px; }
@@ -778,6 +844,46 @@ body.modal-open { overflow: hidden; }
   .portal-header .header-action-link { min-width: 0; }
   .full-width { grid-column: auto; }
   .table-wrap table { min-width: 620px; }
+  .table-wrap .subscription-table { min-width: 0; }
+  .subscription-table,
+  .subscription-table tbody,
+  .subscription-table tr { display: grid; width: 100%; }
+  .subscription-table thead { display: none; }
+  .subscription-table tbody { gap: 10px; }
+  .subscription-table tr {
+    background: rgba(10, 10, 10, .2);
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    padding: 10px 12px;
+  }
+  .subscription-table td {
+    align-items: flex-start;
+    border: 0;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    min-width: 0;
+    padding: 6px 0;
+    text-align: right;
+  }
+  .subscription-table td::before {
+    color: var(--muted);
+    content: attr(data-label);
+    flex: 0 0 auto;
+    font-size: .66rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+  .subscription-table td[data-label=""] { justify-content: flex-end; padding-top: 10px; }
+  .subscription-table td[data-label=""]::before { display: none; }
+  .subscription-table td.empty-state { display: block; text-align: left; }
+  .subscription-table .subscription-destination,
+  .subscription-table .table-info { min-width: 0; text-align: right; }
+  .subscription-table .subscription-destination strong,
+  .subscription-table .subscription-destination small { max-width: min(58vw, 210px); }
+  .subscription-table .table-info::after { left: auto; right: 0; }
   .toast-container { bottom: 12px; left: 12px; max-width: none; right: 12px; }
   .toast { min-width: 0; }
 }
