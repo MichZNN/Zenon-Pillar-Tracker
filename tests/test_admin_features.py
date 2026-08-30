@@ -3,10 +3,13 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
+from functions.subscriptions import normalise_subscription
 from services.auth_service import hash_password, verify_password
 from services.settings_service import DEFAULT_SETTINGS
 from models.database import Database
+from controllers.web_controller import DashboardHandler
 
 
 class AdminFeatureTestCase(unittest.TestCase):
@@ -66,6 +69,95 @@ class AdminFeatureTestCase(unittest.TestCase):
         )
         self.assertFalse(changed["active"])
         self.assertEqual(len(self.database.get_active_subscription_config()), 0)
+
+    def test_subscription_accepts_telegram_discord_or_both(self):
+        discord = "https://discord.com/api/webhooks/123/CaseSensitiveToken"
+        self.assertEqual(
+            normalise_subscription(
+                {
+                    "discord_webhook": discord,
+                    "pillar_owner_addresses": ["z1alpha"],
+                    "events": ["pillar_inactive"],
+                }
+            )["discord_webhook"],
+            discord,
+        )
+        self.assertEqual(
+            normalise_subscription(
+                {
+                    "channel_id": "-100123",
+                    "discord_webhook": discord,
+                    "pillar_owner_addresses": ["z1alpha"],
+                    "events": ["pillar_inactive"],
+                }
+            )["channel_id"],
+            "-100123",
+        )
+        with self.assertRaisesRegex(ValueError, "Telegram channel ID"):
+            normalise_subscription({"pillar_owner_addresses": ["z1alpha"]})
+        with self.assertRaisesRegex(ValueError, "valid HTTPS Discord"):
+            normalise_subscription(
+                {
+                    "discord_webhook": "https://example.com/webhook",
+                    "pillar_owner_addresses": ["z1alpha"],
+                }
+            )
+
+    def test_user_can_update_display_name_and_password_with_current_password(self):
+        handler = object.__new__(DashboardHandler)
+        handler.server = SimpleNamespace(database=self.database)
+        handler._require_csrf = lambda user: True
+        handler._audit = lambda *args, **kwargs: None
+        response = {}
+        handler._send_json = lambda payload: response.update(payload)
+
+        handler._account_update(
+            self.user,
+            {
+                "display_name": "Updated operator",
+                "current_password": "another correct password",
+                "new_password": "a completely new password",
+                "new_password_confirmation": "a completely new password",
+            },
+        )
+
+        self.assertEqual(response["display_name"], "Updated operator")
+        credentials = self.database.get_user_credentials("operator")
+        self.assertTrue(
+            verify_password("a completely new password", credentials["password_hash"])
+        )
+        self.assertFalse(
+            verify_password("another correct password", credentials["password_hash"])
+        )
+
+    def test_user_profile_rejects_wrong_current_password_and_mismatched_passwords(self):
+        handler = object.__new__(DashboardHandler)
+        handler.server = SimpleNamespace(database=self.database)
+        handler._require_csrf = lambda user: True
+        handler._audit = lambda *args, **kwargs: None
+        handler._send_json = lambda payload: None
+
+        with self.assertRaisesRegex(ValueError, "Current password is incorrect"):
+            handler._account_update(
+                self.user,
+                {
+                    "display_name": "Operator",
+                    "current_password": "wrong password",
+                    "new_password": "a completely new password",
+                    "new_password_confirmation": "a completely new password",
+                },
+            )
+
+        with self.assertRaisesRegex(ValueError, "New passwords do not match"):
+            handler._account_update(
+                self.user,
+                {
+                    "display_name": "Operator",
+                    "current_password": "another correct password",
+                    "new_password": "a completely new password",
+                    "new_password_confirmation": "different new password",
+                },
+            )
 
 
 if __name__ == "__main__":

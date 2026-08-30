@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -51,6 +52,45 @@ class DatabaseTestCase(unittest.TestCase):
 
     def tearDown(self):
         self.temp_dir.cleanup()
+
+    def test_existing_subscription_table_is_migrated_for_discord_webhooks(self):
+        legacy_path = Path(self.temp_dir.name) / "legacy.sqlite3"
+        with sqlite3.connect(legacy_path) as connection:
+            connection.execute(
+                """
+                CREATE TABLE pillar_subscriptions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    label TEXT NOT NULL DEFAULT '',
+                    channel_id TEXT NOT NULL,
+                    pillar_owner_addresses_json TEXT NOT NULL DEFAULT '[]',
+                    events_json TEXT NOT NULL DEFAULT '[]',
+                    active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    created_by INTEGER,
+                    updated_by INTEGER
+                )
+                """
+            )
+
+        migrated = Database(legacy_path)
+        with migrated._connect() as connection:
+            columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info(pillar_subscriptions)"
+                ).fetchall()
+            }
+        self.assertIn("discord_webhook", columns)
+        subscription = migrated.create_pillar_subscription(
+            user_id=None,
+            discord_webhook="https://discord.com/api/webhooks/123/token",
+        )
+        self.assertEqual(
+            subscription["discord_webhook"],
+            "https://discord.com/api/webhooks/123/token",
+        )
 
     def record(
         self,
