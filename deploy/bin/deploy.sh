@@ -23,9 +23,39 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
+# Keep the mount point available even before the optional host control bridge
+# is installed. The bridge service later tightens its ownership and mode.
+control_dir=./control
+if [ ! -d "$control_dir" ]; then
+    mkdir -p "$control_dir"
+fi
+
 docker compose config --quiet
 docker compose pull web collector
 docker compose up -d --remove-orphans
+
+# `docker compose up -d` can succeed even when a service exits immediately.
+# Fail the deployment in that case and expose the actual container output in
+# the GitHub Actions log instead of reporting a false-positive deployment.
+if ! running_services=$(docker compose ps --status running --services); then
+    printf '%s\n' "Deployment could not inspect running services." >&2
+    docker compose ps --all >&2 || true
+    docker compose logs --no-color --tail=200 web collector >&2 || true
+    exit 1
+fi
+missing_services=""
+for service in web collector; do
+    if ! printf '%s\n' "$running_services" | grep -Fxq "$service"; then
+        missing_services="$missing_services $service"
+    fi
+done
+if [ -n "$missing_services" ]; then
+    printf '%s\n' "Deployment failed: services are not running:$missing_services" >&2
+    docker compose ps --all >&2 || true
+    docker compose logs --no-color --tail=200 web collector >&2 || true
+    exit 1
+fi
+
 docker compose ps
 
 if [ "$#" -eq 1 ]; then

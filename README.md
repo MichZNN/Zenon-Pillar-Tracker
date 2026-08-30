@@ -112,7 +112,8 @@ setup form signs the new administrator in automatically. The command-line
 utility remains available when a browser is not convenient.
 There is one login page and one role-aware portal: normal users see and manage
 their own subscriptions, while administrators additionally see settings,
-users, all subscriptions, logs, and the audit trail.
+users, all subscriptions, collector start/stop/restart controls, logs, and the
+audit trail.
 
 ## Import an old JSON cache
 

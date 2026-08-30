@@ -467,9 +467,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    logging_configured = False
     try:
         config = load_runtime_config(args.database)
         configure_logging(config)
+        logging_configured = True
         collector = Collector(config)
         if args.loop:
             collector.run_forever(args.interval)
@@ -480,7 +482,12 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("Collector stopped.")
         return 0
     except Exception as exc:
-        logger.error("Collector did not complete: %s", exc)
+        if not logging_configured:
+            # Runtime configuration is loaded before the configured logger is
+            # available. Keep startup failures in the default mounted log too,
+            # so a broken database/configuration is diagnosable from Docker.
+            configure_logging()
+        logger.exception("Collector did not complete: %s", exc)
         return 1
 
 

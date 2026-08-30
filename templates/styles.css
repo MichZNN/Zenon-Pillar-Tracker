@@ -103,6 +103,7 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 .health-badge.green, .health-badge.healthy, .status-badge.active { color: var(--zenon-green); background: rgba(111, 243, 77, .09); border-color: rgba(111, 243, 77, .28); }
 .health-badge.orange, .health-badge.stale { color: var(--status-orange); background: rgba(245, 165, 36, .12); border-color: rgba(245, 165, 36, .34); }
 .status-badge.inactive { color: var(--plasma-pink); background: rgba(249, 22, 144, .10); border-color: rgba(249, 22, 144, .3); }
+.status-badge.error { color: var(--status-red); background: rgba(255, 90, 95, .11); border-color: rgba(255, 90, 95, .34); }
 .health-badge.red, .health-badge.error, .health-badge.reorg, .status-badge.dismantled { color: var(--status-red); background: rgba(255, 90, 95, .11); border-color: rgba(255, 90, 95, .34); }
 .health-badge.unknown { color: var(--muted); }
 
@@ -710,6 +711,10 @@ body.modal-open { overflow: hidden; }
 .setting-toggle { align-items: flex-start; background: linear-gradient(145deg, rgba(36, 36, 36, .7), rgba(27, 27, 27, .82)); border: 1px solid var(--line); border-radius: 11px; display: flex; gap: 10px; min-width: 0; padding: 12px; }
 .setting-toggle input { accent-color: var(--accent); flex: 0 0 auto; height: 17px; margin: 2px 0 0; width: 17px; }
 .setting-toggle > span { display: grid; gap: 4px; min-width: 0; }
+.collector-control-card { background: rgba(10, 10, 10, .2); border: 1px solid var(--line); border-radius: 13px; margin-bottom: 20px; padding: 16px; }
+.collector-control-card .section-heading { margin-bottom: 10px; }
+.collector-control-actions { justify-content: flex-start; margin: 14px 0; }
+.collector-control-actions button:disabled { cursor: not-allowed; opacity: .45; }
 .event-options { border: 1px solid var(--line); border-radius: 11px; margin: 0; min-width: 0; padding: 13px; }
 .event-options legend { color: var(--text); font-size: .76rem; font-weight: 800; padding: 0 5px; }
 .event-options > .setting-help { margin: 0 0 9px; }

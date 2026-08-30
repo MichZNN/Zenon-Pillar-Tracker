@@ -210,9 +210,19 @@ jobs:
             -o UserKnownHostsFile="$ZENON_SSH_DIR/known_hosts" \
             deploy/bin/deploy.sh \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/deploy/bin/deploy.sh"
+          scp \
+            -P "$deploy_port" \
+            -i "$ZENON_SSH_DIR/id_ed25519" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$ZENON_SSH_DIR/known_hosts" \
+            deploy/bin/collector_control_bridge.py \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/deploy/bin/collector_control_bridge.py"
           unit_file=deploy/systemd/zenon-pillar-tracker.service
+          control_unit=deploy/systemd/zenon-pillar-tracker-control.service
           if [ "$GITHUB_REF" = "refs/heads/development" ]; then
             unit_file=deploy/systemd/zenon-pillar-tracker-dev.service
+            control_unit=deploy/systemd/zenon-pillar-tracker-dev-control.service
           fi
           scp \
             -P "$deploy_port" \
@@ -222,6 +232,14 @@ jobs:
             -o UserKnownHostsFile="$ZENON_SSH_DIR/known_hosts" \
             "$unit_file" \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/deploy/systemd/zenon-pillar-tracker.service"
+          scp \
+            -P "$deploy_port" \
+            -i "$ZENON_SSH_DIR/id_ed25519" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$ZENON_SSH_DIR/known_hosts" \
+            "$control_unit" \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/deploy/systemd/zenon-pillar-tracker-control.service"
 
       - name: Pull and restart the application stack
         env:

@@ -21,6 +21,7 @@ class DeploymentFilesTests(unittest.TestCase):
         self.assertIn("web:", compose)
         self.assertIn("collector:", compose)
         self.assertIn("${DATA_DIR:-./data_store}:/app/data_store", compose)
+        self.assertIn("./control:/run/zenon-control", compose)
         self.assertIn("restart: unless-stopped", compose)
         self.assertIn("max-size: 10m", compose)
 
@@ -35,6 +36,19 @@ class DeploymentFilesTests(unittest.TestCase):
         script = self.read("deploy/bin/deploy.sh")
         self.assertIn(".deploy-image.env", script)
         self.assertIn("printf 'IMAGE=%s", script)
+        self.assertIn("docker compose ps --status running --services", script)
+        self.assertIn("docker compose logs --no-color --tail=200 web collector", script)
+
+    def test_collector_control_bridge_is_allowlisted_and_installed_separately(self) -> None:
+        bridge = self.read("deploy/bin/collector_control_bridge.py")
+        self.assertIn('"status", "logs", "start", "stop", "restart"', bridge)
+        self.assertNotIn("shell=True", bridge)
+        unit = self.read("deploy/systemd/zenon-pillar-tracker-control.service")
+        self.assertIn("collector_control_bridge.py", unit)
+        self.assertIn("Group=10001", unit)
+        self.assertIn("NoNewPrivileges=true", unit)
+        dev_unit = self.read("deploy/systemd/zenon-pillar-tracker-dev-control.service")
+        self.assertIn("/srv/zenon-pillar-tracker-dev", dev_unit)
 
     def test_development_deployment_is_isolated(self) -> None:
         environment = self.read("deploy/examples/development.env.example")
@@ -58,6 +72,8 @@ class DeploymentFilesTests(unittest.TestCase):
         self.assertIn("linux/arm64", workflow)
         self.assertIn("refs/heads/main", workflow)
         self.assertIn("deploy/bin/deploy.sh", workflow)
+        self.assertIn("deploy/bin/collector_control_bridge.py", workflow)
+        self.assertIn("zenon-pillar-tracker-control.service", workflow)
 
     def test_requirements_are_utf8(self) -> None:
         requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")

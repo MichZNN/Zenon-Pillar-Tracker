@@ -63,7 +63,9 @@ Copy the following files from this repository:
 ```sh
 cp compose.yaml /srv/zenon-pillar-tracker/compose.yaml
 cp deploy/bin/deploy.sh /srv/zenon-pillar-tracker/deploy/bin/deploy.sh
+cp deploy/bin/collector_control_bridge.py /srv/zenon-pillar-tracker/deploy/bin/collector_control_bridge.py
 cp deploy/systemd/zenon-pillar-tracker.service /srv/zenon-pillar-tracker/deploy/systemd/zenon-pillar-tracker.service
+cp deploy/systemd/zenon-pillar-tracker-control.service /srv/zenon-pillar-tracker/deploy/systemd/zenon-pillar-tracker-control.service
 cp .env.example /srv/zenon-pillar-tracker/.env
 ```
 
@@ -200,8 +202,10 @@ sudo mkdir -p /srv/zenon-pillar-tracker-dev/data_store
 sudo chown -R "$(id -u):$(id -g)" /srv/zenon-pillar-tracker-dev
 cp compose.yaml /srv/zenon-pillar-tracker-dev/compose.yaml
 cp deploy/bin/deploy.sh /srv/zenon-pillar-tracker-dev/deploy/bin/deploy.sh
+cp deploy/bin/collector_control_bridge.py /srv/zenon-pillar-tracker-dev/deploy/bin/collector_control_bridge.py
 cp deploy/examples/development.env.example /srv/zenon-pillar-tracker-dev/.env
 cp deploy/systemd/zenon-pillar-tracker-dev.service /srv/zenon-pillar-tracker-dev/deploy/systemd/zenon-pillar-tracker-dev.service
+cp deploy/systemd/zenon-pillar-tracker-dev-control.service /srv/zenon-pillar-tracker-dev/deploy/systemd/zenon-pillar-tracker-control.service
 cp deploy/nginx/pillartracker.turmin.com.bootstrap.conf /srv/zenon-pillar-tracker-dev/deploy/nginx/pillartracker.turmin.com.bootstrap.conf
 cp deploy/nginx/pillartracker.turmin.com.conf /srv/zenon-pillar-tracker-dev/deploy/nginx/pillartracker.turmin.com.conf
 ```
@@ -392,12 +396,38 @@ backup can actually be restored.
 
 ## Dashboard control of the collector
 
-The stack can reliably be started, stopped, and restarted with Docker and
-systemd. The dashboard intentionally has no Docker socket and no unrestricted
-systemd permissions: either would effectively give a web request host-root
-control. Safe dashboard buttons for Start/Stop/Restart of only the collector
-therefore require a separate allowlisted host-control bridge. This can be added
-later as a restricted host process without making the web container privileged.
-Until then, use the systemd/Compose commands above for collector management;
-the dashboard still shows whether the collector has reported a recent
-successful heartbeat.
+The admin portal provides Start, Stop, Restart, and container-log controls for
+the collector. The web container still has no Docker socket and no unrestricted
+systemd permissions. Instead, a separate host process accepts only those
+allowlisted collector operations through a Unix socket.
+
+Install the production bridge once on the host after the deployment files have
+been copied by the workflow:
+
+```sh
+sudo cp /srv/zenon-pillar-tracker/deploy/systemd/zenon-pillar-tracker-control.service /etc/systemd/system/zenon-pillar-tracker-control.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now zenon-pillar-tracker-control.service
+sudo systemctl status zenon-pillar-tracker-control.service
+```
+
+For the isolated development deployment, use the development unit instead:
+
+```sh
+sudo cp /srv/zenon-pillar-tracker-dev/deploy/systemd/zenon-pillar-tracker-control.service /etc/systemd/system/zenon-pillar-tracker-control.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now zenon-pillar-tracker-control.service
+```
+
+The workflow uploads the matching bridge script and unit on every deployment,
+but it cannot install or replace a systemd unit in `/etc` without host-root
+permission. If the bridge is not installed or cannot reach Docker, the portal
+shows that state and disables the buttons. Inspect its journal with:
+
+```sh
+sudo journalctl -u zenon-pillar-tracker-control.service -n 100 --no-pager
+```
+
+The bridge runs as a host service because Docker lifecycle control is a
+privileged operation. It does not accept arbitrary commands or user-supplied
+Compose arguments.

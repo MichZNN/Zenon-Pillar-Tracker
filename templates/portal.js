@@ -496,6 +496,91 @@ async function loadLogs() {
   ).join("") || '<tr><td colspan="5" class="empty-state">No audit entries.</td></tr>';
 }
 
+function setCollectorControlButtons(available, running, busy = false) {
+  const start = $("#collector-start");
+  const stop = $("#collector-stop");
+  const restart = $("#collector-restart");
+  if (start) start.disabled = busy || !available || running;
+  if (stop) stop.disabled = busy || !available || !running;
+  if (restart) restart.disabled = busy || !available;
+}
+
+function renderCollectorControl(payload) {
+  const badge = $("#collector-process-status");
+  const message = $("#collector-control-message");
+  if (!badge || !message) return;
+  const collector = payload.collector || {};
+  const available = payload.available !== false;
+  const running = Boolean(collector.running);
+  const state = String(collector.state || "").toLowerCase();
+  badge.className = `status-badge ${!available ? "error" : running ? "active" : "inactive"}`;
+  badge.textContent = !available
+    ? "Unavailable"
+    : running
+      ? "Running"
+      : state === "not_created" ? "Not created" : "Stopped";
+  message.textContent = payload.error || collector.status || (
+    running ? "The collector is running." : "The collector is not running."
+  );
+  setCollectorControlButtons(available, running);
+}
+
+async function loadCollectorControl() {
+  try {
+    renderCollectorControl(await getJson("/api/admin/collector-control"));
+  } catch (error) {
+    renderCollectorControl({ available: false, error: error.message });
+  }
+}
+
+async function loadCollectorLogs() {
+  const info = $("#collector-log-info");
+  const viewer = $("#collector-container-log");
+  if (!info || !viewer) return;
+  try {
+    const payload = await getJson("/api/admin/collector-logs?tail=200");
+    renderCollectorControl(payload);
+    const collector = payload.collector || {};
+    info.textContent = collector.name
+      ? `${collector.name} · ${collector.status || collector.state || ""}`
+      : "Collector container logs";
+    viewer.textContent = payload.logs || "No collector container logs yet.";
+  } catch (error) {
+    info.textContent = "Collector container logs";
+    viewer.textContent = `Could not load collector logs: ${error.message}`;
+  }
+}
+
+async function controlCollector(action) {
+  setCollectorControlButtons(false, false, true);
+  const message = $("#collector-control-message");
+  if (message) message.textContent = `${action[0].toUpperCase()}${action.slice(1)} command is being sent…`;
+  try {
+    const payload = await getJson("/api/admin/collector-control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ action }),
+    });
+    renderCollectorControl(payload);
+    const running = Boolean((payload.collector || {}).running);
+    showMessage(
+      running || action === "stop"
+        ? `Collector ${action} command completed.`
+        : `Collector ${action} command completed, but it is not running.`,
+      !running && action !== "stop",
+    );
+    await Promise.all([loadCollectorLogs(), loadLogs()]);
+  } catch (error) {
+    showMessage(error.message, true);
+    await loadCollectorControl();
+    await loadCollectorLogs();
+  }
+}
+
+async function refreshOperations() {
+  await Promise.all([loadLogs(), loadCollectorControl(), loadCollectorLogs()]);
+}
+
 async function saveSettings(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -613,12 +698,15 @@ async function initialise() {
 
   $("#admin-area").hidden = false;
   initialiseAdminNavigation();
-  $("#refresh-logs").addEventListener("click", loadLogs);
+  $("#refresh-logs").addEventListener("click", refreshOperations);
+  ["start", "stop", "restart"].forEach((action) => {
+    $(`#collector-${action}`).addEventListener("click", () => controlCollector(action));
+  });
   $("#user-form").addEventListener("submit", saveUser);
   $("#admin-subscription-form").addEventListener("submit", saveAdminSubscription);
   $("#cancel-user").addEventListener("click", resetUserForm);
   $("#cancel-subscription").addEventListener("click", resetAdminSubscriptionForm);
-  await Promise.all([loadSettings(), loadLogs()]);
+  await Promise.all([loadSettings(), refreshOperations()]);
   adminUsers = await getJson("/api/admin/users");
   renderUsers();
   adminSubscriptions = await getJson("/api/admin/subscriptions");

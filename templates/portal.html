@@ -346,6 +346,20 @@
 
       <section id="operations-settings" class="section-block">
         <div class="section-heading"><div><p class="eyebrow">Operations</p><h2>Logs and audit trail</h2></div><button id="refresh-logs" class="ghost-button" type="button">Refresh</button></div>
+        <div class="collector-control-card">
+          <div class="section-heading">
+            <div><p class="eyebrow">Collector service</p><h3 id="collector-control-heading">Pillar tracker process</h3></div>
+            <span id="collector-process-status" class="status-badge">Checking…</span>
+          </div>
+          <p id="collector-control-message" class="muted">Checking whether the collector is running.</p>
+          <div class="form-actions collector-control-actions">
+            <button id="collector-start" class="primary-button" type="button"><i class="fa-solid fa-play" aria-hidden="true"></i>Start</button>
+            <button id="collector-stop" class="ghost-button" type="button"><i class="fa-solid fa-stop" aria-hidden="true"></i>Stop</button>
+            <button id="collector-restart" class="ghost-button" type="button"><i class="fa-solid fa-rotate" aria-hidden="true"></i>Restart</button>
+          </div>
+          <p id="collector-log-info" class="muted"></p>
+          <pre id="collector-container-log" class="log-viewer">Loading collector logs…</pre>
+        </div>
         <p id="log-file-info" class="muted"></p>
         <pre id="file-log" class="log-viewer">Loading…</pre>
         <h3>Admin actions</h3>

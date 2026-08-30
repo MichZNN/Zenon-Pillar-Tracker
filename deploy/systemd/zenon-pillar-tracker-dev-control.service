@@ -1,0 +1,26 @@
+[Unit]
+Description=Zenon Pillar Tracker development collector control bridge
+Documentation=https://github.com/MichZNN/Zenon-Pillar-Tracker/blob/development/INSTALL.md
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=10001
+WorkingDirectory=/srv/zenon-pillar-tracker-dev
+EnvironmentFile=-/srv/zenon-pillar-tracker-dev/.deploy-image.env
+ExecStartPre=/usr/bin/install -d -o root -g 10001 -m 0710 /srv/zenon-pillar-tracker-dev/control
+ExecStart=/usr/bin/python3 /srv/zenon-pillar-tracker-dev/deploy/bin/collector_control_bridge.py --compose-dir /srv/zenon-pillar-tracker-dev --socket /srv/zenon-pillar-tracker-dev/control/collector.sock
+Restart=on-failure
+RestartSec=2
+UMask=0007
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=full
+PrivateTmp=true
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target
