@@ -41,6 +41,10 @@ class CollectorControlClient:
         action = str(action).strip().lower()
         if action not in CONTROL_ACTIONS:
             raise ValueError(f"Unsupported collector control action: {action}")
+        if not hasattr(socket, "AF_UNIX"):
+            raise CollectorControlUnavailable(
+                "Collector control bridge requires Unix sockets"
+            )
         request: dict[str, Any] = {"action": action}
         if action == "logs":
             request["tail"] = max(1, min(int(tail), 500))

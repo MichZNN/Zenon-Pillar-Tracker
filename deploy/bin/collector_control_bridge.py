@@ -179,9 +179,16 @@ class CollectorControlBridge:
         return [item for item in decoded if isinstance(item, dict)]
 
 
-class _UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
-    daemon_threads = True
-    allow_reuse_address = True
+if hasattr(socketserver, "UnixStreamServer"):
+    class _UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+        daemon_threads = True
+        allow_reuse_address = True
+else:
+    class _UnixServer:
+        """Import-safe placeholder; the bridge is only runnable on Unix."""
+
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("The collector control bridge requires Unix sockets")
 
 
 class _RequestHandler(socketserver.StreamRequestHandler):
