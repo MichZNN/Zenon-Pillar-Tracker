@@ -53,15 +53,22 @@ class DeploymentFilesTests(unittest.TestCase):
         dev_unit = self.read("deploy/systemd/zenon-pillar-tracker-dev-control.service")
         self.assertIn("/srv/zenon-pillar-tracker-dev", dev_unit)
 
+    def test_production_deployment_routes_to_production(self) -> None:
+        environment = self.read(".env.example")
+        unit = self.read("deploy/systemd/zenon-pillar-tracker.service")
+        nginx = self.read("deploy/nginx/pillartracker.turmin.com.conf")
+        self.assertIn("WEB_PORT=8080", environment)
+        self.assertIn("WorkingDirectory=/srv/zenon-pillar-tracker", unit)
+        self.assertIn("127.0.0.1:8080", nginx)
+        self.assertIn("server_name pillartracker.turmin.com", nginx)
+        self.assertIn("pillartracker_production", nginx)
+
     def test_development_deployment_is_isolated(self) -> None:
         environment = self.read("deploy/examples/development.env.example")
         unit = self.read("deploy/systemd/zenon-pillar-tracker-dev.service")
-        nginx = self.read("deploy/nginx/pillartracker.turmin.com.conf")
         self.assertIn("WEB_PORT=8081", environment)
         self.assertIn("/srv/zenon-pillar-tracker-dev/data_store", environment)
         self.assertIn("WorkingDirectory=/srv/zenon-pillar-tracker-dev", unit)
-        self.assertIn("127.0.0.1:8081", nginx)
-        self.assertIn("server_name pillartracker.turmin.com", nginx)
 
     def test_workflow_tests_both_platforms_builds_arm64_and_deploys_main(self) -> None:
         workflow = self.read(".github/workflows/ci-cd.yml")
