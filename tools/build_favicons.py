@@ -185,11 +185,12 @@ def build(source: Path, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     pngs: dict[int, bytes] = {}
     filenames = {
-        16: "favicon-16x16.png",
-        32: "favicon-32x32.png",
-        180: "apple-touch-icon.png",
-        192: "android-chrome-192x192.png",
-        512: "android-chrome-512x512.png",
+        16: "favicon-16.png",
+        32: "favicon-32.png",
+        64: "favicon-64.png",
+        180: "favicon-180.png",
+        192: "favicon-192.png",
+        512: "favicon-512.png",
     }
     for size, filename in filenames.items():
         resized = _resize(
@@ -237,7 +238,7 @@ def main() -> int:
     parser.add_argument(
         "--source",
         type=Path,
-        default=Path("static/icons/android-chrome-512x512.png"),
+        default=Path("static/icons/favicon-512.png"),
     )
     parser.add_argument(
         "--output-dir",
