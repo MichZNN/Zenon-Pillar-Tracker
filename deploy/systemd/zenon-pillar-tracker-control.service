@@ -11,6 +11,7 @@ User=root
 Group=10001
 WorkingDirectory=/srv/zenon-pillar-tracker
 EnvironmentFile=-/srv/zenon-pillar-tracker/.deploy-image.env
+Environment=COMPOSE_PROFILES=collector
 ExecStartPre=/usr/bin/install -d -o root -g 10001 -m 0710 /srv/zenon-pillar-tracker/control
 ExecStart=/usr/bin/python3 /srv/zenon-pillar-tracker/deploy/bin/collector_control_bridge.py --compose-dir /srv/zenon-pillar-tracker --socket /srv/zenon-pillar-tracker/control/collector.sock
 Restart=on-failure

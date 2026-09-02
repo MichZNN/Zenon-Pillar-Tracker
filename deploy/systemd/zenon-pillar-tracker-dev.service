@@ -9,10 +9,13 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=/srv/zenon-pillar-tracker-dev
 EnvironmentFile=-/srv/zenon-pillar-tracker-dev/.deploy-image.env
+Environment=COMPOSE_PROFILES=
+ExecStartPre=-/usr/bin/env docker compose --profile collector stop collector
+ExecStartPre=-/usr/bin/env docker compose --profile collector rm --force collector
 ExecStartPre=/usr/bin/env docker compose config --quiet
 ExecStart=/usr/bin/env docker compose up -d --remove-orphans
 ExecReload=/usr/bin/env docker compose up -d --remove-orphans
-ExecStop=/usr/bin/env docker compose down --remove-orphans
+ExecStop=/usr/bin/env docker compose --profile collector down --remove-orphans
 RemainAfterExit=yes
 TimeoutStartSec=0
 TimeoutStopSec=120

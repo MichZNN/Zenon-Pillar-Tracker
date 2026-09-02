@@ -248,6 +248,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           IMAGE_REF: "${{ needs.build.outputs.image }}:${{ github.sha }}"
+          COLLECTOR_PROFILES: ${{ github.ref == 'refs/heads/main' && 'collector' || '' }}
         shell: bash
         run: |
           deploy_port="${DEPLOY_PORT:-22}"
@@ -258,4 +259,4 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$ZENON_SSH_DIR/known_hosts" \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "sh '$DEPLOY_PATH/deploy/bin/deploy.sh' '$IMAGE_REF'"
+            "COMPOSE_PROFILES='$COLLECTOR_PROFILES' sh '$DEPLOY_PATH/deploy/bin/deploy.sh' '$IMAGE_REF'"

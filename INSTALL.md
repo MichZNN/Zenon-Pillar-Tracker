@@ -18,6 +18,13 @@ Runtime configuration is stored in SQLite; the application does not read JSON
 configuration at runtime. `.env` is reserved for deployment values and secrets
 that do not belong in the database, such as the optional Telegram bot token.
 
+The `collector` service is protected by the Compose `collector` profile. The
+production environment enables that profile with `COMPOSE_PROFILES=collector`;
+the development environment leaves it empty and runs only the web container.
+The GitHub workflow applies the same switch automatically: pushes to
+`development` do not start `pillar_tracker.py`, while pushes to `main` start
+both services.
+
 The Linux Compose collector uses the host network namespace. A Zenon node or
 reverse proxy listening on the same server can therefore be configured as
 `http://127.0.0.1:35997`. Use `https://` when that port terminates TLS, for
@@ -86,6 +93,7 @@ IMAGE=ghcr.io/michznn/zenon-pillar-tracker:main
 WEB_BIND_ADDRESS=127.0.0.1
 WEB_PORT=8080
 DATA_DIR=/srv/zenon-pillar-tracker/data_store
+COMPOSE_PROFILES=collector
 TELEGRAM_BOT_API_KEY=
 ```
 
@@ -135,7 +143,7 @@ docker compose run --rm web python tools/setup_database.py --database /app/data_
 Start the collector afterwards:
 
 ```sh
-docker compose up -d collector
+docker compose --profile collector up -d collector
 docker compose ps
 docker compose logs --tail=100 web collector
 ```
@@ -236,10 +244,8 @@ Start and initialize the development stack:
 ```sh
 cd /srv/zenon-pillar-tracker-dev
 docker compose config
-docker compose pull web collector
 docker compose up -d web
 docker compose run --rm web python tools/setup_database.py --database /app/data_store/pillar_tracker.sqlite3
-docker compose up -d collector
 docker compose ps
 ```
 

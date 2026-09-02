@@ -46,6 +46,10 @@ services:
       retries: 3
 
   collector:
+    # The production deployment enables this profile. Development deploys the
+    # web service only, so it cannot start a second data collector by accident.
+    profiles:
+      - collector
     image: ${IMAGE:-ghcr.io/michznn/zenon-pillar-tracker:main}
     restart: unless-stopped
     init: true

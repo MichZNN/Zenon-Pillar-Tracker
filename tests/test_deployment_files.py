@@ -20,6 +20,7 @@ class DeploymentFilesTests(unittest.TestCase):
         compose = self.read("compose.yaml")
         self.assertIn("web:", compose)
         self.assertIn("collector:", compose)
+        self.assertIn("profiles:\n      - collector", compose)
         self.assertIn("${DATA_DIR:-./data_store}:/app/data_store", compose)
         self.assertIn("./control:/run/zenon-control", compose)
         self.assertIn("restart: unless-stopped", compose)
@@ -31,6 +32,8 @@ class DeploymentFilesTests(unittest.TestCase):
         unit = self.read("deploy/systemd/zenon-pillar-tracker.service")
         self.assertIn("docker compose", unit)
         self.assertIn(".deploy-image.env", unit)
+        self.assertIn("Environment=COMPOSE_PROFILES=collector", unit)
+        self.assertIn("docker compose --profile collector up -d", unit)
         self.assertIn("WantedBy=multi-user.target", unit)
         self.assertNotIn("ubuntu", unit.lower())
 
@@ -40,7 +43,10 @@ class DeploymentFilesTests(unittest.TestCase):
         self.assertIn("if [ ! -r .env ]", script)
         self.assertIn("printf 'IMAGE=%s", script)
         self.assertIn("docker compose ps --status running --services", script)
-        self.assertIn("docker compose logs --no-color --tail=200 web collector", script)
+        self.assertIn("docker compose config --services", script)
+        self.assertIn("docker compose --profile collector stop collector", script)
+        self.assertIn("docker compose logs --no-color --tail=200", script)
+        self.assertIn("COMPOSE_PROFILES=%s", script)
 
     def test_collector_control_bridge_is_allowlisted_and_installed_separately(self) -> None:
         bridge = self.read("deploy/bin/collector_control_bridge.py")
@@ -58,6 +64,7 @@ class DeploymentFilesTests(unittest.TestCase):
         unit = self.read("deploy/systemd/zenon-pillar-tracker.service")
         nginx = self.read("deploy/nginx/pillartracker.turmin.com.conf")
         self.assertIn("WEB_PORT=8080", environment)
+        self.assertIn("COMPOSE_PROFILES=collector", environment)
         self.assertIn("WorkingDirectory=/srv/zenon-pillar-tracker", unit)
         self.assertIn("127.0.0.1:8080", nginx)
         self.assertIn("server_name pillartracker.turmin.com", nginx)
@@ -67,7 +74,10 @@ class DeploymentFilesTests(unittest.TestCase):
         environment = self.read("deploy/examples/development.env.example")
         unit = self.read("deploy/systemd/zenon-pillar-tracker-dev.service")
         self.assertIn("WEB_PORT=8081", environment)
+        self.assertIn("COMPOSE_PROFILES=", environment)
         self.assertIn("/srv/zenon-pillar-tracker-dev/data_store", environment)
+        self.assertIn("Environment=COMPOSE_PROFILES=", unit)
+        self.assertIn("docker compose --profile collector stop collector", unit)
         self.assertIn("WorkingDirectory=/srv/zenon-pillar-tracker-dev", unit)
 
     def test_workflow_tests_both_platforms_builds_arm64_and_deploys_main(self) -> None:
@@ -84,6 +94,8 @@ class DeploymentFilesTests(unittest.TestCase):
         self.assertIn("deploy/bin/deploy.sh", workflow)
         self.assertIn("deploy/bin/collector_control_bridge.py", workflow)
         self.assertIn("zenon-pillar-tracker-control.service", workflow)
+        self.assertIn("COLLECTOR_PROFILES", workflow)
+        self.assertIn("COMPOSE_PROFILES='$COLLECTOR_PROFILES'", workflow)
 
     def test_requirements_are_utf8(self) -> None:
         requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")

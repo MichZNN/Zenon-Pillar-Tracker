@@ -21,15 +21,15 @@ class WebAppTestCase(unittest.TestCase):
         templates_dir = Path(__file__).parents[1] / "templates"
         index = (templates_dir / "index.html").read_text()
         self.assertIn("Zenon Pillar Tracker", index)
-        self.assertIn('/static/icons/apple-touch-icon.png', index)
-        self.assertIn('/static/icons/favicon-32x32.png', index)
-        self.assertIn('/static/icons/favicon-16x16.png', index)
+        self.assertIn('/static/icons/favicon-180.png', index)
+        self.assertIn('/static/icons/favicon-32.png', index)
+        self.assertIn('/static/icons/favicon-16.png', index)
         self.assertIn('/static/icons/site.webmanifest', index)
         static_dir = templates_dir.parents[0] / "static" / "icons"
         for filename in (
-            "apple-touch-icon.png",
-            "favicon-16x16.png",
-            "favicon-32x32.png",
+            "favicon-180.png",
+            "favicon-16.png",
+            "favicon-32.png",
             "favicon.ico",
             "site.webmanifest",
         ):
@@ -72,7 +72,7 @@ class WebAppTestCase(unittest.TestCase):
         self.assertNotIn('href="/admin"', index_content)
         for page_name in ("login.html", "setup.html", "portal.html"):
             page = (templates_dir / page_name).read_text()
-            self.assertIn('/static/icons/favicon-32x32.png', page)
+            self.assertIn('/static/icons/favicon-32.png', page)
             self.assertIn('/static/icons/site.webmanifest', page)
         setup = (templates_dir / "setup.html").read_text()
         self.assertIn('id="setup-form"', setup)

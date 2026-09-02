@@ -215,7 +215,8 @@ To rebuild all favicon sizes after replacing the source icon, run:
 python .\tools\build_favicons.py
 ```
 
-The default source is `static/icons/android-chrome-512x512.png`.
+The default source is `static/icons/favicon-512.png`; the builder creates the
+16px, 32px, 64px, 180px, 192px, and 512px PNG variants plus `favicon.ico`.
 
 The dashboard API allows 120 requests per 60 seconds per client by default.
 When the limit is reached it returns HTTP 429 with a `Retry-After` header. You
