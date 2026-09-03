@@ -377,6 +377,9 @@ def initialize_database(database_path: str | Path) -> Path:
     connection = sqlite3.connect(path, timeout=30)
     try:
         connection.executescript(SCHEMA)
+        # Serialize schema checks and migrations so a web process and the
+        # collector starting together cannot both run the same repair.
+        connection.execute("BEGIN IMMEDIATE")
         schema_version_row = connection.execute(
             "SELECT value FROM schema_meta WHERE key = 'schema_version'"
         ).fetchone()

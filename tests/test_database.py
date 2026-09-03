@@ -4,6 +4,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from models.database import (
     Database,
@@ -577,6 +578,12 @@ class DatabaseTestCase(unittest.TestCase):
         self.assertIsNone(epochs[2]["last_observed_momentum_height"])
         self.assertEqual(epochs[3]["last_seen_at"], "2026-08-23T13:01:00+00:00")
         self.assertEqual(epochs[3]["last_observed_momentum_height"], 200)
+
+    def test_epoch_observation_repair_is_not_repeated_at_current_schema(self):
+        with patch("models.database._repair_epoch_observation_metadata") as repair:
+            Database(self.database.path)
+
+        repair.assert_not_called()
 
     def test_history_pages_include_totals_and_offsets(self):
         self.record(
