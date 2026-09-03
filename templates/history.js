@@ -109,8 +109,6 @@ function renderEpochs(items) {
       '<div class="history-card-grid">' +
       '<div><span>Started</span><strong>' + start + estimate + '</strong></div>' +
       '<div><span>First seen</span><strong>' + formatDate(epoch.first_seen_at) + '</strong></div>' +
-      '<div><span>ZNN reward</span><strong>' + formatNumber(epoch.znn_reward) + '</strong></div>' +
-      '<div><span>QSR reward</span><strong>' + formatNumber(epoch.qsr_reward) + '</strong></div>' +
       '<div><span>Momentum height</span><strong>' + formatNumber(epoch.last_observed_momentum_height) + '</strong></div>' +
       '<div><span>Announcement</span><strong>' + formatDate(epoch.announcement_at) + '</strong></div>' +
       '</div>' +
