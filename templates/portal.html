@@ -1,45 +1,8 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#151515">
-  <title>Control panel · Zenon Pillar Tracker</title>
-  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
-  <link rel="icon" type="image/png" sizes="48x48" href="/static/icons/favicon-48.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/favicon-180.png">
-  <link rel="icon" href="/static/icons/favicon.ico">
-  <link rel="manifest" href="/static/icons/site.webmanifest">
-  <link rel="stylesheet" href="/static/vendor/font-awesome/7.3.1/css/all.min.css">
-  <link rel="stylesheet" href="/styles.css">
-</head>
-<body>
-  <header class="site-header portal-header">
-    <div class="header-inner">
-      <div><p class="eyebrow">Secure workspace</p><h1>Zenon Pillar Tracker</h1></div>
-      <div class="header-actions">
-        <div id="user-menu" class="user-menu">
-          <button id="user-menu-toggle" class="user-menu-toggle" type="button" aria-expanded="false" aria-haspopup="menu" aria-controls="user-menu-dropdown">
-            <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
-            <span id="user-name" class="user-name"></span>
-            <i class="fa-solid fa-chevron-down user-menu-chevron" aria-hidden="true"></i>
-          </button>
-          <div id="user-menu-dropdown" class="user-menu-dropdown" role="menu" hidden>
-            <a id="account-menu-link" class="user-menu-link" href="#account-modal" role="menuitem" hidden>
-              <i class="fa-solid fa-user-gear" aria-hidden="true"></i>
-              <span>My account</span>
-            </a>
-            <button id="logout" class="user-menu-link" type="button" role="menuitem">
-              <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
-              <span>Log out</span>
-            </button>
-          </div>
-        </div>
-        <a class="ghost-button header-action-link" href="/"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Dashboard</span></a>
-      </div>
-    </div>
-  </header>
+{% extends "base.html" %}
+
+{% block title %}Control panel · Zenon Pillar Tracker{% endblock %}
+
+{% block content %}
   <div id="account-modal" class="modal-backdrop" hidden>
     <section id="account-settings-section" class="section-block modal-dialog" role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
       <div class="section-heading modal-heading">
@@ -82,7 +45,7 @@
           </div>
         </fieldset>
         <label class="checkbox-label"><input name="active" type="checkbox" checked> Active</label>
-        <div class="form-actions full-width"><button class="primary-button" type="submit">Save subscription</button><button id="cancel-edit" class="ghost-button" type="button" hidden>Cancel edit</button></div>
+        <div class="form-actions full-width"><button class="primary-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save subscription</button><button id="cancel-edit" class="ghost-button" type="button" hidden>Cancel edit</button></div>
       </form>
       <div class="table-wrap"><div id="subscription-list" class="subscription-table subscription-table-own" aria-live="polite"></div></div>
     </section>
@@ -113,7 +76,7 @@
 
         <div class="admin-content">
       <section id="runtime-settings" class="section-block">
-        <div class="section-heading"><div><p class="eyebrow">Administrator access</p><h2>Runtime settings</h2></div><button id="save-settings" class="primary-button" type="submit" form="settings-form">Save runtime settings</button></div>
+        <div class="section-heading"><div><p class="eyebrow">Administrator access</p><h2>Runtime settings</h2></div><button id="save-settings" class="primary-button" type="submit" form="settings-form"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save runtime settings</button></div>
         <form id="settings-form" class="settings-form" data-settings-form data-settings-label="Runtime settings">
           <section class="settings-category">
             <div class="settings-category-heading"><p class="eyebrow">Node and collector</p><h3>Collection</h3></div>
@@ -245,7 +208,7 @@
         </form>
         <p class="muted settings-live-note">Collector settings are applied automatically within one minute.</p>
         <div class="settings-form-actions">
-          <button class="primary-button" type="submit" form="settings-form">Save runtime settings</button>
+          <button class="primary-button" type="submit" form="settings-form"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save runtime settings</button>
         </div>
       </section>
 
@@ -273,7 +236,7 @@
             </div>
           </fieldset>
           <label class="checkbox-label"><input name="active" type="checkbox" checked> Active</label>
-          <div class="form-actions full-width"><button class="primary-button" type="submit">Save subscription</button><button id="cancel-subscription" class="ghost-button" type="button" hidden>Cancel edit</button></div>
+          <div class="form-actions full-width"><button class="primary-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save subscription</button><button id="cancel-subscription" class="ghost-button" type="button" hidden>Cancel edit</button></div>
         </form>
         <div class="table-wrap"><div id="admin-subscription-list" class="subscription-table subscription-table-admin" aria-live="polite"></div></div>
       </section>
@@ -287,7 +250,7 @@
           <label>Password<input name="password" type="password" minlength="12" autocomplete="new-password" placeholder="12+ characters"></label>
           <label>Role<select name="role"><option value="user">User</option><option value="admin">Admin</option></select></label>
           <label class="checkbox-label"><input name="active" type="checkbox" checked> Active</label>
-          <div class="form-actions full-width"><button class="primary-button" type="submit">Save user</button><button id="cancel-user" class="ghost-button" type="button" hidden>Cancel edit</button></div>
+          <div class="form-actions full-width"><button class="primary-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save user</button><button id="cancel-user" class="ghost-button" type="button" hidden>Cancel edit</button></div>
         </form>
         <div class="table-wrap"><table><thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Subscriptions</th><th>Last login</th><th></th></tr></thead><tbody id="user-list"></tbody></table></div>
       </section>
@@ -304,7 +267,7 @@
           </div>
         </form>
         <div class="settings-form-actions">
-          <button class="primary-button" type="submit" form="session-settings-form">Save session settings</button>
+          <button class="primary-button" type="submit" form="session-settings-form"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save session settings</button>
         </div>
       </section>
 
@@ -340,7 +303,7 @@
           </div>
         </form>
         <div class="settings-form-actions">
-          <button class="primary-button" type="submit" form="logging-settings-form">Save log settings</button>
+          <button class="primary-button" type="submit" form="logging-settings-form"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save log settings</button>
         </div>
       </section>
 
@@ -418,6 +381,8 @@
     </section>
   </div>
   <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+{% endblock %}
+
+{% block scripts %}
   <script src="/portal.js" defer></script>
-</body>
-</html>
+{% endblock %}

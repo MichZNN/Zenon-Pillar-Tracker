@@ -771,7 +771,7 @@ async function loadLogs() {
     const payload = await getJson(`/api/admin/logs?limit=${LOG_FETCH_LIMIT}&lines=${LOG_FETCH_LIMIT}`);
     renderCollectorDiagnostics(payload.collector);
     const file = payload.file || {};
-    $("#log-file-info").textContent = `${file.path || "data_store/pillar_tracker.log"} · ${file.exists ? (file.size_bytes || 0) + " bytes" : "not created"} · latest ${LOG_FETCH_LIMIT}`;
+    $("#log-file-info").textContent = `${file.path || "data_store/pillar_tracker.log"} · ${file.exists ? (file.size_bytes || 0) + " bytes" : "not created"}`;
     replaceLogSource("application", parseApplicationLogs(file.lines));
     replaceLogSource("audit", parseAuditLogs(payload.audit));
   } catch (error) {

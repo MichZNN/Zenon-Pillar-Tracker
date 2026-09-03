@@ -1,30 +1,10 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#151515">
-  <title>Epoch history · Zenon Pillar Tracker</title>
-  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
-  <link rel="icon" type="image/png" sizes="48x48" href="/static/icons/favicon-48.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/favicon-180.png">
-  <link rel="icon" href="/static/icons/favicon.ico">
-  <link rel="manifest" href="/static/icons/site.webmanifest">
-  <link rel="stylesheet" href="/static/vendor/font-awesome/7.3.1/css/all.min.css">
-  <link rel="stylesheet" href="/styles.css">
-</head>
-<body data-history-kind="epochs">
-  <header class="site-header history-header">
-    <div class="header-inner">
-      <div>
-        <p class="eyebrow">On-chain observations</p>
-        <h1>Epoch history</h1>
-      </div>
-      <a class="ghost-button header-action-link" href="/"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Dashboard</span></a>
-    </div>
-  </header>
+{% extends "base.html" %}
 
+{% block title %}Epoch history · Zenon Pillar Tracker{% endblock %}
+
+{% block body_attributes %} data-history-kind="epochs"{% endblock %}
+
+{% block content %}
   <main class="page-shell history-page">
     <section class="section-block">
       <div class="section-heading">
@@ -45,10 +25,8 @@
     </section>
   </main>
 
-  <footer class="site-footer">
-    <span>Zenon Pillar Tracker</span>
-    <span>Epoch history</span>
-  </footer>
+{% endblock %}
+
+{% block scripts %}
   <script src="/history.js" defer></script>
-</body>
-</html>
+{% endblock %}

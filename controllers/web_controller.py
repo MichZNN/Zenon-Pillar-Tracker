@@ -15,6 +15,8 @@ from time import monotonic
 from typing import Any, Mapping
 from urllib.parse import parse_qs, unquote, urlparse
 
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
 from services.auth_service import (
     hash_password,
     password_is_acceptable,
@@ -37,6 +39,57 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 logger = logging.getLogger(__name__)
+
+PAGE_TEMPLATE_CONTEXT: dict[str, dict[str, Any]] = {
+    "index.html": {
+        "show_header": True,
+        "header_variant": "dashboard",
+        "show_footer": True,
+        "footer_label": "—",
+        "footer_value_id": "footer-updated",
+    },
+    "login.html": {
+        "show_header": False,
+        "show_footer": True,
+        "footer_label": "Login",
+    },
+    "setup.html": {
+        "show_header": False,
+        "show_footer": True,
+        "footer_label": "Initial setup",
+    },
+    "portal.html": {
+        "show_header": True,
+        "header_variant": "portal",
+        "show_footer": True,
+        "footer_label": "Control panel",
+    },
+    "epochs.html": {
+        "show_header": True,
+        "header_variant": "history",
+        "header_eyebrow": "On-chain observations",
+        "header_title": "Epoch history",
+        "show_footer": True,
+        "footer_label": "Epoch history",
+    },
+    "events.html": {
+        "show_header": True,
+        "header_variant": "history",
+        "header_eyebrow": "Changes",
+        "header_title": "Event history",
+        "show_footer": True,
+        "footer_label": "Event history",
+    },
+    "pillars.html": {
+        "show_header": True,
+        "header_variant": "history",
+        "header_eyebrow": "Live network overview",
+        "header_title": "Pillars",
+        "show_footer": True,
+        "footer_label": "Pillar directory",
+        "footer_value_id": "footer-updated",
+    },
+}
 
 SESSION_COOKIE = "zenon_tracker_session"
 CSRF_COOKIE = "zenon_tracker_csrf"
@@ -114,6 +167,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return self.server.static_dir  # type: ignore[attr-defined]
 
     @property
+    def template_environment(self) -> Environment:
+        return self.server.template_environment  # type: ignore[attr-defined]
+
+    @property
     def api_rate_limiter(self) -> ApiRateLimiter:
         return self.server.api_rate_limiter  # type: ignore[attr-defined]
 
@@ -160,6 +217,24 @@ class DashboardHandler(BaseHTTPRequestHandler):
         try:
             self.send_response(200)
             self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(body)
+        except self.client_disconnect_errors:
+            return
+
+    def _send_template(
+        self,
+        template_name: str,
+        context: Mapping[str, Any] | None = None,
+    ) -> None:
+        template = self.template_environment.get_template(template_name)
+        body = template.render(**dict(context or {})).encode("utf-8")
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
@@ -943,7 +1018,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if candidate != root and root not in candidate.parents:
                 self._send_json({"error": "Forbidden"}, 403)
                 return
-            self._send_file(candidate)
+            if candidate.suffix.casefold() == ".html":
+                self._send_template(
+                    relative,
+                    PAGE_TEMPLATE_CONTEXT.get(relative, {}),
+                )
+            else:
+                self._send_file(candidate)
         except self.client_disconnect_errors:
             return
         except (ValueError, TypeError) as exc:
@@ -1026,6 +1107,11 @@ class DashboardServer(ThreadingHTTPServer):
         self.static_dir = static_dir
         self.api_rate_limiter = api_rate_limiter
         self.runtime_config = dict(runtime_config or {})
+        self.template_environment = Environment(
+            loader=FileSystemLoader(str(self.templates_dir)),
+            autoescape=select_autoescape(["html", "xml"]),
+            auto_reload=True,
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1073,8 +1159,15 @@ def main(argv: list[str] | None = None) -> int:
     templates_dir = Path(args.templates_dir)
     if not templates_dir.is_absolute():
         templates_dir = BASE_DIR / templates_dir
-    if not (templates_dir / "index.html").exists():
-        raise FileNotFoundError(f"Dashboard templates not found in {templates_dir}")
+    required_templates = ("index.html", "base.html", "header.html", "footer.html")
+    missing_templates = [
+        name for name in required_templates if not (templates_dir / name).exists()
+    ]
+    if missing_templates:
+        raise FileNotFoundError(
+            f"Dashboard templates missing from {templates_dir}: "
+            + ", ".join(missing_templates)
+        )
     if not STATIC_DIR.exists():
         raise FileNotFoundError(f"Static asset directory not found in {STATIC_DIR}")
 

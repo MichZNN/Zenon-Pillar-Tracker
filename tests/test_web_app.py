@@ -3,28 +3,67 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from threading import Thread
+from urllib.request import urlopen
 from unittest.mock import patch
 
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
 from models.database import Database
-from controllers.web_controller import DashboardHandler
+from controllers.web_controller import (
+    ApiRateLimiter,
+    DashboardHandler,
+    DashboardServer,
+    PAGE_TEMPLATE_CONTEXT,
+)
 
 
 class WebAppTestCase(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.database = Database(Path(self.temp_dir.name) / "tracker.sqlite3")
+        self.templates_dir = Path(__file__).parents[1] / "templates"
+        self.template_environment = Environment(
+            loader=FileSystemLoader(str(self.templates_dir)),
+            autoescape=select_autoescape(["html", "xml"]),
+        )
 
     def tearDown(self):
         self.temp_dir.cleanup()
 
+    def render_page(self, page_name: str) -> str:
+        return self.template_environment.get_template(page_name).render(
+            **PAGE_TEMPLATE_CONTEXT[page_name]
+        )
+
     def test_dashboard_assets_exist(self):
-        templates_dir = Path(__file__).parents[1] / "templates"
-        index = (templates_dir / "index.html").read_text()
+        templates_dir = self.templates_dir
+        base = (templates_dir / "base.html").read_text()
+        index = self.render_page("index.html")
         self.assertIn("Zenon Pillar Tracker", index)
         self.assertIn('/static/icons/favicon-180.png', index)
         self.assertIn('/static/icons/favicon-32.png', index)
         self.assertIn('/static/icons/favicon-16.png', index)
         self.assertIn('/static/icons/site.webmanifest', index)
+        for favicon in (
+            '/static/icons/favicon-16.png',
+            '/static/icons/favicon-32.png',
+            '/static/icons/favicon-48.png',
+            '/static/icons/favicon-180.png',
+            '/static/icons/favicon.ico',
+            '/static/icons/site.webmanifest',
+        ):
+            self.assertEqual(base.count(favicon), 1)
+        self.assertIn('{% include "header.html" %}', base)
+        self.assertIn('{% include "footer.html" %}', base)
+        self.assertIn('fa-brands fa-github', index)
+        self.assertIn('fa-brands fa-telegram', index)
+        styles = (templates_dir / "styles.css").read_text().lower()
+        self.assertIn(".site-footer-link:first-child:hover", styles)
+        self.assertIn(".site-footer-link:last-child:hover", styles)
+        self.assertIn("color: #0fbf3e;", styles)
+        self.assertIn("color: #0088cc;", styles)
+        self.assertIn('fa-solid fa-floppy-disk', self.render_page("portal.html"))
         static_dir = templates_dir.parents[0] / "static" / "icons"
         for filename in (
             "favicon-180.png",
@@ -69,22 +108,28 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn("/api/performance?days=30", app)
         self.assertIn("&performance=0", app)
         self.assertNotIn('healthy: "Node online"', app)
-        index_content = (templates_dir / "index.html").read_text()
+        index_content = index
         self.assertIn('class="site-header dashboard-header"', index_content)
         self.assertIn('href="/portal"', index_content)
         self.assertIn(">Login<", index_content)
         self.assertNotIn('href="/account"', index_content)
         self.assertNotIn('href="/admin"', index_content)
         for page_name in ("login.html", "setup.html", "portal.html"):
-            page = (templates_dir / page_name).read_text()
+            page = self.render_page(page_name)
             self.assertIn('/static/icons/favicon-32.png', page)
             self.assertIn('/static/icons/site.webmanifest', page)
         for page_name in ("epochs.html", "events.html", "pillars.html"):
-            page = (templates_dir / page_name).read_text()
+            page = self.render_page(page_name)
             self.assertIn('/static/icons/favicon-32.png', page)
             self.assertIn('/static/icons/site.webmanifest', page)
-        self.assertNotIn('class="page-shell narrow-shell history-page"', (templates_dir / "epochs.html").read_text())
-        self.assertNotIn('class="page-shell narrow-shell history-page"', (templates_dir / "events.html").read_text())
+        for page_name in (
+            "index.html", "login.html", "setup.html", "portal.html",
+            "epochs.html", "events.html", "pillars.html",
+        ):
+            raw_page = (templates_dir / page_name).read_text()
+            self.assertNotIn('/static/icons/favicon-', raw_page)
+        self.assertNotIn('class="page-shell narrow-shell history-page"', self.render_page("epochs.html"))
+        self.assertNotIn('class="page-shell narrow-shell history-page"', self.render_page("events.html"))
         self.assertIn('href="/epochs"', index_content)
         self.assertIn('href="/events"', index_content)
         self.assertIn('fa-circle-arrow-right', index_content)
@@ -92,8 +137,8 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn('id="pillars-link" class="section-link section-icon-link"', index_content)
         self.assertNotIn('>View all <', index_content)
         self.assertIn('" pillar" + (total === 1 ? "" : "s")', app)
-        self.assertIn('data-history-kind="epochs"', (templates_dir / "epochs.html").read_text())
-        self.assertIn('data-history-kind="events"', (templates_dir / "events.html").read_text())
+        self.assertIn('data-history-kind="epochs"', self.render_page("epochs.html"))
+        self.assertIn('data-history-kind="events"', self.render_page("events.html"))
         epochs_js = (templates_dir / "history.js").read_text()
         self.assertNotIn("ZNN reward", epochs_js)
         self.assertNotIn("QSR reward", epochs_js)
@@ -103,10 +148,11 @@ class WebAppTestCase(unittest.TestCase):
         self.assertNotIn("Transition evidence", epochs_js)
         self.assertNotIn("Reward announcement", epochs_js)
         self.assertIn("Epoch transition", epochs_js)
-        self.assertIn("Epoch timeline", (templates_dir / "epochs.html").read_text())
-        self.assertNotIn("The transition time is", (templates_dir / "epochs.html").read_text())
-        self.assertIn("fa-circle-arrow-left", (templates_dir / "epochs.html").read_text())
-        pillars_page = (templates_dir / "pillars.html").read_text()
+        epochs_page = self.render_page("epochs.html")
+        self.assertIn("Epoch timeline", epochs_page)
+        self.assertNotIn("The transition time is", epochs_page)
+        self.assertIn("fa-circle-arrow-left", epochs_page)
+        pillars_page = self.render_page("pillars.html")
         self.assertNotIn("Use the status links", pillars_page)
         self.assertIn("Pillar directory", pillars_page)
         self.assertIn('href="/pillars?status=active"', pillars_page)
@@ -116,10 +162,10 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn("pagination", history_js)
         pillars_js = (templates_dir / "pillars.js").read_text()
         self.assertIn("history.pushState", pillars_js)
-        setup = (templates_dir / "setup.html").read_text()
+        setup = self.render_page("setup.html")
         self.assertIn('id="setup-form"', setup)
         self.assertIn("/api/setup/admin", (templates_dir / "setup.js").read_text())
-        portal = (templates_dir / "portal.html").read_text()
+        portal = self.render_page("portal.html")
         self.assertIn('class="site-header portal-header"', portal)
         self.assertIn('id="user-menu-toggle"', portal)
         self.assertIn('id="user-menu-dropdown"', portal)
@@ -182,7 +228,7 @@ class WebAppTestCase(unittest.TestCase):
         self.assertNotIn('id="settings-json"', portal)
         self.assertNotIn("Settings are stored in SQLite", portal)
         portal_js = (templates_dir / "portal.js").read_text()
-        login = (templates_dir / "login.html").read_text()
+        login = self.render_page("login.html")
         self.assertIn('placeholder="Username"', login)
         self.assertIn('placeholder="Password"', login)
         self.assertIn('id="toggle-login-password"', login)
@@ -209,6 +255,8 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn("LOG_REFRESH_INTERVAL_MS = 10000", portal_js)
         self.assertIn("window.setInterval", portal_js)
         self.assertIn("parseAuditLogs", portal_js)
+        self.assertIn("latest entries", portal_js)
+        self.assertNotIn("latest ${LOG_FETCH_LIMIT}", portal_js)
         self.assertIn("last_error", portal_js)
         self.assertIn("renderCollectorDiagnostics", portal_js)
         self.assertIn("settings-live-note", portal)
@@ -258,6 +306,42 @@ class WebAppTestCase(unittest.TestCase):
             index_content.index('id="event-list"'),
             index_content.index('id="pillar-list"'),
         )
+
+    def test_web_server_renders_html_templates_and_keeps_assets_static(self):
+        try:
+            server = DashboardServer(
+                ("127.0.0.1", 0),
+                DashboardHandler,
+                self.database,
+                self.templates_dir,
+                self.templates_dir.parent / "static",
+                ApiRateLimiter(max_requests=0),
+                {},
+            )
+        except PermissionError as exc:
+            self.skipTest(f"Local socket creation is unavailable: {exc}")
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            host, port = server.server_address
+            with urlopen(f"http://{host}:{port}/epochs", timeout=5) as response:
+                rendered = response.read().decode("utf-8")
+                self.assertEqual(response.headers["Content-Type"], "text/html; charset=utf-8")
+                self.assertIn("Epoch history", rendered)
+                self.assertIn('/static/icons/favicon-48.png', rendered)
+                self.assertIn('fa-brands fa-github', rendered)
+                self.assertIn('fa-brands fa-telegram', rendered)
+            with urlopen(f"http://{host}:{port}/app.js", timeout=5) as response:
+                javascript_content_type = response.headers["Content-Type"].split(";", 1)[0]
+                self.assertIn(
+                    javascript_content_type,
+                    {"application/javascript", "text/javascript"},
+                )
+                self.assertIn("/api/overview", response.read().decode("utf-8"))
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
 
     def test_overview_contract_is_json_serializable(self):
         overview = self.database.get_overview()
