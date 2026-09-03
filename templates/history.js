@@ -43,12 +43,6 @@ function formatNumber(value) {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
-function humanizeSource(value) {
-  return String(value || "")
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
-}
-
 function eventLabel(type) {
   return eventLabels[type] || type || "Event";
 }
@@ -104,26 +98,12 @@ function renderEpochs(items) {
     const transition = epoch.epoch_start_at
       ? formatDate(epoch.epoch_start_at)
       : "Not recorded";
-    const transitionEvidence = !epoch.epoch_start_at
-      ? "No boundary observed"
-      : epoch.epoch_start_inferred
-        ? "Estimated from schedule"
-        : "Observed on-chain";
-    const announcement = epoch.announcement_at
-      ? formatDate(epoch.announcement_at)
-      : "Not recorded";
-    const announcementSource = epoch.announcement_at
-      ? humanizeSource(epoch.announcement_source) || "Recorded"
-      : "Not recorded";
     return '<article class="history-card">' +
       '<div class="history-card-heading">' +
       '<strong>Epoch ' + escapeHtml(epoch.epoch) + '</strong>' +
       '</div>' +
       '<div class="history-card-grid">' +
       '<div><span>Epoch transition</span><strong>' + escapeHtml(transition) + '</strong></div>' +
-      '<div><span>Transition evidence</span><strong>' + escapeHtml(transitionEvidence) + '</strong></div>' +
-      '<div><span>Reward announcement</span><strong>' + escapeHtml(announcement) + '</strong></div>' +
-      '<div><span>Announcement source</span><strong>' + escapeHtml(announcementSource) + '</strong></div>' +
       '</div>' +
       '</article>';
   }).join("");
