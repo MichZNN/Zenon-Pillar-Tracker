@@ -43,6 +43,12 @@ function formatNumber(value) {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
+function humanizeSource(value) {
+  return String(value || "")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
 function eventLabel(type) {
   return eventLabels[type] || type || "Event";
 }
@@ -95,22 +101,29 @@ function renderEpochs(items) {
     return;
   }
   target.innerHTML = items.map((epoch) => {
-    const start = epoch.epoch_start_at
+    const transition = epoch.epoch_start_at
       ? formatDate(epoch.epoch_start_at)
-      : "Not available";
-    const estimate = epoch.epoch_start_inferred
-      ? '<span class="epoch-estimated">Estimated</span>'
-      : "";
+      : "Not recorded";
+    const transitionEvidence = !epoch.epoch_start_at
+      ? "No boundary observed"
+      : epoch.epoch_start_inferred
+        ? "Estimated from schedule"
+        : "Observed on-chain";
+    const announcement = epoch.announcement_at
+      ? formatDate(epoch.announcement_at)
+      : "Not recorded";
+    const announcementSource = epoch.announcement_at
+      ? humanizeSource(epoch.announcement_source) || "Recorded"
+      : "Not recorded";
     return '<article class="history-card">' +
       '<div class="history-card-heading">' +
       '<strong>Epoch ' + escapeHtml(epoch.epoch) + '</strong>' +
-      '<span class="event-time">Last seen ' + formatDate(epoch.last_seen_at) + '</span>' +
       '</div>' +
       '<div class="history-card-grid">' +
-      '<div><span>Started</span><strong>' + start + estimate + '</strong></div>' +
-      '<div><span>First seen</span><strong>' + formatDate(epoch.first_seen_at) + '</strong></div>' +
-      '<div><span>Momentum height</span><strong>' + formatNumber(epoch.last_observed_momentum_height) + '</strong></div>' +
-      '<div><span>Announcement</span><strong>' + formatDate(epoch.announcement_at) + '</strong></div>' +
+      '<div><span>Epoch transition</span><strong>' + escapeHtml(transition) + '</strong></div>' +
+      '<div><span>Transition evidence</span><strong>' + escapeHtml(transitionEvidence) + '</strong></div>' +
+      '<div><span>Reward announcement</span><strong>' + escapeHtml(announcement) + '</strong></div>' +
+      '<div><span>Announcement source</span><strong>' + escapeHtml(announcementSource) + '</strong></div>' +
       '</div>' +
       '</article>';
   }).join("");
