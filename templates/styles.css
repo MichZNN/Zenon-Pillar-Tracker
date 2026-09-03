@@ -615,7 +615,6 @@ body.modal-open { overflow: hidden; }
 }
 .site-nav .login-link:hover { background: rgba(111, 243, 77, .09); border-color: rgba(111, 243, 77, .58); color: var(--text); }
 .site-nav .login-link i { color: var(--accent); font-size: .78rem; }
-.narrow-shell { max-width: 900px; }
 .admin-shell { max-width: 1280px; }
 .admin-layout { align-items: start; display: grid; gap: 18px; }
 .admin-menu {
@@ -971,6 +970,10 @@ body.modal-open { overflow: hidden; }
   .portal-header .user-menu { justify-self: start; min-width: 0; width: min(240px, 100%); }
   .portal-header .user-menu-toggle { justify-content: flex-start; max-width: none; width: 100%; }
   .portal-header .header-action-link { min-width: 0; }
+  .auth-shell {
+    min-height: 100svh;
+    padding: 20px 20px 60px;
+  }
   .log-actions .muted { display: none; }
   .logs-modal-dialog { height: calc(100vh - 40px); max-height: calc(100vh - 40px); }
   .logs-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
