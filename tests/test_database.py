@@ -562,6 +562,10 @@ class DatabaseTestCase(unittest.TestCase):
                 "last_observed_momentum_height = ?",
                 ("2099-01-01T00:00:00+00:00", 999),
             )
+            connection.execute(
+                "UPDATE schema_meta SET value = '8' "
+                "WHERE key = 'schema_version'"
+            )
 
         repaired_database = Database(database_path)
         epochs = {

@@ -377,6 +377,14 @@ def initialize_database(database_path: str | Path) -> Path:
     connection = sqlite3.connect(path, timeout=30)
     try:
         connection.executescript(SCHEMA)
+        schema_version_row = connection.execute(
+            "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+        ).fetchone()
+        previous_schema_version = (
+            str(schema_version_row[0])
+            if schema_version_row is not None
+            else None
+        )
         epoch_columns = {
             row[1]
             for row in connection.execute("PRAGMA table_info(epochs)").fetchall()
@@ -414,7 +422,8 @@ def initialize_database(database_path: str | Path) -> Path:
                 "ALTER TABLE pillar_subscriptions ADD COLUMN "
                 "discord_webhook TEXT NOT NULL DEFAULT ''"
             )
-        _repair_epoch_observation_metadata(connection)
+        if previous_schema_version != SCHEMA_VERSION:
+            _repair_epoch_observation_metadata(connection)
         connection.execute(
             """
             INSERT INTO schema_meta(key, value) VALUES ('schema_version', ?)
