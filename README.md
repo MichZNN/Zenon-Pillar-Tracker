@@ -252,8 +252,10 @@ The dashboard shows:
 - the current epoch and its progress;
 - the latest status of every known pillar;
 - live duration based on the latest continuous status transition;
-- epoch history;
-- status and availability events;
+- a preview of epoch history and status/availability events, with links to
+  paginated history pages at `/epochs` and `/events`;
+- a full pillar directory at `/pillars`, where `?status=active` or
+  `?status=inactive` creates a shareable filtered view;
 - node health and recent poll runs;
 - a responsive mobile-first layout.
 
@@ -265,6 +267,9 @@ Available API endpoints:
 - `GET /api/performance?days=30`
 - `GET /api/epochs`
 - `GET /api/events`
+- `GET /api/epochs?limit=20&offset=0&paged=1` (paginated response)
+- `GET /api/events?limit=25&offset=0&paged=1` (paginated response; accepts
+  `type=`)
 - `GET /api/health`
 - `GET /api/auth/me`
 - `GET /api/subscriptions` (authenticated user's records)
