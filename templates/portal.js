@@ -159,14 +159,56 @@ function eventTooltip(item) {
   return displayEvents(item.events) || "No events selected";
 }
 
-function subscriptionInfo(summary, tooltip, className = "") {
-  return `<span class="table-info ${className}" tabindex="0" title="${escapeHtml(tooltip)}" data-tooltip="${escapeHtml(tooltip)}">${escapeHtml(summary)}<i class="fa-solid fa-circle-info" aria-hidden="true"></i></span>`;
+function subscriptionInfo(summary, tooltip, className = "", label = "") {
+  const dataLabel = label === "Events"
+    ? 'data-label="Events"'
+    : `data-label="${escapeHtml(label)}"`;
+  return `<span class="table-info subscription-summary-item ${className}" tabindex="0" title="${escapeHtml(tooltip)}" data-tooltip="${escapeHtml(tooltip)}" ${dataLabel}><span class="subscription-summary-label">${escapeHtml(label)}</span><span class="subscription-summary-value">${escapeHtml(summary)}</span><i class="fa-solid fa-circle-info" aria-hidden="true"></i></span>`;
 }
 
 function subscriptionDestinationCell(item) {
   const label = item.label || destinationTypes(item);
   const types = item.label ? destinationTypes(item) : "";
   return `<div class="table-info subscription-destination" tabindex="0" title="${escapeHtml(destinationTooltip(item))}" data-tooltip="${escapeHtml(destinationTooltip(item))}"><strong>${escapeHtml(label)}</strong>${types ? `<small>${escapeHtml(types)}</small>` : ""}</div>`;
+}
+
+function subscriptionDetails(item) {
+  const addresses = Array.isArray(item.pillar_owner_addresses)
+    ? item.pillar_owner_addresses.filter(Boolean) : [];
+  const events = Array.isArray(item.events) ? item.events : [];
+  const addressMarkup = addresses.length
+    ? `<ul class="subscription-detail-list">${addresses.map((address) => `<li>${escapeHtml(address)}</li>`).join("")}</ul>`
+    : '<span class="subscription-detail-value">All pillars</span>';
+  const eventMarkup = events.length
+    ? `<ul class="subscription-detail-list">${events.map((event) => `<li>${escapeHtml(EVENT_LABELS[event] || event)}</li>`).join("")}</ul>`
+    : '<span class="subscription-detail-value">No events selected</span>';
+  return '<details class="subscription-details">' +
+    '<summary>View details</summary>' +
+    '<div class="subscription-detail-grid">' +
+    '<div class="subscription-detail-block"><span class="subscription-detail-label">Destinations</span><span class="subscription-detail-value">' +
+    escapeHtml(destinationTooltip(item)) + '</span></div>' +
+    '<div class="subscription-detail-block"><span class="subscription-detail-label">Pillars</span>' +
+    addressMarkup + '</div>' +
+    '<div class="subscription-detail-block"><span class="subscription-detail-label">Events</span>' +
+    eventMarkup + '</div>' +
+    '</div></details>';
+}
+
+function subscriptionCard(item, editAttribute, owner = "") {
+  const status = item.active ? "active" : "inactive";
+  return '<article class="subscription-card">' +
+    '<div class="subscription-card-header"><div class="subscription-card-title">' +
+    subscriptionDestinationCell(item) + '</div><span class="status-badge ' + status + '">' +
+    (item.active ? "Active" : "Inactive") + '</span></div>' +
+    (owner ? '<div class="subscription-card-owner">Owner: ' + escapeHtml(owner) + '</div>' : '') +
+    '<div class="subscription-summary" aria-label="Subscription summary">' +
+    subscriptionInfo(pillarSummary(item), pillarTooltip(item), "", "Pillars") +
+    subscriptionInfo(eventSummary(item), eventTooltip(item), "event-count", "Events") +
+    '</div>' +
+    subscriptionDetails(item) +
+    '<div class="subscription-card-actions"><button class="ghost-button small-button" ' +
+    editAttribute + ' type="button">Edit</button></div>' +
+    '</article>';
 }
 
 function requireSubscriptionDestination(form) {
@@ -351,15 +393,11 @@ function resetOwnSubscriptionForm() {
 function renderOwnSubscriptions() {
   const target = $("#subscription-list");
   if (!ownSubscriptions.length) {
-    target.innerHTML = '<tr><td colspan="5" class="empty-state">No subscriptions yet.</td></tr>';
+    target.innerHTML = '<div class="empty-state">No subscriptions yet.</div>';
     return;
   }
   target.innerHTML = ownSubscriptions.map((item) =>
-    `<tr><td data-label="Destinations">${subscriptionDestinationCell(item)}</td>` +
-    `<td data-label="Pillars">${subscriptionInfo(pillarSummary(item), pillarTooltip(item))}</td>` +
-    `<td data-label="Events">${subscriptionInfo(eventSummary(item), eventTooltip(item), "event-count")}</td>` +
-    `<td data-label="Status"><span class="status-badge ${item.active ? "active" : "inactive"}">${item.active ? "Active" : "Inactive"}</span></td>` +
-    `<td data-label=""><button class="ghost-button small-button" data-edit-own="${item.id}" type="button">Edit</button></td></tr>`
+    subscriptionCard(item, `data-edit-own="${item.id}"`)
   ).join("");
   target.querySelectorAll("[data-edit-own]").forEach((button) => {
     button.addEventListener("click", () => editOwnSubscription(Number(button.dataset.editOwn)));
@@ -501,13 +539,12 @@ function resetAdminSubscriptionForm() {
 
 function renderAdminSubscriptions() {
   $("#admin-subscription-list").innerHTML = adminSubscriptions.length ? adminSubscriptions.map((item) =>
-    `<tr><td data-label="Owner">${escapeHtml(item.owner_username || "Unassigned")}</td>` +
-    `<td data-label="Destinations">${subscriptionDestinationCell(item)}</td>` +
-    `<td data-label="Pillars">${subscriptionInfo(pillarSummary(item), pillarTooltip(item))}</td>` +
-    `<td data-label="Events">${subscriptionInfo(eventSummary(item), eventTooltip(item), "event-count")}</td>` +
-    `<td data-label="Status"><span class="status-badge ${item.active ? "active" : "inactive"}">${item.active ? "Active" : "Inactive"}</span></td>` +
-    `<td data-label=""><button class="ghost-button small-button" data-edit-subscription="${item.id}" type="button">Edit</button></td></tr>`
-  ).join("") : '<tr><td colspan="6" class="empty-state">No subscriptions.</td></tr>';
+    subscriptionCard(
+      item,
+      `data-edit-subscription="${item.id}"`,
+      item.owner_username || "Unassigned",
+    )
+  ).join("") : '<div class="empty-state">No subscriptions.</div>';
   $("#admin-subscription-list").querySelectorAll("[data-edit-subscription]").forEach((button) => {
     button.addEventListener("click", () => editAdminSubscription(Number(button.dataset.editSubscription)));
   });

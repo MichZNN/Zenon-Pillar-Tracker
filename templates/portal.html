@@ -83,7 +83,7 @@
         <label class="checkbox-label"><input name="active" type="checkbox" checked> Active</label>
         <div class="form-actions full-width"><button class="primary-button" type="submit">Save subscription</button><button id="cancel-edit" class="ghost-button" type="button" hidden>Cancel edit</button></div>
       </form>
-      <div class="table-wrap"><table class="subscription-table subscription-table-own"><thead><tr><th>Destinations</th><th>Pillars</th><th>Events</th><th>Status</th><th></th></tr></thead><tbody id="subscription-list"></tbody></table></div>
+      <div class="table-wrap"><div id="subscription-list" class="subscription-table subscription-table-own" aria-live="polite"></div></div>
     </section>
 
     <div id="admin-area" hidden>
@@ -274,7 +274,7 @@
           <label class="checkbox-label"><input name="active" type="checkbox" checked> Active</label>
           <div class="form-actions full-width"><button class="primary-button" type="submit">Save subscription</button><button id="cancel-subscription" class="ghost-button" type="button" hidden>Cancel edit</button></div>
         </form>
-        <div class="table-wrap"><table class="subscription-table subscription-table-admin"><thead><tr><th>Owner</th><th>Destinations</th><th>Pillars</th><th>Events</th><th>Status</th><th></th></tr></thead><tbody id="admin-subscription-list"></tbody></table></div>
+        <div class="table-wrap"><div id="admin-subscription-list" class="subscription-table subscription-table-admin" aria-live="polite"></div></div>
       </section>
 
       <section id="user-settings" class="section-block">
