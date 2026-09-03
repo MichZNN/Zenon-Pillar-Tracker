@@ -3,8 +3,10 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from controllers.collector_controller import Collector
+from services.settings_service import DEFAULT_SETTINGS
 from utils.node_rpc_pool import NodeRpcPool
 
 
@@ -116,6 +118,25 @@ class CollectorTestCase(unittest.TestCase):
             ),
             "2026-08-25T13:23:50+00:00",
         )
+
+    def test_runtime_settings_reload_without_restarting_collector(self):
+        self.collector.database.set_settings(
+            {
+                **DEFAULT_SETTINGS,
+                "node_rpc_urls": ["http://fake-node"],
+                "missed_momentums_threshold": 7,
+            }
+        )
+
+        with patch("controllers.collector_controller.configure_logging"):
+            self.assertTrue(self.collector._reload_settings_if_changed())
+
+        self.assertEqual(self.collector.missed_momentums_threshold, 7)
+        self.assertEqual(
+            self.collector._settings_revision,
+            self.collector.database.get_settings_revision(),
+        )
+        self.assertFalse(self.collector._reload_settings_if_changed())
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ class DeploymentFilesTests(unittest.TestCase):
         self.assertIn("collector:", compose)
         self.assertIn("profiles:\n      - collector", compose)
         self.assertIn("${DATA_DIR:-./data_store}:/app/data_store", compose)
-        self.assertIn("./control:/run/zenon-control", compose)
+        self.assertNotIn("zenon-control", compose)
         self.assertIn("restart: unless-stopped", compose)
         self.assertIn("max-size: 10m", compose)
         self.assertIn("network_mode: host", compose)
@@ -48,16 +48,10 @@ class DeploymentFilesTests(unittest.TestCase):
         self.assertIn("docker compose logs --no-color --tail=200", script)
         self.assertIn("COMPOSE_PROFILES=%s", script)
 
-    def test_collector_control_bridge_is_allowlisted_and_installed_separately(self) -> None:
-        bridge = self.read("deploy/bin/collector_control_bridge.py")
-        self.assertIn('"status", "logs", "start", "stop", "restart"', bridge)
-        self.assertNotIn("shell=True", bridge)
-        unit = self.read("deploy/systemd/zenon-pillar-tracker-control.service")
-        self.assertIn("collector_control_bridge.py", unit)
-        self.assertIn("Group=10001", unit)
-        self.assertIn("NoNewPrivileges=true", unit)
-        dev_unit = self.read("deploy/systemd/zenon-pillar-tracker-dev-control.service")
-        self.assertIn("/srv/zenon-pillar-tracker-dev", dev_unit)
+    def test_deployment_does_not_upload_or_mount_a_collector_control_bridge(self) -> None:
+        workflow = self.read(".github/workflows/ci-cd.yml")
+        self.assertNotIn("collector_control_bridge.py", workflow)
+        self.assertNotIn("control.service", workflow)
 
     def test_production_deployment_routes_to_production(self) -> None:
         environment = self.read(".env.example")
@@ -92,8 +86,7 @@ class DeploymentFilesTests(unittest.TestCase):
         self.assertIn("linux/arm64", workflow)
         self.assertIn("refs/heads/main", workflow)
         self.assertIn("deploy/bin/deploy.sh", workflow)
-        self.assertIn("deploy/bin/collector_control_bridge.py", workflow)
-        self.assertIn("zenon-pillar-tracker-control.service", workflow)
+        self.assertNotIn("zenon-pillar-tracker-control.service", workflow)
         self.assertIn("COLLECTOR_PROFILES", workflow)
         self.assertIn("COMPOSE_PROFILES='$COLLECTOR_PROFILES'", workflow)
 

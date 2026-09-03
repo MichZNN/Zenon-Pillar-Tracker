@@ -168,42 +168,7 @@ class AdminFeatureTestCase(unittest.TestCase):
                 },
             )
 
-    def test_admin_collector_control_requires_csrf_and_audits_action(self):
-        class FakeControl:
-            def request(self, action):
-                self.action = action
-                return {
-                    "ok": True,
-                    "action": action,
-                    "collector": {"running": True, "state": "running"},
-                }
-
-        control = FakeControl()
-        handler = object.__new__(DashboardHandler)
-        handler.server = SimpleNamespace(
-            database=self.database,
-            collector_control=control,
-        )
-        handler._require_csrf = lambda user: True
-        audit = []
-        handler._audit = lambda *args, **kwargs: audit.append((args, kwargs))
-        response = {}
-        handler._send_json = lambda payload: response.update(payload)
-
-        handler._admin_collector_control(self.admin, {"action": "restart"})
-
-        self.assertEqual(control.action, "restart")
-        self.assertTrue(response["available"])
-        self.assertEqual(response["collector"]["state"], "running")
-        self.assertEqual(audit[0][0][1:3], ("collector_restart", "collector"))
-
-    def test_admin_collector_control_rejects_unknown_action(self):
-        handler = object.__new__(DashboardHandler)
-        handler._require_csrf = lambda user: True
-        with self.assertRaisesRegex(ValueError, "start, stop, or restart"):
-            handler._admin_collector_control(self.admin, {"action": "exec"})
-
-    def test_collector_diagnostics_are_available_without_control_bridge(self):
+    def test_collector_diagnostics_are_available_from_database(self):
         poll_id = self.database.begin_poll()
         self.database.finish_poll(
             poll_id,

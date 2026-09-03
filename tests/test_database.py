@@ -54,6 +54,25 @@ class DatabaseTestCase(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
+    def test_settings_revision_increments_for_each_committed_update(self):
+        self.assertEqual(self.database.get_settings_revision(), 0)
+
+        self.database.set_settings({"poll_interval_seconds": 60})
+        first_revision = self.database.get_settings_revision()
+        self.assertEqual(first_revision, 1)
+
+        self.database.set_settings({"poll_interval_seconds": 120})
+        self.assertEqual(self.database.get_settings_revision(), first_revision + 1)
+
+    def test_failed_settings_update_does_not_increment_revision(self):
+        self.database.set_settings({"poll_interval_seconds": 60})
+        revision = self.database.get_settings_revision()
+
+        with self.assertRaisesRegex(ValueError, "log_path"):
+            self.database.set_settings({"log_path": "/tmp/other.log"})
+
+        self.assertEqual(self.database.get_settings_revision(), revision)
+
     def test_existing_subscription_table_is_migrated_for_discord_webhooks(self):
         legacy_path = Path(self.temp_dir.name) / "legacy.sqlite3"
         connection = sqlite3.connect(legacy_path)
