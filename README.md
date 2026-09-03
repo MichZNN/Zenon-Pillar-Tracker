@@ -304,6 +304,11 @@ Application logs are always written to `data_store/pillar_tracker.log`, the
 writable persistent data mount. The path is fixed; administrators can adjust
 only log rotation size, backup count, and log level in the portal.
 
+The portal's Operations section shows a compact view of the latest log entries
+from the application, collector, and audit trail. It refreshes automatically
+every 10 seconds and has a manual refresh button. Open the full log view for
+source, level, and text filters; the newest entries are shown first.
+
 Telegram and Discord remain optional. The collector writes notification
 records to the SQLite outbox and attempts delivery through the configured
 channel wrapper. A failed notification must not invalidate a successful data
