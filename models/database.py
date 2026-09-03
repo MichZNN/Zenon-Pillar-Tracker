@@ -9,7 +9,7 @@ from threading import Lock
 from typing import Any, Iterable, Mapping
 
 
-SCHEMA_VERSION = "8"
+SCHEMA_VERSION = "9"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -306,6 +306,61 @@ def _string_values(value: Any) -> list[str]:
     ))
 
 
+def _repair_epoch_observation_metadata(
+    connection: sqlite3.Connection,
+) -> None:
+    """Repair epoch observation fields from records that carry real evidence.
+
+    Older versions updated every epoch in a fetched reward-history page with
+    the current poll's timestamp and momentum height.  Snapshots and epoch
+    events are the authoritative records for when an epoch was actually seen,
+    so use them to restore the metadata.  Epochs without either record are
+    reduced to their first recorded time and no momentum height because there
+    is no per-epoch observation to infer.
+    """
+    connection.execute(
+        """
+        UPDATE epochs
+        SET last_seen_at = COALESCE(
+                (
+                    SELECT snapshot.observed_at
+                    FROM pillar_snapshots AS snapshot
+                    WHERE snapshot.epoch = epochs.epoch
+                    ORDER BY snapshot.observed_at DESC, snapshot.id DESC
+                    LIMIT 1
+                ),
+                (
+                    SELECT event.observed_at
+                    FROM events AS event
+                    WHERE event.epoch = epochs.epoch
+                      AND event.event_type = 'epoch_available'
+                    ORDER BY event.observed_at DESC, event.id DESC
+                    LIMIT 1
+                ),
+                epochs.first_seen_at
+            ),
+            last_observed_momentum_height = COALESCE(
+                (
+                    SELECT snapshot.momentum_height
+                    FROM pillar_snapshots AS snapshot
+                    WHERE snapshot.epoch = epochs.epoch
+                    ORDER BY snapshot.observed_at DESC, snapshot.id DESC
+                    LIMIT 1
+                ),
+                (
+                    SELECT event.momentum_height
+                    FROM events AS event
+                    WHERE event.epoch = epochs.epoch
+                      AND event.event_type = 'epoch_available'
+                      AND event.momentum_height IS NOT NULL
+                    ORDER BY event.observed_at DESC, event.id DESC
+                    LIMIT 1
+                )
+            )
+        """
+    )
+
+
 class _ManagedConnection(sqlite3.Connection):
     """Close short-lived SQLite connections after their context exits."""
 
@@ -359,6 +414,7 @@ def initialize_database(database_path: str | Path) -> Path:
                 "ALTER TABLE pillar_subscriptions ADD COLUMN "
                 "discord_webhook TEXT NOT NULL DEFAULT ''"
             )
+        _repair_epoch_observation_metadata(connection)
         connection.execute(
             """
             INSERT INTO schema_meta(key, value) VALUES ('schema_version', ?)
@@ -1339,6 +1395,17 @@ class Database:
                 entry_epoch = _as_int(entry.get("epoch"))
                 if entry_epoch is None:
                     continue
+                entry_is_current = entry_epoch == epoch
+                entry_observed_at = str(
+                    observed_at
+                    if entry_is_current
+                    else (entry.get("observed_at") or observed_at)
+                )
+                entry_momentum_height = (
+                    momentum_height
+                    if entry_is_current
+                    else _as_int(entry.get("last_observed_momentum_height"))
+                )
                 connection.execute(
                     """
                     INSERT INTO epochs(
@@ -1354,9 +1421,15 @@ class Database:
                         znn_reward = excluded.znn_reward,
                         qsr_reward = excluded.qsr_reward,
                         source_address = excluded.source_address,
-                        last_seen_at = excluded.last_seen_at,
-                        last_observed_momentum_height =
-                            excluded.last_observed_momentum_height,
+                        last_seen_at = CASE
+                            WHEN ? = 1 THEN excluded.last_seen_at
+                            ELSE epochs.last_seen_at
+                        END,
+                        last_observed_momentum_height = CASE
+                            WHEN ? = 1
+                            THEN excluded.last_observed_momentum_height
+                            ELSE epochs.last_observed_momentum_height
+                        END,
                         source = excluded.source,
                         epoch_start_at = CASE
                             WHEN ? = 1 AND excluded.epoch_start_at IS NOT NULL
@@ -1393,9 +1466,9 @@ class Database:
                         _as_int(entry.get("znn_reward"), 0) or 0,
                         _as_int(entry.get("qsr_reward"), 0) or 0,
                         entry.get("source_address"),
-                        observed_at,
-                        observed_at,
-                        momentum_height,
+                        entry_observed_at,
+                        entry_observed_at,
+                        entry_momentum_height,
                         entry.get("source", "node"),
                         entry.get("epoch_start_at"),
                         1 if entry.get(
@@ -1405,6 +1478,8 @@ class Database:
                         entry.get("announcement_at"),
                         entry.get("announcement_source"),
                         1 if entry.get("announcement_inferred") else 0,
+                        1 if entry_is_current else 0,
+                        1 if entry_is_current else 0,
                         1 if entry.get("epoch_start_observed") else 0,
                         1 if entry.get("epoch_start_observed") else 0,
                     ),

@@ -499,6 +499,81 @@ class DatabaseTestCase(unittest.TestCase):
         epochs = self.database.get_epochs(limit=10)
         self.assertEqual([row["epoch"] for row in epochs], [3, 2, 1])
 
+    def test_epoch_history_refresh_preserves_per_epoch_observation_metadata(self):
+        pillar = {"z1alpha": make_pillar("Alpha", produced=1, expected=1)}
+        first_at = "2026-08-23T13:00:00+00:00"
+        second_at = "2026-08-23T13:01:00+00:00"
+
+        first_run = self.database.begin_poll()
+        self.database.record_observation(
+            poll_run_id=first_run,
+            observed_at=first_at,
+            momentum={"height": 100},
+            epoch_data={"epoch": 1, "znn_reward": 100, "qsr_reward": 10},
+            pillars=pillar,
+        )
+        self.database.finish_poll(first_run, "success")
+
+        second_run = self.database.begin_poll()
+        self.database.record_observation(
+            poll_run_id=second_run,
+            observed_at=second_at,
+            momentum={"height": 200},
+            epoch_data={"epoch": 2, "znn_reward": 200, "qsr_reward": 20},
+            epoch_history=[
+                {"epoch": 1, "znn_reward": 100, "qsr_reward": 10},
+                {"epoch": 2, "znn_reward": 200, "qsr_reward": 20},
+            ],
+            pillars=pillar,
+        )
+        self.database.finish_poll(second_run, "success")
+
+        epochs = {
+            row["epoch"]: row for row in self.database.get_epochs(limit=10)
+        }
+        self.assertEqual(epochs[1]["last_seen_at"], first_at)
+        self.assertEqual(epochs[1]["last_observed_momentum_height"], 100)
+        self.assertEqual(epochs[2]["last_seen_at"], second_at)
+        self.assertEqual(epochs[2]["last_observed_momentum_height"], 200)
+
+    def test_epoch_observation_metadata_repair_uses_snapshots(self):
+        self.record(
+            {"z1alpha": make_pillar("Alpha", produced=1, expected=1)},
+            epoch=1,
+        )
+        second_run = self.database.begin_poll()
+        self.database.record_observation(
+            poll_run_id=second_run,
+            observed_at="2026-08-23T13:01:00+00:00",
+            momentum={"height": 200},
+            epoch_data={"epoch": 3, "znn_reward": 300, "qsr_reward": 30},
+            epoch_history=[
+                {"epoch": 1, "znn_reward": 100, "qsr_reward": 10},
+                {"epoch": 2, "znn_reward": 200, "qsr_reward": 20},
+                {"epoch": 3, "znn_reward": 300, "qsr_reward": 30},
+            ],
+            pillars={"z1alpha": make_pillar("Alpha", produced=2, expected=2)},
+        )
+        self.database.finish_poll(second_run, "success")
+        database_path = self.database.path
+        with self.database._connect() as connection:
+            connection.execute(
+                "UPDATE epochs SET last_seen_at = ?, "
+                "last_observed_momentum_height = ?",
+                ("2099-01-01T00:00:00+00:00", 999),
+            )
+
+        repaired_database = Database(database_path)
+        epochs = {
+            row["epoch"]: row
+            for row in repaired_database.get_epochs(limit=10)
+        }
+        self.assertEqual(epochs[1]["last_observed_momentum_height"], 101)
+        self.assertEqual(epochs[2]["last_seen_at"], epochs[2]["first_seen_at"])
+        self.assertIsNone(epochs[2]["last_observed_momentum_height"])
+        self.assertEqual(epochs[3]["last_seen_at"], "2026-08-23T13:01:00+00:00")
+        self.assertEqual(epochs[3]["last_observed_momentum_height"], 200)
+
     def test_history_pages_include_totals_and_offsets(self):
         self.record(
             {"z1alpha": make_pillar("Alpha", produced=1, expected=1)},
