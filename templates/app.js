@@ -114,7 +114,9 @@ function renderOverview(payload) {
 }
 
 function renderPillars(payload) {
-  $("#pillar-count").textContent = formatNumber(payload.total) + " records";
+  const total = Number(payload.total) || 0;
+  $("#pillar-count").textContent = formatNumber(total) +
+    " pillar" + (total === 1 ? "" : "s");
   const pillarsLink = $("#pillars-link");
   if (pillarsLink) {
     const query = new URLSearchParams();
