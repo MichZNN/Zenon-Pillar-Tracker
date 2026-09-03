@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#151515">
+  <title>Epoch history · Zenon Pillar Tracker</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/favicon-180.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
+  <link rel="icon" href="/static/icons/favicon.ico">
+  <link rel="manifest" href="/static/icons/site.webmanifest">
+  <link rel="stylesheet" href="/static/vendor/font-awesome/7.3.1/css/all.min.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body data-history-kind="epochs">
+  <header class="site-header history-header">
+    <div class="header-inner">
+      <div>
+        <p class="eyebrow">On-chain observations</p>
+        <h1>Epoch history</h1>
+      </div>
+      <a class="ghost-button header-action-link" href="/"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Dashboard</span></a>
+    </div>
+  </header>
+
+  <main class="page-shell narrow-shell history-page">
+    <section class="section-block">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Network timeline</p>
+          <h2>Observed epochs</h2>
+        </div>
+        <a class="section-link" href="/"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Dashboard</a>
+      </div>
+      <p class="muted history-intro">Browse every epoch recorded by the collector. Estimated start times are marked clearly.</p>
+      <div id="history-list" class="history-list" aria-live="polite">
+        <div class="loading-skeleton-list" aria-label="Loading epoch history" aria-busy="true">
+          <div class="skeleton-list-row"><span class="skeleton skeleton-list-title"></span><span class="skeleton skeleton-list-time"></span></div>
+          <div class="skeleton-list-row"><span class="skeleton skeleton-list-title"></span><span class="skeleton skeleton-list-time"></span></div>
+          <div class="skeleton-list-row"><span class="skeleton skeleton-list-title"></span><span class="skeleton skeleton-list-time"></span></div>
+        </div>
+      </div>
+      <nav id="history-pagination" class="pagination" aria-label="Epoch history pages" hidden></nav>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>Zenon Pillar Tracker</span>
+    <span>Epoch history</span>
+  </footer>
+  <script src="/history.js" defer></script>
+</body>
+</html>

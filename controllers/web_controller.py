@@ -458,17 +458,37 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send_json(pillar)
             return
         if path == "/api/epochs":
-            self._send_json(
-                self.database.get_epochs(int(query.get("limit", ["100"])[0]))
-            )
+            limit = int(query.get("limit", ["100"])[0])
+            offset = int(query.get("offset", ["0"])[0])
+            if "offset" in query or _as_bool(query.get("paged", [None])[0]):
+                self._send_json(
+                    self.database.get_epochs_page(
+                        limit=limit,
+                        offset=offset,
+                    )
+                )
+            else:
+                self._send_json(self.database.get_epochs(limit))
             return
         if path == "/api/events":
-            self._send_json(
-                self.database.get_events(
-                    limit=int(query.get("limit", ["100"])[0]),
-                    event_type=query.get("type", [None])[0],
+            limit = int(query.get("limit", ["100"])[0])
+            offset = int(query.get("offset", ["0"])[0])
+            event_type = query.get("type", [None])[0]
+            if "offset" in query or _as_bool(query.get("paged", [None])[0]):
+                self._send_json(
+                    self.database.get_events_page(
+                        limit=limit,
+                        offset=offset,
+                        event_type=event_type,
+                    )
                 )
-            )
+            else:
+                self._send_json(
+                    self.database.get_events(
+                        limit=limit,
+                        event_type=event_type,
+                    )
+                )
             return
         if path == "/api/subscriptions":
             user = self._require_user()
@@ -1003,6 +1023,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             requested = parsed.path
             aliases = {
                 "/portal": "/portal.html",
+                "/epochs": "/epochs.html",
+                "/events": "/events.html",
+                "/pillars": "/pillars.html",
                 # Keep old bookmarks working, but serve the same role-aware
                 # portal rather than separate account/admin pages.
                 "/admin": "/portal.html",

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#151515">
+  <title>Event history · Zenon Pillar Tracker</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/favicon-180.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
+  <link rel="icon" href="/static/icons/favicon.ico">
+  <link rel="manifest" href="/static/icons/site.webmanifest">
+  <link rel="stylesheet" href="/static/vendor/font-awesome/7.3.1/css/all.min.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body data-history-kind="events">
+  <header class="site-header history-header">
+    <div class="header-inner">
+      <div>
+        <p class="eyebrow">Changes</p>
+        <h1>Event history</h1>
+      </div>
+      <a class="ghost-button header-action-link" href="/"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Dashboard</span></a>
+    </div>
+  </header>
+
+  <main class="page-shell narrow-shell history-page">
+    <section class="section-block">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Collector timeline</p>
+          <h2>All recorded events</h2>
+        </div>
+        <a class="section-link" href="/"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Dashboard</a>
+      </div>
+      <p class="muted history-intro">Browse status changes, epoch notifications, pillar changes, and other recorded events.</p>
+      <div class="history-toolbar">
+        <label class="select-box">
+          <span class="sr-only">Filter events by type</span>
+          <select id="event-type-filter">
+            <option value="">All event types</option>
+            <option value="epoch_available">New epoch available</option>
+            <option value="pillar_created">Pillar added</option>
+            <option value="pillar_dismantled">Pillar dismantled</option>
+            <option value="pillar_name_changed">Name changed</option>
+            <option value="reward_shares_changed">Reward shares changed</option>
+            <option value="pillar_inactive">Pillar inactive</option>
+            <option value="pillar_active">Pillar active</option>
+          </select>
+        </label>
+      </div>
+      <div id="history-list" class="history-list" aria-live="polite">
+        <div class="loading-skeleton-list" aria-label="Loading event history" aria-busy="true">
+          <div class="skeleton-list-row skeleton-event-row"><span class="skeleton skeleton-list-title"></span><span class="skeleton skeleton-list-time"></span><span class="skeleton skeleton-event-detail"></span></div>
+          <div class="skeleton-list-row skeleton-event-row"><span class="skeleton skeleton-list-title"></span><span class="skeleton skeleton-list-time"></span><span class="skeleton skeleton-event-detail"></span></div>
+          <div class="skeleton-list-row skeleton-event-row"><span class="skeleton skeleton-list-title"></span><span class="skeleton skeleton-list-time"></span><span class="skeleton skeleton-event-detail"></span></div>
+        </div>
+      </div>
+      <nav id="history-pagination" class="pagination" aria-label="Event history pages" hidden></nav>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>Zenon Pillar Tracker</span>
+    <span>Event history</span>
+  </footer>
+  <script src="/history.js" defer></script>
+</body>
+</html>

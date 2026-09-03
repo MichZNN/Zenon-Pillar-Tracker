@@ -499,6 +499,31 @@ class DatabaseTestCase(unittest.TestCase):
         epochs = self.database.get_epochs(limit=10)
         self.assertEqual([row["epoch"] for row in epochs], [3, 2, 1])
 
+    def test_history_pages_include_totals_and_offsets(self):
+        self.record(
+            {"z1alpha": make_pillar("Alpha", produced=1, expected=1)},
+            epoch=1,
+        )
+        self.record(
+            {"z1alpha": make_pillar("Alpha", produced=2, expected=2)},
+            epoch=2,
+        )
+
+        epoch_page = self.database.get_epochs_page(limit=1, offset=1)
+        self.assertEqual(epoch_page["total"], 2)
+        self.assertEqual(epoch_page["limit"], 1)
+        self.assertEqual(epoch_page["offset"], 1)
+        self.assertEqual([row["epoch"] for row in epoch_page["items"]], [1])
+
+        event_page = self.database.get_events_page(
+            limit=1,
+            offset=0,
+            event_type="pillar_created",
+        )
+        self.assertEqual(event_page["total"], 1)
+        self.assertEqual(event_page["offset"], 0)
+        self.assertEqual(event_page["items"][0]["event_type"], "pillar_created")
+
 
 if __name__ == "__main__":
     unittest.main()

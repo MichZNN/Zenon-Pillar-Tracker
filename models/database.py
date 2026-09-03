@@ -2175,16 +2175,35 @@ class Database:
         return result
 
     def get_epochs(self, limit: int = 100) -> list[dict[str, Any]]:
+        return self.get_epochs_page(limit=limit, offset=0)["items"]
+
+    def get_epochs_page(
+        self,
+        *,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Return a page of epoch history together with its total size."""
+        safe_limit = max(1, min(int(limit), 500))
+        safe_offset = max(0, int(offset))
         with self._connect() as connection:
+            total = connection.execute(
+                "SELECT COUNT(*) AS count FROM epochs"
+            ).fetchone()["count"]
             rows = connection.execute(
                 """
                 SELECT * FROM epochs
                 ORDER BY epoch DESC
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 """,
-                (max(1, min(int(limit), 500)),),
+                (safe_limit, safe_offset),
             ).fetchall()
-        return [dict(row) for row in rows]
+        return {
+            "items": [dict(row) for row in rows],
+            "total": total,
+            "limit": safe_limit,
+            "offset": safe_offset,
+        }
 
     def backfill_epoch_start_times(
         self,
@@ -2284,28 +2303,53 @@ class Database:
         limit: int = 100,
         event_type: str | None = None,
     ) -> list[dict[str, Any]]:
+        return self.get_events_page(
+            limit=limit,
+            offset=0,
+            event_type=event_type,
+        )["items"]
+
+    def get_events_page(
+        self,
+        *,
+        limit: int = 25,
+        offset: int = 0,
+        event_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Return a page of events, optionally filtered by event type."""
         params: list[Any] = []
         clause = ""
         if event_type:
             clause = "WHERE event_type = ?"
             params.append(event_type)
-        params.append(max(1, min(int(limit), 500)))
+        safe_limit = max(1, min(int(limit), 500))
+        safe_offset = max(0, int(offset))
         with self._connect() as connection:
+            total = connection.execute(
+                f"SELECT COUNT(*) AS count FROM events {clause}",
+                params,
+            ).fetchone()["count"]
             rows = connection.execute(
                 f"""
                 SELECT * FROM events
                 {clause}
                 ORDER BY observed_at DESC, id DESC
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 """,
-                params,
+                [*params, safe_limit, safe_offset],
             ).fetchall()
         result = []
         for row in rows:
             item = dict(row)
             item["details"] = _load_json(item.pop("details_json"), {})
             result.append(item)
-        return result
+        return {
+            "items": result,
+            "total": total,
+            "limit": safe_limit,
+            "offset": safe_offset,
+            "event_type": event_type,
+        }
 
     def import_historical_data(
         self,

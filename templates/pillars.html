@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#151515">
+  <title>Pillars · Zenon Pillar Tracker</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/favicon-180.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
+  <link rel="icon" href="/static/icons/favicon.ico">
+  <link rel="manifest" href="/static/icons/site.webmanifest">
+  <link rel="stylesheet" href="/static/vendor/font-awesome/7.3.1/css/all.min.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="site-header history-header">
+    <div class="header-inner">
+      <div>
+        <p class="eyebrow">Live network overview</p>
+        <h1>Pillars</h1>
+      </div>
+      <a class="ghost-button header-action-link" href="/"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Dashboard</span></a>
+    </div>
+  </header>
+
+  <main class="page-shell pillars-page">
+    <section class="section-block">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Shareable directory</p>
+          <h2>Network pillars</h2>
+        </div>
+        <span id="pillar-count" class="muted">Loading…</span>
+      </div>
+      <p class="muted history-intro">Use the status links to share a filtered pillar list. The selected filter is kept in the URL.</p>
+      <nav class="filter-tabs" aria-label="Pillar status filter">
+        <a data-status="" href="/pillars">All current</a>
+        <a data-status="active" href="/pillars?status=active">Active</a>
+        <a data-status="inactive" href="/pillars?status=inactive">Inactive</a>
+      </nav>
+      <form id="pillar-filter-form" class="pillar-filter-form">
+        <label class="search-box">
+          <span class="sr-only">Search pillars</span>
+          <input id="pillar-search" type="search" placeholder="Search by name or address">
+        </label>
+        <button class="primary-button" type="submit"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>Search</button>
+      </form>
+      <div id="pillar-list" class="pillar-list" aria-live="polite">
+        <div class="loading-skeleton-grid" aria-label="Loading pillars" aria-busy="true">
+          <article class="skeleton-card"><div class="skeleton-card-top"><span class="skeleton skeleton-rank"></span><span class="skeleton skeleton-badge"></span></div><div class="skeleton skeleton-name"></div><div class="skeleton skeleton-address"></div><div class="skeleton-stat-grid"><span class="skeleton skeleton-stat"></span><span class="skeleton skeleton-stat"></span><span class="skeleton skeleton-stat"></span><span class="skeleton skeleton-stat"></span></div><div class="skeleton skeleton-performance"></div></article>
+          <article class="skeleton-card"><div class="skeleton-card-top"><span class="skeleton skeleton-rank"></span><span class="skeleton skeleton-badge"></span></div><div class="skeleton skeleton-name"></div><div class="skeleton skeleton-address"></div><div class="skeleton-stat-grid"><span class="skeleton skeleton-stat"></span><span class="skeleton skeleton-stat"></span><span class="skeleton skeleton-stat"></span><span class="skeleton skeleton-stat"></span></div><div class="skeleton skeleton-performance"></div></article>
+        </div>
+      </div>
+      <nav id="pillar-pagination" class="pagination" aria-label="Pillar pages" hidden></nav>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>Zenon Pillar Tracker</span>
+    <span id="footer-updated">Pillar directory</span>
+  </footer>
+  <script src="/pillars.js" defer></script>
+</body>
+</html>

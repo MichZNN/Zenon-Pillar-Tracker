@@ -115,6 +115,14 @@ function renderOverview(payload) {
 
 function renderPillars(payload) {
   $("#pillar-count").textContent = formatNumber(payload.total) + " records";
+  const pillarsLink = $("#pillars-link");
+  if (pillarsLink) {
+    const query = new URLSearchParams();
+    if (state.status && state.status !== "all") query.set("status", state.status);
+    if (state.search) query.set("q", state.search);
+    const queryString = query.toString();
+    pillarsLink.href = "/pillars" + (queryString ? "?" + queryString : "");
+  }
   const list = $("#pillar-list");
   if (!payload.items?.length) {
     list.innerHTML = '<div class="empty-state">No pillars found.</div>';
