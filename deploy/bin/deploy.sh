@@ -28,13 +28,6 @@ if [ ! -r .env ]; then
     exit 1
 fi
 
-# Keep the mount point available even before the optional host control bridge
-# is installed. The bridge service later tightens its ownership and mode.
-control_dir=./control
-if [ ! -d "$control_dir" ]; then
-    mkdir -p "$control_dir"
-fi
-
 docker compose config --quiet
 configured_services=$(docker compose config --services)
 if ! printf '%s\n' "$configured_services" | grep -Fxq "web"; then

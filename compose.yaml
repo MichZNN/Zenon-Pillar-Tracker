@@ -5,8 +5,6 @@ services:
     init: true
     env_file:
       - .env
-    environment:
-      COLLECTOR_CONTROL_SOCKET: /run/zenon-control/collector.sock
     command:
       - python
       - web_app.py
@@ -18,7 +16,6 @@ services:
       - /app/data_store/pillar_tracker.sqlite3
     volumes:
       - ${DATA_DIR:-./data_store}:/app/data_store
-      - ./control:/run/zenon-control
     ports:
       - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-8080}:8080"
     read_only: true

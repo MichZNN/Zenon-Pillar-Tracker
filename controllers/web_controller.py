@@ -28,11 +28,6 @@ from services.settings_service import (
     validate_settings,
 )
 from models.database import Database, InitialSetupAlreadyCompletedError
-from services.collector_control import (
-    CollectorControlClient,
-    CollectorControlError,
-    CollectorControlUnavailable,
-)
 from services.logging_service import configure_logging, read_log_tail
 from functions.status import collector_status
 from functions.subscriptions import normalise_subscription
@@ -125,10 +120,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
     @property
     def runtime_config(self) -> dict[str, Any]:
         return self.server.runtime_config  # type: ignore[attr-defined]
-
-    @property
-    def collector_control(self) -> CollectorControlClient:
-        return self.server.collector_control  # type: ignore[attr-defined]
 
     def _send_json(
         self,
@@ -311,43 +302,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
             cookies=cookies,
         )
 
-    def _collector_control_request(
-        self,
-        action: str,
-        *,
-        tail: int = 200,
-    ) -> None:
-        diagnostics = self._collector_diagnostics()
-        try:
-            result = self.collector_control.request(action, tail=tail)
-        except CollectorControlUnavailable as exc:
-            self._send_json(
-                {
-                    "available": False,
-                    "error": str(exc),
-                    "diagnostics": diagnostics,
-                },
-                503,
-            )
-            return
-        except CollectorControlError as exc:
-            self._send_json(
-                {
-                    "available": True,
-                    "error": str(exc),
-                    "diagnostics": diagnostics,
-                },
-                502,
-            )
-            return
-        self._send_json(
-            {
-                "available": True,
-                **result,
-                "diagnostics": self._collector_diagnostics(),
-            }
-        )
-
     def _collector_diagnostics(self) -> dict[str, Any]:
         health = self.database.get_health()
         runtime_config = getattr(self.server, "runtime_config", {})
@@ -357,52 +311,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
             poll_interval_seconds=runtime_config.get(
                 "poll_interval_seconds", 60
             ),
-        )
-
-    def _admin_collector_control(
-        self,
-        user: Mapping[str, Any],
-        payload: Mapping[str, Any],
-    ) -> None:
-        if not self._require_csrf(user):
-            return
-        action = str(payload.get("action", "")).strip().lower()
-        if action not in {"start", "stop", "restart"}:
-            raise ValueError("Collector action must be start, stop, or restart")
-        try:
-            result = self.collector_control.request(action)
-        except CollectorControlUnavailable as exc:
-            self._send_json(
-                {
-                    "available": False,
-                    "error": str(exc),
-                    "diagnostics": self._collector_diagnostics(),
-                },
-                503,
-            )
-            return
-        except CollectorControlError as exc:
-            self._send_json(
-                {
-                    "available": True,
-                    "error": str(exc),
-                    "diagnostics": self._collector_diagnostics(),
-                },
-                502,
-            )
-            return
-        self._audit(
-            user,
-            f"collector_{action}",
-            "collector",
-            details={"status": result.get("collector", {})},
-        )
-        self._send_json(
-            {
-                "available": True,
-                **result,
-                "diagnostics": self._collector_diagnostics(),
-            }
         )
 
     def _api_get(self, parsed) -> None:
@@ -511,17 +419,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/admin/subscriptions":
             if self._require_user(admin=True) is not None:
                 self._send_json(self.database.get_pillar_subscriptions())
-            return
-        if path == "/api/admin/collector-control":
-            if self._require_user(admin=True) is not None:
-                self._collector_control_request("status")
-            return
-        if path == "/api/admin/collector-logs":
-            if self._require_user(admin=True) is not None:
-                self._collector_control_request(
-                    "logs",
-                    tail=int(query.get("tail", ["200"])[0]),
-                )
             return
         if path == "/api/admin/logs":
             if self._require_user(admin=True) is None:
@@ -936,11 +833,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if user is not None:
                 self._admin_settings_update(user, payload)
             return
-        if path == "/api/admin/collector-control" and method == "POST":
-            user = self._require_user(admin=True)
-            if user is not None:
-                self._admin_collector_control(user, payload)
-            return
         if path == "/api/admin/users" and method == "POST":
             user = self._require_user(admin=True)
             if user is not None:
@@ -1127,7 +1019,6 @@ class DashboardServer(ThreadingHTTPServer):
         static_dir: Path,
         api_rate_limiter: ApiRateLimiter,
         runtime_config: Mapping[str, Any] | None = None,
-        collector_control: CollectorControlClient | None = None,
     ):
         super().__init__(address, handler)
         self.database = database
@@ -1135,7 +1026,6 @@ class DashboardServer(ThreadingHTTPServer):
         self.static_dir = static_dir
         self.api_rate_limiter = api_rate_limiter
         self.runtime_config = dict(runtime_config or {})
-        self.collector_control = collector_control or CollectorControlClient()
 
 
 def main(argv: list[str] | None = None) -> int:
