@@ -243,7 +243,7 @@
           </section>
 
         </form>
-        <p class="muted settings-restart-note">Restart the collector after changing collector settings.</p>
+        <p class="muted settings-live-note">Collector settings are applied automatically within one minute.</p>
         <div class="settings-form-actions">
           <button class="primary-button" type="submit" form="settings-form">Save runtime settings</button>
         </div>
@@ -353,26 +353,16 @@
             <button id="open-logs-modal" class="ghost-button icon-button" type="button" aria-haspopup="dialog" aria-controls="logs-modal" aria-label="Open full logs" title="Open full logs"><i class="fa-solid fa-expand" aria-hidden="true"></i><span class="sr-only">Open full logs</span></button>
           </div>
         </div>
-        <div class="collector-control-card">
+        <div class="collector-status-card">
           <div class="section-heading">
-            <div><p class="eyebrow">Collector service</p><h3 id="collector-control-heading">Pillar tracker process</h3></div>
-            <span id="collector-process-status" class="status-badge">Checking…</span>
+            <div><p class="eyebrow">Data collection</p><h3>Collector status</h3></div>
+            <span id="collector-data-status" class="status-badge">Checking…</span>
           </div>
-          <p id="collector-control-message" class="muted">Checking whether the collector is running.</p>
+          <p id="collector-data-message" class="muted">Checking the latest collector poll.</p>
           <div class="collector-diagnostics" aria-live="polite">
-            <div class="collector-diagnostic-heading">
-              <span class="setting-label">Data collection</span>
-              <span id="collector-data-status" class="status-badge">Checking…</span>
-            </div>
-            <p id="collector-data-message" class="muted">Checking the latest collector poll.</p>
             <p id="collector-last-attempt" class="muted"></p>
             <p id="collector-last-success" class="muted"></p>
             <p id="collector-last-error" class="collector-error" hidden></p>
-          </div>
-          <div class="form-actions collector-control-actions">
-            <button id="collector-start" class="primary-button" type="button"><i class="fa-solid fa-play" aria-hidden="true"></i>Start</button>
-            <button id="collector-stop" class="ghost-button" type="button"><i class="fa-solid fa-stop" aria-hidden="true"></i>Stop</button>
-            <button id="collector-restart" class="ghost-button" type="button"><i class="fa-solid fa-rotate" aria-hidden="true"></i>Restart</button>
           </div>
         </div>
         <div class="logs-preview-card">
@@ -383,9 +373,8 @@
             </div>
             <span id="logs-preview-count" class="muted"></span>
           </div>
-          <p id="collector-log-info" class="muted"></p>
-          <pre id="collector-container-log" class="log-viewer logs-preview-viewer" aria-live="polite">Loading recent logs…</pre>
-          <p class="muted logs-preview-help">Showing a compact view. Open the full log for source, level, and text filters.</p>
+          <pre id="logs-preview-viewer" class="log-viewer logs-preview-viewer" aria-live="polite">Loading recent logs…</pre>
+          <p class="muted logs-preview-help">Showing recent application activity. Open the full log for source, level, and text filters.</p>
         </div>
       </section>
         </div>
@@ -409,7 +398,6 @@
         <label class="log-filter"><span>Source</span><select id="log-source-filter">
           <option value="all">All sources</option>
           <option value="application">Application</option>
-          <option value="collector">Collector</option>
           <option value="audit">Audit trail</option>
         </select></label>
         <label class="log-filter"><span>Level</span><select id="log-level-filter">

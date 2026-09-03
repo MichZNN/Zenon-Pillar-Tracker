@@ -921,12 +921,9 @@ body.modal-open { overflow: hidden; }
 .setting-toggle { align-items: flex-start; background: linear-gradient(145deg, rgba(36, 36, 36, .7), rgba(27, 27, 27, .82)); border: 1px solid var(--line); border-radius: 11px; display: flex; gap: 10px; min-width: 0; padding: 12px; }
 .setting-toggle input { accent-color: var(--accent); flex: 0 0 auto; height: 17px; margin: 2px 0 0; width: 17px; }
 .setting-toggle > span { display: grid; gap: 4px; min-width: 0; }
-.collector-control-card { background: rgba(10, 10, 10, .2); border: 1px solid var(--line); border-radius: 13px; margin-bottom: 20px; padding: 16px; }
-.collector-control-card .section-heading { margin-bottom: 10px; }
-.collector-control-actions { justify-content: flex-start; margin: 14px 0; }
-.collector-control-actions button:disabled { cursor: not-allowed; opacity: .45; }
+.collector-status-card { background: rgba(10, 10, 10, .2); border: 1px solid var(--line); border-radius: 13px; margin-bottom: 20px; padding: 16px; }
+.collector-status-card .section-heading { margin-bottom: 10px; }
 .collector-diagnostics { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
-.collector-diagnostic-heading { align-items: center; display: flex; gap: 10px; justify-content: space-between; }
 .collector-diagnostics p { margin: 7px 0 0; }
 .collector-error { color: var(--plasma-pink); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .72rem; line-height: 1.5; overflow-wrap: anywhere; }
 .status-badge.warning { color: var(--status-orange); background: rgba(245, 165, 36, .12); border-color: rgba(245, 165, 36, .34); }
@@ -937,7 +934,7 @@ body.modal-open { overflow: hidden; }
 .checkbox-grid label { align-items: center; color: var(--muted); display: flex; font-size: .76rem; font-weight: 700; gap: 8px; min-width: 0; padding: 4px 0; }
 .checkbox-grid input { accent-color: var(--accent); background: transparent; border: 0; flex: 0 0 auto; height: 17px; margin: 0; padding: 0; width: 17px; }
 .settings-form-actions { display: flex; justify-content: flex-end; margin-top: 18px; }
-.settings-restart-note { margin-top: 14px; }
+.settings-live-note { margin-top: 14px; }
 .toast-container { bottom: 20px; display: grid; gap: 10px; max-height: min(70vh, 520px); max-width: min(380px, calc(100% - 32px)); overflow-y: auto; pointer-events: none; position: fixed; right: 20px; z-index: 50; }
 .toast { align-items: flex-start; background: linear-gradient(145deg, rgba(36, 36, 36, .98), rgba(27, 27, 27, .98)); border: 1px solid rgba(111, 243, 77, .35); border-radius: 12px; box-shadow: 0 18px 45px rgba(0, 0, 0, .4); display: flex; gap: 10px; min-width: 260px; overflow: hidden; padding: 14px 40px 16px 15px; pointer-events: auto; position: relative; transform: translateY(0); transition: opacity .22s ease, transform .22s ease; }
 .toast.error { border-color: rgba(249, 22, 144, .5); }
