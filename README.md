@@ -80,11 +80,20 @@ determine the latest epoch and to import reward history.
 
 For a live epoch transition, the collector stores the timestamp of the first
 observed momentum carrying the new epoch as `epoch_start_at`. This is the best
-available on-chain timestamp and is kept separate from the Telegram send time.
+available on-chain timestamp, but it is not guaranteed to be the exact boundary
+if the collector missed the transition. It is kept separate from the Telegram
+send time.
 If the transition is not observed during live collection, the collector does
 not invent a new start time. Historical import and backfill tools can use an
 optional schedule fallback and mark the resulting value `Estimated`; those
 settings are not part of the live collector configuration.
+
+The `/epochs` page is a timeline of epoch transitions and recorded reward
+announcements, not a raw observation log. It intentionally does not display
+`first_seen_at`, `last_seen_at`, or a generic momentum height: a reward-history
+refresh can return many older epochs in one poll, so those values describe when
+the collector loaded the data rather than when an epoch started. The page marks
+whether a transition was observed on-chain or estimated from the schedule.
 
 Telegram is optional. The bot token is read only from the root `.env` file;
 `telegram_channel_id` and the other Telegram settings are stored in SQLite and
@@ -285,7 +294,7 @@ If exposed publicly, still use HTTPS and a reverse proxy.
 The main tables are:
 
 - `epochs` — one record per observed epoch.
-- `epochs.epoch_start_at` — observed on-chain transition time when available, or an optional historical estimate; `epoch_start_inferred` identifies estimates; `announcement_at` records the first successful Telegram announcement time when live notifications are enabled.
+- `epochs.epoch_start_at` — timestamp of the first observed momentum carrying that epoch, or an optional historical estimate; `epoch_start_inferred` identifies estimates; `announcement_at` records the first successful Telegram announcement time when live notifications are enabled.
 - `pillars` — the latest known identity and metadata for each pillar.
 - `pillar_snapshots` — the pillar state observed during an epoch.
 - `events` — status changes, availability changes, additions, removals, and poll errors.
