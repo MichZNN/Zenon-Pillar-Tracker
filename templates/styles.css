@@ -199,9 +199,12 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 }
 .section-link:hover { color: var(--text); }
 .section-icon-link {
-  font-size: 1rem;
+  flex: 0 0 42px;
+  font-size: 1.4rem;
+  justify-content: center;
   line-height: 1;
-  padding: 3px;
+  min-height: 42px;
+  padding: 0;
 }
 .section-icon-link i { transition: transform .16s ease; }
 .section-icon-link:hover i { transform: translateX(2px); }

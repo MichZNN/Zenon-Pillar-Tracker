@@ -45,6 +45,8 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn(".content-grid > .section-block { margin-top: 0; }", styles)
         self.assertIn("--syrius-green", styles)
         self.assertNotIn("--sirius-green", styles)
+        self.assertIn("font-size: 1.4rem;", styles)
+        self.assertIn("flex: 0 0 42px;", styles)
         app = (templates_dir / "app.js").read_text()
         self.assertIn("/api/overview", app)
         self.assertIn("Inactive for", app)
