@@ -127,8 +127,7 @@ setup form signs the new administrator in automatically. The command-line
 utility remains available when a browser is not convenient.
 There is one login page and one role-aware portal: normal users see and manage
 their own subscriptions, while administrators additionally see settings,
-users, all subscriptions, collector start/stop/restart controls, logs, and the
-audit trail.
+users, all subscriptions, logs, collector status, and the audit trail.
 
 ## Import an old JSON cache
 
@@ -168,11 +167,16 @@ python pillar_tracker.py --loop
 ```
 
 The default loop interval is stored in SQLite and can be changed in the admin
-panel. Restart the collector after changing collector settings. Each loop
-iteration performs one complete poll and then waits for the configured
-interval. The collector does not use a separate hidden epoch timer: every poll
-obtains the current epoch from the node and compares it with the latest stored
-epoch.
+panel. The collector checks for a new settings revision every 60 seconds and
+applies valid changes without a process restart. Each loop iteration performs
+one complete poll and then waits for the configured interval. The collector
+does not use a separate hidden epoch timer: every poll obtains the current
+epoch from the node and compares it with the latest stored epoch.
+
+Rapid successive saves are safe: the collector observes the latest committed
+SQLite revision and reloads the resulting configuration once. Docker Compose
+and systemd supervise the collector process itself; the web portal does not
+control Docker or systemd lifecycle commands.
 
 ### Pillar status and missed checks
 
@@ -305,7 +309,7 @@ The main tables are:
 - `app_settings` — runtime configuration edited by administrators.
 - `pillar_subscriptions` — assigned Telegram/Discord subscriptions with active flags; records are never deleted.
 - `audit_log` — administrator and account actions.
-- `schema_meta` — schema version metadata.
+- `schema_meta` — schema version and runtime settings revision metadata.
 
 ## Notifications
 
@@ -313,10 +317,11 @@ Application logs are always written to `data_store/pillar_tracker.log`, the
 writable persistent data mount. The path is fixed; administrators can adjust
 only log rotation size, backup count, and log level in the portal.
 
-The portal's Operations section shows a compact view of the latest log entries
-from the application, collector, and audit trail. It refreshes automatically
-every 10 seconds and has a manual refresh button. Open the full log view for
-source, level, and text filters; the newest entries are shown first.
+The portal's Operations section shows a compact view of the latest application
+activity, collector status, and audit trail. It refreshes automatically every
+10 seconds and has a manual refresh button. Open the full log view for source,
+level, and text filters; the newest entries are shown first. Collector activity
+is included in the shared application log, so no Docker log bridge is required.
 
 Telegram and Discord remain optional. The collector writes notification
 records to the SQLite outbox and attempts delivery through the configured

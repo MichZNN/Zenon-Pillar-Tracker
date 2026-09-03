@@ -77,9 +77,7 @@ Copy the following files from this repository:
 ```sh
 cp compose.yaml /srv/zenon-pillar-tracker/compose.yaml
 cp deploy/bin/deploy.sh /srv/zenon-pillar-tracker/deploy/bin/deploy.sh
-cp deploy/bin/collector_control_bridge.py /srv/zenon-pillar-tracker/deploy/bin/collector_control_bridge.py
 cp deploy/systemd/zenon-pillar-tracker.service /srv/zenon-pillar-tracker/deploy/systemd/zenon-pillar-tracker.service
-cp deploy/systemd/zenon-pillar-tracker-control.service /srv/zenon-pillar-tracker/deploy/systemd/zenon-pillar-tracker-control.service
 cp .env.example /srv/zenon-pillar-tracker/.env
 ```
 
@@ -221,10 +219,8 @@ sudo mkdir -p /srv/zenon-pillar-tracker-dev/data_store
 sudo chown -R "$(id -u):$(id -g)" /srv/zenon-pillar-tracker-dev
 cp compose.yaml /srv/zenon-pillar-tracker-dev/compose.yaml
 cp deploy/bin/deploy.sh /srv/zenon-pillar-tracker-dev/deploy/bin/deploy.sh
-cp deploy/bin/collector_control_bridge.py /srv/zenon-pillar-tracker-dev/deploy/bin/collector_control_bridge.py
 cp deploy/examples/development.env.example /srv/zenon-pillar-tracker-dev/.env
 cp deploy/systemd/zenon-pillar-tracker-dev.service /srv/zenon-pillar-tracker-dev/deploy/systemd/zenon-pillar-tracker-dev.service
-cp deploy/systemd/zenon-pillar-tracker-dev-control.service /srv/zenon-pillar-tracker-dev/deploy/systemd/zenon-pillar-tracker-control.service
 cp deploy/nginx/pillartracker.turmin.com.bootstrap.conf /srv/zenon-pillar-tracker-dev/deploy/nginx/pillartracker.turmin.com.bootstrap.conf
 cp deploy/nginx/pillartracker.turmin.com.conf /srv/zenon-pillar-tracker-dev/deploy/nginx/pillartracker.turmin.com.conf
 ```
@@ -314,10 +310,8 @@ before using `/dev`.
    `development` to `main`) builds and deploys the production environment.
 3. Each image is published to GHCR with its channel tag (`development` or
    `main`) and an immutable full commit-SHA tag.
-4. The deployment job uploads `compose.yaml`, the deployment script, the
-   bridge script, and the selected environment's systemd templates to the
-   selected server path. The control unit is uploaded under the common name
-   `zenon-pillar-tracker-control.service`.
+4. The deployment job uploads `compose.yaml`, the deployment script, and the
+   selected environment's systemd unit to the selected server path.
 5. The script pulls the SHA-tagged image and runs `docker compose up -d`.
    Changed containers are replaced/restarted while SQLite and logs remain in
    `DATA_DIR`.
@@ -419,54 +413,31 @@ docker compose start web collector
 Store backups outside the deployment directory and periodically verify that a
 backup can actually be restored.
 
-## Dashboard control of the collector
+## Collector operation and runtime settings
 
-The admin portal provides Start, Stop, Restart, and container-log controls for
-the collector. The web container still has no Docker socket and no unrestricted
-systemd permissions. Instead, a separate host process accepts only those
-allowlisted collector operations through a Unix socket.
+The collector is supervised by Docker Compose and, on Linux hosts that use it,
+the supplied systemd unit. Compose restarts a crashed collector automatically,
+and the systemd unit starts the complete stack after a host reboot. The portal
+therefore does not expose Docker or systemd Start, Stop, or Restart commands.
 
-Install the production bridge once on the host after the deployment files have
-been copied by the workflow:
+Runtime settings edited by an administrator are stored in SQLite. The collector
+checks the settings revision every 60 seconds and reloads valid changes without
+restarting. This includes node endpoints, polling interval, retry settings,
+pillar thresholds, and notification destinations. Multiple saves close
+together are coalesced naturally: the collector applies the latest committed
+configuration rather than starting a restart for every save.
 
-```sh
-sudo install -o root -g root -m 0644 \
-  /srv/zenon-pillar-tracker/deploy/systemd/zenon-pillar-tracker-control.service \
-  /etc/systemd/system/zenon-pillar-tracker-control.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now zenon-pillar-tracker-control.service
-sudo systemctl status zenon-pillar-tracker-control.service
-```
+The portal reads the shared application log and SQLite audit trail directly.
+Container stdout/stderr logs remain available to a host operator with
+`docker compose logs` when deeper deployment diagnostics are needed.
 
-For the isolated development deployment, use the development unit instead:
-
-```sh
-sudo install -o root -g root -m 0644 \
-  /srv/zenon-pillar-tracker-dev/deploy/systemd/zenon-pillar-tracker-control.service \
-  /etc/systemd/system/zenon-pillar-tracker-control.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now zenon-pillar-tracker-control.service
-sudo systemctl status zenon-pillar-tracker-control.service
-```
-
-The automatic workflow uploads the selected production or development unit
-under the common filename `zenon-pillar-tracker-control.service`, so that is
-the filename to use after a GitHub deployment. During a manual first setup,
-install the source unit to `/etc/systemd/system` as shown above.
-`systemctl daemon-reload` only reloads units that are already installed; it does not copy
-the unit into `/etc/systemd/system`. If the source file is missing under the
-deployment directory, the GitHub deployment that uploads the control files has
-not completed yet.
-
-The workflow uploads the matching bridge script and unit on every deployment,
-but it cannot install or replace a systemd unit in `/etc` without host-root
-permission. If the bridge is not installed or cannot reach Docker, the portal
-shows that state and disables the buttons. Inspect its journal with:
+Older installations may still have the former control-bridge systemd unit
+installed. It is no longer used by the application; remove it once during
+deployment cleanup if it exists:
 
 ```sh
-sudo journalctl -u zenon-pillar-tracker-control.service -n 100 --no-pager
+sudo systemctl disable --now zenon-pillar-tracker-control.service
 ```
 
-The bridge runs as a host service because Docker lifecycle control is a
-privileged operation. It does not accept arbitrary commands or user-supplied
-Compose arguments.
+This is a one-time cleanup for older hosts. Normal settings changes and
+deployments do not require a VPS CLI action.

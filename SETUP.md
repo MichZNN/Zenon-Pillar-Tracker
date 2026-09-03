@@ -168,8 +168,10 @@ python .\pillar_tracker.py --loop
 ```
 
 The default interval is stored as the `poll_interval_seconds` setting in
-SQLite. It can be changed by an administrator; restart the collector after
-changing collector settings.
+SQLite. An administrator can change it in the portal. The collector checks for
+new settings revisions every 60 seconds and applies valid changes without a
+restart. Other runtime settings, including node endpoints, thresholds, and
+notification destinations, are handled the same way.
 
 You can override it for a run:
 
@@ -568,8 +570,8 @@ To enable it:
 1. Send a test message through the bot.
 2. Pin that message in the channel.
 3. Copy the returned `result.message_id`.
-4. Set that integer in `telegram_pinned_message_id`.
-5. Restart the collector.
+4. Set that integer in `telegram_pinned_message_id`. The running collector
+   picks up the change automatically within one minute.
 
 The bot must be allowed to edit the message. Event notifications and pinned-message updates are separate operations.
 
@@ -597,12 +599,12 @@ pillar-creation, and dismantling events.
 Add the same bot as an administrator to every additional Telegram channel and
 enable **Post Messages**. Discord subscriptions use standard HTTPS Discord
 webhook URLs. The collector sends through one bot and one process; it does not
-require a separate tracker instance per pillar. Restart the collector after
-changing this configuration.
+require a separate tracker instance per pillar. Changes are picked up
+automatically within one minute.
 
 ### Run and verify
 
-Restart the collector after changing settings:
+Run one poll to verify the current settings immediately:
 
 ```powershell
 python .\pillar_tracker.py
