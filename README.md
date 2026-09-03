@@ -88,12 +88,12 @@ not invent a new start time. Historical import and backfill tools can use an
 optional schedule fallback and mark the resulting value `Estimated`; those
 settings are not part of the live collector configuration.
 
-The `/epochs` page is a timeline of epoch transitions and recorded reward
-announcements, not a raw observation log. It intentionally does not display
-`first_seen_at`, `last_seen_at`, or a generic momentum height: a reward-history
-refresh can return many older epochs in one poll, so those values describe when
-the collector loaded the data rather than when an epoch started. The page marks
-whether a transition was observed on-chain or estimated from the schedule.
+The `/epochs` page is a compact timeline showing the epoch number and its
+transition time, not a raw observation log. It intentionally does not display
+`first_seen_at`, `last_seen_at`, reward announcements, or a generic momentum
+height. A reward-history refresh can return many older epochs in one poll, and
+the stored `last_observed_momentum_height` describes the latest observation in
+that epoch rather than the height at which the epoch began.
 
 Telegram is optional. The bot token is read only from the root `.env` file;
 `telegram_channel_id` and the other Telegram settings are stored in SQLite and
