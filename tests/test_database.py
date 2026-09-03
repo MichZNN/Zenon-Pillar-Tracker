@@ -243,6 +243,27 @@ class DatabaseTestCase(unittest.TestCase):
             performance,
         )
 
+    def test_performance_counts_production_when_expected_changed_earlier(self):
+        self.record(
+            {"z1alpha": make_pillar("Alpha", produced=0, expected=0)},
+            epoch=1,
+        )
+        self.record(
+            {"z1alpha": make_pillar("Alpha", produced=0, expected=1)},
+            epoch=1,
+        )
+        self.record(
+            {"z1alpha": make_pillar("Alpha", produced=1, expected=1)},
+            epoch=1,
+        )
+
+        performance = self.database.get_pillar_performance()["z1alpha"]
+
+        self.assertEqual(performance["produced"], 1)
+        self.assertEqual(performance["expected"], 1)
+        self.assertEqual(performance["intervals"], 2)
+        self.assertEqual(performance["percentage"], 100.0)
+
     def test_epoch_reset_does_not_mark_active_pillar_inactive(self):
         self.record(
             {"z1alpha": make_pillar("Alpha", produced=10, expected=10)},

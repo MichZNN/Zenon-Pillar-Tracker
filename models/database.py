@@ -1950,9 +1950,11 @@ class Database:
 
         Pillar counters reset at epoch boundaries, so raw snapshot values must
         not be summed. Only non-negative counter changes within the same epoch
-        are included. One snapshot before the period provides a baseline when
-        available. Daily points use the same valid intervals and are assigned
-        to the day of the later snapshot.
+        are included. A valid interval is counted when either counter advances
+        because the node can expose the expected and produced increments in
+        separate snapshots. One snapshot before the period provides a baseline
+        when available. Daily points use the same valid intervals and are
+        assigned to the day of the later snapshot.
         """
         now = datetime.now(timezone.utc)
         cutoff = (now - timedelta(days=period_days)).isoformat(
@@ -2074,7 +2076,8 @@ class Database:
                     and produced_delta is not None
                     and expected_delta is not None
                     and produced_delta >= 0
-                    and expected_delta > 0
+                    and expected_delta >= 0
+                    and (produced_delta > 0 or expected_delta > 0)
                 ):
                     metrics = performance[owner_address]
                     metrics["produced"] += produced_delta
