@@ -7,7 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from services.settings_service import load_runtime_config
+from services.settings_service import (
+    load_runtime_config,
+    load_runtime_config_from_database,
+)
 from models.database import Database, utc_now
 from services.logging_service import configure_logging
 from services.notification_service import NotificationDispatcher, create_pinned_stats_message
@@ -51,62 +54,100 @@ def _configured_node_urls(config: Mapping[str, Any]) -> list[str]:
 
 
 class Collector:
-    def __init__(self, config: Mapping[str, Any]):
-        self.config = dict(config)
-        node_urls = _configured_node_urls(self.config)
+    SETTINGS_CHECK_INTERVAL_SECONDS = 60
 
-        timeout = float(self.config.get("http_timeout_seconds", 15))
+    def __init__(self, config: Mapping[str, Any]):
+        initial_config = dict(config)
         self.database = Database(
             _resolve_path(
-                self.config.get(
+                initial_config.get(
                     "database_path",
                     "data_store/pillar_tracker.sqlite3",
                 )
             )
         )
+        self._settings_revision = self.database.get_settings_revision()
+        self._settings_reload_error_revision: int | None = None
+        self._apply_runtime_config(initial_config)
+
+    def _apply_runtime_config(self, config: Mapping[str, Any]) -> None:
+        """Build runtime components before swapping them into the collector."""
+        next_config = dict(config)
+        node_urls = _configured_node_urls(next_config)
+        timeout = float(next_config.get("http_timeout_seconds", 15))
         nodes = [
             NodeRpcWrapper(
                 node_url,
                 timeout=timeout,
-                page_size=int(self.config.get("pillar_page_size", 250)),
-                retries=int(self.config.get("rpc_retries", 2)),
+                page_size=int(next_config.get("pillar_page_size", 250)),
+                retries=int(next_config.get("rpc_retries", 2)),
                 rate_limit_max_wait_seconds=float(
-                    self.config.get("rate_limit_max_wait_seconds", 60)
+                    next_config.get("rate_limit_max_wait_seconds", 60)
                 ),
             )
             for node_url in node_urls
         ]
-        self.node = NodeRpcPool(
+        node = NodeRpcPool(
             nodes,
             require_sync_info=bool(
-                self.config.get("node_require_sync_info", False)
+                next_config.get("node_require_sync_info", False)
             ),
             max_frontier_age_seconds=float(
-                self.config.get("node_max_frontier_age_seconds", 300)
+                next_config.get("node_max_frontier_age_seconds", 300)
             ),
             failure_cooldown_seconds=float(
-                self.config.get("node_failure_cooldown_seconds", 120)
+                next_config.get("node_failure_cooldown_seconds", 120)
             ),
             sync_retry_seconds=float(
-                self.config.get("node_sync_retry_seconds", 30)
+                next_config.get("node_sync_retry_seconds", 30)
             ),
             sync_retry_interval_seconds=float(
-                self.config.get("node_sync_retry_interval_seconds", 5)
+                next_config.get("node_sync_retry_interval_seconds", 5)
             ),
         )
+        dispatcher = NotificationDispatcher(self.database, next_config)
+
+        self.config = next_config
         self.node_urls = node_urls
-        self.dispatcher = NotificationDispatcher(self.database, self.config)
+        self.node = node
+        self.dispatcher = dispatcher
         self.missed_momentums_threshold = max(
             1,
-            int(self.config.get("missed_momentums_threshold", 5)),
+            int(next_config.get("missed_momentums_threshold", 5)),
         )
         self.stale_grace_runs = max(
             1,
-            int(self.config.get("stale_grace_runs", 3)),
+            int(next_config.get("stale_grace_runs", 3)),
         )
         self.allow_empty_pillars = bool(
-            self.config.get("allow_empty_pillars", False)
+            next_config.get("allow_empty_pillars", False)
         )
+
+    def _reload_settings_if_changed(self) -> bool:
+        """Apply the latest SQLite settings without restarting the process."""
+        revision = self.database.get_settings_revision()
+        if revision == self._settings_revision:
+            return False
+
+        try:
+            next_config = load_runtime_config_from_database(self.database)
+            self._apply_runtime_config(next_config)
+            configure_logging(next_config)
+        except Exception:
+            if self._settings_reload_error_revision != revision:
+                logger.exception(
+                    "Could not apply runtime settings revision %s; "
+                    "keeping the previous valid configuration",
+                    revision,
+                )
+                self._settings_reload_error_revision = revision
+            return False
+
+        self._settings_revision = revision
+        self._settings_reload_error_revision = None
+        logger.info("Runtime settings reloaded (revision %s)", revision)
+        return True
+
     def _add_epoch_start_times(
         self,
         epoch_data: Mapping[str, Any],
@@ -317,6 +358,7 @@ class Collector:
             logger.warning("Could not update Telegram pinned message: %s", exc)
 
     def run_once(self) -> dict[str, Any]:
+        self._reload_settings_if_changed()
         started_at = utc_now()
         poll_run_id = self.database.begin_poll(started_at)
         latest_momentum: dict[str, Any] | None = None
@@ -430,20 +472,40 @@ class Collector:
             raise
 
     def run_forever(self, interval_seconds: int | None = None) -> None:
-        interval = max(
-            5,
-            int(
-                interval_seconds
-                or self.config.get("poll_interval_seconds", 60)
-            ),
+        interval_override = interval_seconds is not None
+        logger.info(
+            "Collector loop started; runtime settings are checked every %s "
+            "seconds",
+            self.SETTINGS_CHECK_INTERVAL_SECONDS,
         )
-        logger.info("Collector loop started; polling every %s seconds", interval)
         while True:
             try:
                 self.run_once()
             except Exception:
                 pass
-            time.sleep(interval)
+
+            try:
+                interval = max(
+                    5,
+                    int(
+                        interval_seconds
+                        if interval_override
+                        else self.config.get("poll_interval_seconds", 60)
+                    ),
+                )
+            except (TypeError, ValueError):
+                interval = 60
+
+            deadline = time.monotonic() + interval
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                time.sleep(min(remaining, self.SETTINGS_CHECK_INTERVAL_SECONDS))
+                if self._reload_settings_if_changed() and not interval_override:
+                    # Apply a changed poll interval immediately instead of
+                    # waiting out the previous interval.
+                    break
 
 
 def main(argv: list[str] | None = None) -> int:

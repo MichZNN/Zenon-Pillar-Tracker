@@ -133,14 +133,11 @@ def resolve_path(value: str | Path) -> Path:
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
-def load_runtime_config(
-    database_path: str | Path = DEFAULT_DATABASE_PATH,
+def _runtime_config(
+    database: Database,
+    selected_database_path: Path,
 ) -> dict[str, Any]:
-    """Load all runtime settings from SQLite, with code defaults."""
-    selected_database_path = resolve_path(database_path)
-    database = Database(selected_database_path)
     database.ensure_settings(DEFAULT_SETTINGS)
-
     runtime = dict(DEFAULT_SETTINGS)
     runtime.update(database.get_settings())
     # Databases created by older releases may still contain this setting. It
@@ -154,18 +151,24 @@ def load_runtime_config(
     return runtime
 
 
+def load_runtime_config(
+    database_path: str | Path = DEFAULT_DATABASE_PATH,
+) -> dict[str, Any]:
+    """Load all runtime settings from SQLite, with code defaults."""
+    selected_database_path = resolve_path(database_path)
+    database = Database(selected_database_path)
+    return _runtime_config(database, selected_database_path)
+
+
+def load_runtime_config_from_database(database: Database) -> dict[str, Any]:
+    """Load current settings using an already-open database connection target."""
+    return _runtime_config(database, Path(database.path))
+
+
 def load_runtime_database(
     database_path: str | Path = DEFAULT_DATABASE_PATH,
 ) -> tuple[dict[str, Any], Database]:
     """Variant used by the web server when it needs both settings and DB."""
     selected_database_path = resolve_path(database_path)
     database = Database(selected_database_path)
-    database.ensure_settings(DEFAULT_SETTINGS)
-    runtime = dict(DEFAULT_SETTINGS)
-    runtime.update(database.get_settings())
-    runtime.pop("log_path", None)
-    runtime["database_path"] = str(selected_database_path)
-    runtime["telegram_pillar_subscriptions"] = (
-        database.get_active_subscription_config()
-    )
-    return runtime, database
+    return _runtime_config(database, selected_database_path), database

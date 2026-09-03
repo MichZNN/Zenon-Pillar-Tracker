@@ -474,6 +474,19 @@ class Database:
             for row in rows
         }
 
+    def get_settings_revision(self) -> int:
+        """Return the monotonic revision of administrator-edited settings."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT value FROM schema_meta WHERE key = 'settings_revision'"
+            ).fetchone()
+        if row is None:
+            return 0
+        try:
+            return max(0, int(row["value"]))
+        except (TypeError, ValueError):
+            return 0
+
     def get_setting(self, key: str, default: Any = None) -> Any:
         with self._connect() as connection:
             row = connection.execute(
@@ -548,6 +561,21 @@ class Database:
                         updated_by = excluded.updated_by
                     """,
                     (key, value_json, now, updated_by),
+                )
+            if settings:
+                current_revision = connection.execute(
+                    "SELECT value FROM schema_meta WHERE key = 'settings_revision'"
+                ).fetchone()
+                try:
+                    revision = int(current_revision["value"]) if current_revision else 0
+                except (TypeError, ValueError):
+                    revision = 0
+                connection.execute(
+                    """
+                    INSERT INTO schema_meta(key, value) VALUES ('settings_revision', ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                    """,
+                    (str(max(0, revision) + 1),),
                 )
             connection.commit()
         except Exception:
