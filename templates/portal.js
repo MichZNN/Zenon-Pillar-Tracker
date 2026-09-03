@@ -2,6 +2,14 @@ let csrfToken = "";
 let ownSubscriptions = [];
 let adminUsers = [];
 let adminSubscriptions = [];
+let operationalLogEntries = [];
+let logRefreshPromise = null;
+let logRefreshTimer = null;
+let lastLogUpdatedAt = null;
+
+const LOG_FETCH_LIMIT = 60;
+const LOG_PREVIEW_LIMIT = 12;
+const LOG_REFRESH_INTERVAL_MS = 10000;
 
 const DEFAULT_SUBSCRIPTION_EVENTS = [
   "pillar_inactive",
@@ -20,6 +28,18 @@ const EVENT_LABELS = {
 };
 
 function $(selector) { return document.querySelector(selector); }
+
+function updateModalBodyLock() {
+  const accountModal = $("#account-modal");
+  const logsModal = $("#logs-modal");
+  document.body.classList.toggle(
+    "modal-open",
+    Boolean(
+      (accountModal && !accountModal.hidden) ||
+      (logsModal && !logsModal.hidden)
+    ),
+  );
+}
 
 function initialiseUserMenu() {
   const menu = $("#user-menu");
@@ -60,7 +80,7 @@ function setAccountModalOpen(open) {
     accountForm.elements.new_password_confirmation.value = "";
   }
   modal.hidden = !open;
-  document.body.classList.toggle("modal-open", open);
+  updateModalBodyLock();
   if (open) close?.focus();
   else menuToggle?.focus();
 }
@@ -604,16 +624,175 @@ function renderCollectorDiagnostics(diagnostics) {
   error.textContent = status.last_error ? `Latest error: ${status.last_error}` : "";
 }
 
+function logSourceLabel(source) {
+  return {
+    application: "Application",
+    collector: "Collector",
+    audit: "Audit",
+  }[source] || "Log";
+}
+
+function logLevel(value) {
+  const match = String(value || "").match(/\b(CRITICAL|ERROR|WARNING|WARN|INFO|DEBUG)\b/i);
+  if (!match) return "LOG";
+  return match[1].toUpperCase() === "WARN" ? "WARNING" : match[1].toUpperCase();
+}
+
+function logTimestamp(value) {
+  const match = String(value || "").match(
+    /\b20\d{2}-\d{2}-\d{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}(?:[.,][0-9]+)?(?:Z|[+-][0-9]{2}:?[0-9]{2})?\b/
+  );
+  return match ? match[0] : "";
+}
+
+function createLogEntry(source, text, options = {}) {
+  const value = String(text ?? "").trim();
+  return {
+    source,
+    text: value,
+    timestamp: options.timestamp || logTimestamp(value),
+    level: options.level || logLevel(value),
+    order: Number(options.order) || 0,
+  };
+}
+
+function parseApplicationLogs(lines) {
+  return (Array.isArray(lines) ? lines : [])
+    .map((line, order) => createLogEntry("application", line, { order }))
+    .filter((entry) => entry.text);
+}
+
+function parseCollectorLogs(logs) {
+  return String(logs || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .reverse()
+    .map((line, order) => createLogEntry("collector", line, { order }));
+}
+
+function auditDetails(item) {
+  const details = item.details && Object.keys(item.details).length
+    ? ` · ${JSON.stringify(item.details)}`
+    : "";
+  const entity = `${item.entity_type || "record"}${item.entity_id ? ` #${item.entity_id}` : ""}`;
+  return `${item.username || "system"} · ${item.action || "action"} · ${entity}${details}`;
+}
+
+function parseAuditLogs(items) {
+  return (Array.isArray(items) ? items : [])
+    .map((item, order) => createLogEntry("audit", auditDetails(item), {
+      timestamp: item.created_at,
+      level: "AUDIT",
+      order,
+    }))
+    .filter((entry) => entry.text);
+}
+
+function sortLogEntries(entries) {
+  return entries.slice().sort((left, right) => {
+    const leftTime = Date.parse(left.timestamp || "");
+    const rightTime = Date.parse(right.timestamp || "");
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    return left.order - right.order;
+  });
+}
+
+function replaceLogSource(source, entries) {
+  operationalLogEntries = sortLogEntries([
+    ...operationalLogEntries.filter((entry) => entry.source !== source),
+    ...entries,
+  ]);
+  renderLogViews();
+}
+
+function logFilterState() {
+  const rawLimit = Number.parseInt($("#log-line-limit")?.value || "50", 10);
+  return {
+    source: $("#log-source-filter")?.value || "all",
+    level: $("#log-level-filter")?.value || "all",
+    search: ($("#log-search")?.value || "").trim().toLowerCase(),
+    limit: Number.isFinite(rawLimit) ? Math.max(1, rawLimit) : 50,
+  };
+}
+
+function logMatches(entry, filters) {
+  if (filters.source !== "all" && entry.source !== filters.source) return false;
+  if (filters.level !== "all") {
+    const acceptedLevels = filters.level === "ERROR"
+      ? ["ERROR", "CRITICAL"]
+      : [filters.level];
+    if (!acceptedLevels.includes(entry.level)) return false;
+  }
+  if (filters.search && !formatLogEntry(entry).toLowerCase().includes(filters.search)) {
+    return false;
+  }
+  return true;
+}
+
+function formatLogEntry(entry) {
+  const hasTimestamp = entry.timestamp && entry.text.includes(entry.timestamp);
+  const timestamp = entry.timestamp && !hasTimestamp ? ` ${entry.timestamp}` : "";
+  const level = entry.level && entry.level !== "LOG" ? ` ${entry.level}` : "";
+  return `[${logSourceLabel(entry.source)}]${timestamp}${level} ${entry.text}`.trim();
+}
+
+function setLogViewerContent(viewer, entries, emptyMessage) {
+  if (!viewer) return;
+  viewer.textContent = entries.length
+    ? entries.map(formatLogEntry).join("\n")
+    : emptyMessage;
+}
+
+function renderLogViews() {
+  const filters = logFilterState();
+  const matchingEntries = operationalLogEntries.filter((entry) => logMatches(entry, filters));
+  const previewEntries = operationalLogEntries.slice(0, LOG_PREVIEW_LIMIT);
+  const visibleEntries = matchingEntries.slice(0, filters.limit);
+  setLogViewerContent(
+    $("#collector-container-log"),
+    previewEntries,
+    operationalLogEntries.length ? "No log entries yet." : "No log entries available.",
+  );
+  setLogViewerContent(
+    $("#logs-modal-viewer"),
+    visibleEntries,
+    operationalLogEntries.length ? "No entries match these filters." : "No log entries available.",
+  );
+  const previewCount = $("#logs-preview-count");
+  if (previewCount) {
+    previewCount.textContent = previewEntries.length
+      ? `${previewEntries.length} latest entries`
+      : "No entries";
+  }
+  const status = $("#logs-modal-status");
+  if (status) {
+    const updated = lastLogUpdatedAt
+      ? ` · Updated ${formatDiagnosticDate(lastLogUpdatedAt.toISOString())}`
+      : "";
+    status.textContent = `${visibleEntries.length} of ${matchingEntries.length} matching entries${updated}`;
+  }
+}
+
 async function loadLogs() {
-  const payload = await getJson("/api/admin/logs?limit=100");
-  renderCollectorDiagnostics(payload.collector);
-  const file = payload.file || {};
-  $("#log-file-info").textContent = `${file.path || "data_store/pillar_tracker.log"} · ${file.exists ? (file.size_bytes || 0) + " bytes" : "not created"}`;
-  const fileNotice = file.error ? `${file.error}\n\n` : "";
-  $("#file-log").textContent = fileNotice + ((file.lines || []).join("\n") || "No log entries yet.");
-  $("#audit-list").innerHTML = (payload.audit || []).map((item) =>
-    `<tr><td>${escapeHtml(item.created_at)}</td><td>${escapeHtml(item.username || "system")}</td><td>${escapeHtml(item.action)}</td><td>${escapeHtml(item.entity_type + (item.entity_id ? " #" + item.entity_id : ""))}</td><td>${escapeHtml(JSON.stringify(item.details || {}))}</td></tr>`
-  ).join("") || '<tr><td colspan="5" class="empty-state">No audit entries.</td></tr>';
+  try {
+    const payload = await getJson(`/api/admin/logs?limit=${LOG_FETCH_LIMIT}&lines=${LOG_FETCH_LIMIT}`);
+    renderCollectorDiagnostics(payload.collector);
+    const file = payload.file || {};
+    $("#log-file-info").textContent = `${file.path || "data_store/pillar_tracker.log"} · ${file.exists ? (file.size_bytes || 0) + " bytes" : "not created"} · latest ${LOG_FETCH_LIMIT}`;
+    replaceLogSource("application", parseApplicationLogs(file.lines));
+    replaceLogSource("audit", parseAuditLogs(payload.audit));
+  } catch (error) {
+    $("#log-file-info").textContent = "Application log unavailable";
+    replaceLogSource("application", [createLogEntry(
+      "application",
+      `Could not load application logs: ${error.message}`,
+      { level: "ERROR", order: 0 },
+    )]);
+    renderCollectorDiagnostics(error.payload?.diagnostics);
+  }
 }
 
 function setCollectorControlButtons(available, running, busy = false) {
@@ -663,16 +842,25 @@ async function loadCollectorLogs() {
   const viewer = $("#collector-container-log");
   if (!info || !viewer) return;
   try {
-    const payload = await getJson("/api/admin/collector-logs?tail=200");
+    const payload = await getJson(`/api/admin/collector-logs?tail=${LOG_FETCH_LIMIT}`);
     renderCollectorControl(payload);
     const collector = payload.collector || {};
     info.textContent = collector.name
       ? `${collector.name} · ${collector.status || collector.state || ""}`
       : "Collector container logs";
-    viewer.textContent = payload.logs || "No collector container logs yet.";
+    replaceLogSource("collector", parseCollectorLogs(payload.logs));
   } catch (error) {
     info.textContent = "Collector container logs";
-    viewer.textContent = `Could not load collector logs: ${error.message}`;
+    replaceLogSource("collector", [createLogEntry(
+      "collector",
+      `Could not load collector logs: ${error.message}`,
+      { level: "ERROR", order: 0 },
+    )]);
+    renderCollectorControl({
+      ...(error.payload || {}),
+      available: error.payload ? error.payload.available !== false : false,
+      error: error.message,
+    });
     renderCollectorDiagnostics(error.payload?.diagnostics);
   }
 }
@@ -695,7 +883,7 @@ async function controlCollector(action) {
         : `Collector ${action} command completed, but it is not running.`,
       !running && action !== "stop",
     );
-    await Promise.all([loadCollectorLogs(), loadLogs()]);
+    await refreshOperations();
   } catch (error) {
     showMessage(error.message, true);
     await loadCollectorControl();
@@ -704,7 +892,66 @@ async function controlCollector(action) {
 }
 
 async function refreshOperations() {
-  await Promise.all([loadLogs(), loadCollectorControl(), loadCollectorLogs()]);
+  if (logRefreshPromise) return logRefreshPromise;
+  setLogRefreshBusy(true);
+  logRefreshPromise = Promise.all([
+    loadLogs(),
+    loadCollectorControl(),
+    loadCollectorLogs(),
+  ]).then(() => {
+    lastLogUpdatedAt = new Date();
+    renderLogViews();
+  }).finally(() => {
+    setLogRefreshBusy(false);
+    logRefreshPromise = null;
+  });
+  return logRefreshPromise;
+}
+
+function setLogRefreshBusy(busy) {
+  document.querySelectorAll("#refresh-logs, #refresh-modal-logs").forEach((button) => {
+    button.disabled = busy;
+    button.classList.toggle("is-loading", busy);
+  });
+}
+
+function startLogAutoRefresh() {
+  if (logRefreshTimer) window.clearInterval(logRefreshTimer);
+  logRefreshTimer = window.setInterval(() => void refreshOperations(), LOG_REFRESH_INTERVAL_MS);
+}
+
+function setLogsModalOpen(open) {
+  const modal = $("#logs-modal");
+  if (!modal) return;
+  modal.hidden = !open;
+  updateModalBodyLock();
+  if (open) {
+    renderLogViews();
+    void refreshOperations();
+    $("#log-source-filter")?.focus();
+  } else {
+    $("#open-logs-modal")?.focus();
+  }
+}
+
+function initialiseLogsModal() {
+  const modal = $("#logs-modal");
+  const open = $("#open-logs-modal");
+  const close = $("#close-logs-modal");
+  if (!modal || !open || !close) return;
+  open.addEventListener("click", () => setLogsModalOpen(true));
+  close.addEventListener("click", () => setLogsModalOpen(false));
+  $("#refresh-modal-logs")?.addEventListener("click", () => void refreshOperations());
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) setLogsModalOpen(false);
+  });
+  ["#log-source-filter", "#log-level-filter", "#log-line-limit"].forEach((selector) => {
+    $(selector)?.addEventListener("change", renderLogViews);
+  });
+  $("#log-search")?.addEventListener("input", renderLogViews);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !modal.hidden) setLogsModalOpen(false);
+  });
 }
 
 async function saveSettings(event) {
@@ -792,6 +1039,10 @@ async function saveAdminSubscription(event) {
 }
 
 async function logout() {
+  if (logRefreshTimer) {
+    window.clearInterval(logRefreshTimer);
+    logRefreshTimer = null;
+  }
   try {
     await getJson("/api/auth/logout", {
       method: "POST",
@@ -833,6 +1084,7 @@ async function initialise() {
   $("#cancel-user").addEventListener("click", resetUserForm);
   $("#cancel-subscription").addEventListener("click", resetAdminSubscriptionForm);
   await Promise.all([loadSettings(), refreshOperations()]);
+  startLogAutoRefresh();
   adminUsers = await getJson("/api/admin/users");
   renderUsers();
   adminSubscriptions = await getJson("/api/admin/subscriptions");
@@ -842,6 +1094,7 @@ async function initialise() {
 document.addEventListener("DOMContentLoaded", async () => {
   initialiseUserMenu();
   initialiseAccountModal();
+  initialiseLogsModal();
   $("#logout").addEventListener("click", logout);
   settingsForms().forEach((form) => form.addEventListener("submit", saveSettings));
   installValidationNotifications();

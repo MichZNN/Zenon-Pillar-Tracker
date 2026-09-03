@@ -344,7 +344,14 @@
       </section>
 
       <section id="operations-settings" class="section-block">
-        <div class="section-heading"><div><p class="eyebrow">Operations</p><h2>Logs and audit trail</h2></div><button id="refresh-logs" class="ghost-button" type="button">Refresh</button></div>
+        <div class="section-heading">
+          <div><p class="eyebrow">Operations</p><h2>Logs and audit trail</h2></div>
+          <div class="section-heading-actions log-actions">
+            <span id="logs-auto-refresh" class="muted">Auto-refresh: 10s</span>
+            <button id="refresh-logs" class="ghost-button icon-button" type="button" aria-label="Refresh logs" title="Refresh logs"><i class="fa-solid fa-rotate" aria-hidden="true"></i><span class="sr-only">Refresh logs</span></button>
+            <button id="open-logs-modal" class="ghost-button icon-button" type="button" aria-haspopup="dialog" aria-controls="logs-modal" aria-label="Open full logs" title="Open full logs"><i class="fa-solid fa-expand" aria-hidden="true"></i><span class="sr-only">Open full logs</span></button>
+          </div>
+        </div>
         <div class="collector-control-card">
           <div class="section-heading">
             <div><p class="eyebrow">Collector service</p><h3 id="collector-control-heading">Pillar tracker process</h3></div>
@@ -366,18 +373,61 @@
             <button id="collector-stop" class="ghost-button" type="button"><i class="fa-solid fa-stop" aria-hidden="true"></i>Stop</button>
             <button id="collector-restart" class="ghost-button" type="button"><i class="fa-solid fa-rotate" aria-hidden="true"></i>Restart</button>
           </div>
-          <p id="collector-log-info" class="muted"></p>
-          <pre id="collector-container-log" class="log-viewer">Loading collector logs…</pre>
         </div>
-        <p id="log-file-info" class="muted"></p>
-        <pre id="file-log" class="log-viewer">Loading…</pre>
-        <h3>Admin actions</h3>
-        <div class="table-wrap"><table><thead><tr><th>When</th><th>User</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead><tbody id="audit-list"></tbody></table></div>
+        <div class="logs-preview-card">
+          <div class="logs-preview-heading">
+            <div>
+              <span class="setting-label">Latest activity</span>
+              <p id="log-file-info" class="muted">Loading recent logs…</p>
+            </div>
+            <span id="logs-preview-count" class="muted"></span>
+          </div>
+          <p id="collector-log-info" class="muted"></p>
+          <pre id="collector-container-log" class="log-viewer logs-preview-viewer" aria-live="polite">Loading recent logs…</pre>
+          <p class="muted logs-preview-help">Showing a compact view. Open the full log for source, level, and text filters.</p>
+        </div>
       </section>
         </div>
       </div>
     </div>
   </main>
+  <div id="logs-modal" class="modal-backdrop" hidden>
+    <section class="section-block modal-dialog logs-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="logs-modal-title">
+      <div class="section-heading modal-heading">
+        <div>
+          <p class="eyebrow">Operations</p>
+          <h2 id="logs-modal-title">Logs and audit trail</h2>
+          <p id="logs-modal-status" class="muted">Loading logs…</p>
+        </div>
+        <div class="modal-actions">
+          <button id="refresh-modal-logs" class="ghost-button icon-button" type="button" aria-label="Refresh logs" title="Refresh logs"><i class="fa-solid fa-rotate" aria-hidden="true"></i><span class="sr-only">Refresh logs</span></button>
+          <button id="close-logs-modal" class="ghost-button icon-button" type="button" aria-label="Close logs" title="Close logs"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span class="sr-only">Close logs</span></button>
+        </div>
+      </div>
+      <div class="logs-toolbar" aria-label="Log filters">
+        <label class="log-filter"><span>Source</span><select id="log-source-filter">
+          <option value="all">All sources</option>
+          <option value="application">Application</option>
+          <option value="collector">Collector</option>
+          <option value="audit">Audit trail</option>
+        </select></label>
+        <label class="log-filter"><span>Level</span><select id="log-level-filter">
+          <option value="all">All levels</option>
+          <option value="ERROR">Errors</option>
+          <option value="WARNING">Warnings</option>
+          <option value="INFO">Info</option>
+          <option value="DEBUG">Debug</option>
+        </select></label>
+        <label class="log-filter log-filter-search"><span>Contains</span><input id="log-search" type="search" placeholder="Search log text" autocomplete="off"></label>
+        <label class="log-filter"><span>Show</span><select id="log-line-limit">
+          <option value="25">25 lines</option>
+          <option value="50" selected>50 lines</option>
+          <option value="100">100 lines</option>
+        </select></label>
+      </div>
+      <pre id="logs-modal-viewer" class="log-viewer logs-modal-viewer" aria-live="polite">Loading logs…</pre>
+    </section>
+  </div>
   <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
   <script src="/portal.js" defer></script>
 </body>

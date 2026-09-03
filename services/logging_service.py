@@ -157,10 +157,13 @@ def read_log_tail(
             "lines": [],
             "error": str(exc),
         }
+    recent_lines = list(deque(text.splitlines(), maxlen=lines))
     result = {
         "path": str(path),
         "exists": True,
         "size_bytes": size,
-        "lines": list(deque(text.splitlines(), maxlen=lines)),
+        # The portal presents logs as a live operational view, so the most
+        # recent entry should be immediately visible at the top.
+        "lines": list(reversed(recent_lines)),
     }
     return result

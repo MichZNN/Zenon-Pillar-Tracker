@@ -198,6 +198,13 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
   white-space: nowrap;
 }
 .section-link:hover { color: var(--text); }
+.section-icon-link {
+  font-size: 1rem;
+  line-height: 1;
+  padding: 3px;
+}
+.section-icon-link i { transition: transform .16s ease; }
+.section-icon-link:hover i { transform: translateX(2px); }
 .toolbar { display: grid; gap: 9px; margin-bottom: 14px; }
 .search-box input, .select-box select {
   width: 100%;
@@ -552,7 +559,17 @@ td { font-size: .78rem; }
   width: 100%;
 }
 .modal-heading { margin-bottom: 14px; }
+.modal-actions { align-items: center; display: flex; flex: 0 0 auto; gap: 8px; }
 .modal-close { flex: 0 0 auto; }
+.logs-modal-dialog {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 40px);
+  max-height: calc(100vh - 40px);
+  max-width: 1180px;
+  overflow: hidden;
+}
+.logs-modal-dialog .modal-heading { flex: 0 0 auto; }
 .form-grid.subscription-form { grid-template-columns: 1fr; }
 body.modal-open { overflow: hidden; }
 .user-menu-link {
@@ -747,6 +764,10 @@ body.modal-open { overflow: hidden; }
 .checkbox-label input { accent-color: var(--accent); background: transparent; border: 0; padding: 0; width: auto; }
 .form-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 9px; justify-content: flex-end; }
 .primary-button, .ghost-button { border-radius: var(--control-radius); box-sizing: border-box; cursor: pointer; font: inherit; font-size: .76rem; font-weight: 800; height: var(--control-height); padding: 0 12px; }
+.icon-button { flex: 0 0 var(--control-height); padding: 0; width: var(--control-height); }
+.icon-button.is-loading i { animation: icon-spin .8s linear infinite; }
+.icon-button:disabled { cursor: wait; opacity: .55; }
+@keyframes icon-spin { to { transform: rotate(360deg); } }
 .primary-button i { margin-right: 5px; }
 .primary-button { background: var(--accent); border: 1px solid var(--accent); color: #101510; }
 .primary-button:hover { filter: brightness(1.08); }
@@ -866,6 +887,18 @@ body.modal-open { overflow: hidden; }
 .subscription-card-actions { display: flex; justify-content: flex-end; }
 .code-editor { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; min-height: 360px; resize: vertical; }
 .log-viewer { background: rgba(10, 10, 10, .75); border: 1px solid var(--line); border-radius: 10px; color: #c9eec2; font: .72rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 420px; min-height: 110px; overflow: auto; padding: 13px; white-space: pre-wrap; word-break: break-word; }
+.logs-preview-card { background: rgba(10, 10, 10, .2); border: 1px solid var(--line); border-radius: 13px; margin-top: 18px; padding: 14px; }
+.logs-preview-heading { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; }
+.logs-preview-heading .muted { margin-top: 3px; }
+.logs-preview-card > .muted { margin-top: 8px; }
+.logs-preview-viewer { max-height: 190px; min-height: 0; margin-top: 10px; white-space: pre; }
+.logs-preview-help { line-height: 1.4; }
+.logs-toolbar { display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 12px; }
+.log-filter { display: grid; gap: 5px; min-width: 0; }
+.log-filter > span { color: var(--muted); font-size: .66rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.log-filter input, .log-filter select { background: rgba(21, 21, 21, .82); border: 1px solid var(--line); border-radius: 10px; color: var(--text); min-width: 0; outline: 0; padding: 10px 11px; width: 100%; }
+.log-filter input:focus, .log-filter select:focus { border-color: var(--quasar-blue); box-shadow: 0 0 0 3px rgba(0, 97, 235, .16); }
+.logs-modal-viewer { flex: 1 1 auto; height: 0; margin: 0; max-height: none; min-height: 0; white-space: pre; }
 .admin-shell h3 { font-size: .9rem; margin: 24px 0 10px; }
 .settings-form { display: grid; gap: 26px; margin-top: 8px; }
 .settings-category { border-top: 1px solid var(--line); padding-top: 22px; }
@@ -935,6 +968,10 @@ body.modal-open { overflow: hidden; }
   .portal-header .user-menu { justify-self: start; min-width: 0; width: min(240px, 100%); }
   .portal-header .user-menu-toggle { justify-content: flex-start; max-width: none; width: 100%; }
   .portal-header .header-action-link { min-width: 0; }
+  .log-actions .muted { display: none; }
+  .logs-modal-dialog { height: calc(100vh - 40px); max-height: calc(100vh - 40px); }
+  .logs-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .log-filter-search { grid-column: 1 / -1; }
   .full-width { grid-column: auto; }
   .table-wrap table { min-width: 620px; }
   .table-wrap .subscription-table { min-width: 0; }

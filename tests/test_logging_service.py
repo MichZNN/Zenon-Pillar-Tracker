@@ -39,7 +39,10 @@ class LoggingServiceTestCase(unittest.TestCase):
             root = Path(temp_dir)
             fixed_path = root / "data_store" / "pillar_tracker.log"
             fixed_path.parent.mkdir()
-            fixed_path.write_text("fixed diagnostic\n", encoding="utf-8")
+            fixed_path.write_text(
+                "old diagnostic\nnew diagnostic\n",
+                encoding="utf-8",
+            )
 
             with patch.object(logging_service, "DEFAULT_LOG_PATH", fixed_path):
                 result = logging_service.read_log_tail(
@@ -48,7 +51,7 @@ class LoggingServiceTestCase(unittest.TestCase):
 
             self.assertEqual(result["path"], str(fixed_path))
             self.assertTrue(result["exists"])
-            self.assertEqual(result["lines"], ["fixed diagnostic"])
+            self.assertEqual(result["lines"], ["new diagnostic", "old diagnostic"])
             self.assertNotIn("configured_path", result)
 
     def test_configure_logging_always_uses_fixed_data_store_path(self):

@@ -529,10 +529,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             settings = self.database.get_admin_settings(self.runtime_config)
             self._send_json(
                 {
-                    "file": read_log_tail(settings),
+                    "file": read_log_tail(
+                        settings,
+                        lines=int(query.get("lines", ["60"])[0]),
+                    ),
                     "collector": self._collector_diagnostics(),
                     "audit": self.database.get_audit_log(
-                        int(query.get("limit", ["100"])[0])
+                        int(query.get("limit", ["60"])[0])
                     ),
                 }
             )
