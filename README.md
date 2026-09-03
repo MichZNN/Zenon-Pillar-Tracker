@@ -20,7 +20,9 @@ subscription can deliver to Telegram, Discord, or both.
 - `services/` — authentication, settings, logging, and notifications.
 - `functions/` — pure status and subscription domain functions.
 - `utils/` — internal RPC, HTTP, Telegram, Discord, and environment helpers.
-- `templates/` — mobile-first dashboard, one login page, and one role-aware portal.
+- `templates/` — Jinja2-based shared layout (`base.html`, `header.html`, and
+  `footer.html`) plus the mobile-first dashboard, login page, and role-aware
+  portal.
 - `deploy/` — Docker deployment script, systemd units, development environment template, and NGINX configuration.
 - `SETUP.md` — current setup, run commands, status timing, and database safety.
 - `INSTALL.md` — Docker, Debian ARM64/Linux deployment, systemd, GitHub Actions, and rollback.
@@ -398,4 +400,5 @@ Compile the Python modules:
 python -m compileall -q controllers models services functions utils tools tests pillar_tracker.py collector.py web_app.py
 ```
 
-The dashboard is static HTML/CSS/JavaScript and is served by `web_app.py`.
+The dashboard uses Jinja2 HTML templates plus CSS and JavaScript assets and is
+served by `web_app.py`.
