@@ -165,13 +165,75 @@ interval. The collector does not use a separate hidden epoch timer: every poll
 obtains the current epoch from the node and compares it with the latest stored
 epoch.
 
-Pillar performance for the last 30 days is calculated as a weighted
-produced / expected ratio from counter changes between snapshots within the
-same epoch. Epoch resets and counter decreases are excluded, and one snapshot
-before the period is used as a baseline when available. The dashboard also
-returns 30 daily points using those same valid intervals. A day without a
-compatible interval is shown as no data, not as 0%. A pillar shows no aggregate
-percentage until enough compatible snapshots exist to calculate an interval.
+### Pillar status and missed checks
+
+Pillar status is inferred from the node's `currentStats` values, not from a
+direct heartbeat from the pillar. The collector compares each successful
+snapshot with the previous snapshot for that pillar:
+
+- if `producedMomentums` increases, the pillar is active and
+  `missed_momentums` resets to zero;
+- if `producedMomentums` is unchanged while `expectedMomentums` changes,
+  `missed_momentums` increases by one;
+- when `missed_momentums` reaches `missed_momentums_threshold` (5 by default),
+  the pillar becomes inactive;
+- the next increase in `producedMomentums` immediately marks it active again
+  and resets the counter.
+- at an epoch transition, the counter resets without treating the reset as a
+  missed check; the previous active/inactive state is kept until production is
+  observed again.
+
+A missed check is a comparison between two successful snapshots at different
+momentum heights. It is not necessarily one missed on-chain momentum, and an
+RPC failure does not increment this pillar counter. With a 60-second loop, five
+qualifying checks normally take about five minutes, but the actual time depends
+on the loop and node. This is a current production indicator: a pillar can be
+inactive briefly and then active again after producing one momentum. The
+inactive interval remains available in `pillar_snapshots` and `events`.
+
+This pillar status is separate from the collector health label `Tracker
+offline`, which describes the tracker or its node RPC endpoint rather than an
+individual pillar.
+
+### Pillar performance
+
+The Zenon [pillar API reference](https://github.com/zenon-network/znn-wiki/blob/master/api.md)
+defines `producedMomentums` and `expectedMomentums` as counters for the current
+epoch. The tracker calculates the dashboard's 30-day performance from counter
+changes, because the counters reset at every epoch boundary. For each pillar,
+snapshots are ordered chronologically and one snapshot before the 30-day cutoff
+is used as a baseline when available.
+
+For each adjacent pair, the tracker uses the interval only when both snapshots
+belong to the same epoch and neither counter went backwards. If either counter
+advanced, both deltas are included:
+
+```
+produced += current.producedMomentums - previous.producedMomentums
+expected += current.expectedMomentums - previous.expectedMomentums
+```
+
+The aggregate percentage is then:
+
+```
+produced / expected * 100
+```
+
+This is a weighted ratio: intervals with more expected momentums contribute
+more, rather than every snapshot or day receiving equal weight. Epoch resets,
+counter decreases, and intervals with no counter change are excluded. The
+expected and produced counters can advance in separate polls; both cases must
+be counted. Older versions only counted intervals where `expectedMomentums`
+advanced, which discarded valid production-only updates and made performance
+appear substantially too low.
+
+The dashboard also returns daily points using the same valid intervals, assigned
+to the day of the later snapshot. A day without a compatible interval is shown
+as no data, not as 0%. Performance is independent of the active/inactive status:
+a pillar may be active now while its 30-day production ratio remains low because
+of earlier missed production. The API also returns `observations` (snapshots in
+the requested period) and `intervals` (snapshot pairs that contributed to the
+calculation), which help explain a value or identify insufficient data.
 
 ## Start the dashboard
 
