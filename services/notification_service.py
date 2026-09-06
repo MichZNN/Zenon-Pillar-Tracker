@@ -394,17 +394,17 @@ def pinned_stats_page_count(
 def pinned_stats_status_summary(
     pillars: Mapping[str, Mapping[str, Any]],
 ) -> str:
-    online = sum(
+    active = sum(
         1
         for pillar in pillars.values()
         if str(pillar.get("status", "")).casefold() == "active"
     )
-    offline = sum(
+    inactive = sum(
         1
         for pillar in pillars.values()
         if str(pillar.get("status", "")).casefold() == "inactive"
     )
-    return f"Online: {online} · Offline: {offline}"
+    return f"Active: {active} · Inactive: {inactive}"
 
 
 def _pinned_page(

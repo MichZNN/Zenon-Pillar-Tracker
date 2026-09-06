@@ -53,7 +53,7 @@ class NotificationDispatcherTestCase(unittest.TestCase):
         )
 
         self.assertIn("All · 1/3", first_page)
-        self.assertIn("Online: 23 · Offline: 22", first_page)
+        self.assertIn("Active: 23 · Inactive: 22", first_page)
         self.assertIn("1 - Pillar 0", first_page)
         self.assertIn("20 - Pillar 19", first_page)
         self.assertNotIn("21 - Pillar 20", first_page)
@@ -84,7 +84,7 @@ class NotificationDispatcherTestCase(unittest.TestCase):
         self.assertIsNone(parse_pinned_callback_data("unknown:button"))
         self.assertEqual(
             pinned_stats_status_summary(pillars),
-            "Online: 23 · Offline: 22",
+            "Active: 23 · Inactive: 22",
         )
 
     def test_global_channel_and_pillar_routes_are_configured(self):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -77,6 +78,7 @@ class Collector:
         self._settings_revision = self.database.get_settings_revision()
         self._settings_reload_error_revision: int | None = None
         self._telegram_update_offset: int | None = None
+        self._telegram_update_worker_started = False
         self._pinned_status = "all"
         self._pinned_page = 1
         self._last_momentum_height: int | None = None
@@ -735,7 +737,7 @@ class Collector:
                     "Telegram getUpdates returned HTTP %s",
                     response.status_code,
                 )
-                return True
+                return False
             payload = response.json()
             updates = payload.get("result", []) if isinstance(payload, Mapping) else []
             for update in updates:
@@ -757,7 +759,27 @@ class Collector:
                     self._handle_telegram_message(message)
         except Exception as exc:
             logger.warning("Could not process Telegram updates: %s", exc)
+            return False
         return True
+
+    def _telegram_update_worker(self) -> None:
+        """Receive Telegram updates without waiting for node collection."""
+        while True:
+            if not self._telegram_updates_configured():
+                time.sleep(1)
+                continue
+            if not self._process_telegram_updates(timeout=10):
+                time.sleep(1)
+
+    def _start_telegram_update_worker(self) -> None:
+        if self._telegram_update_worker_started:
+            return
+        self._telegram_update_worker_started = True
+        threading.Thread(
+            target=self._telegram_update_worker,
+            name="telegram-update-worker",
+            daemon=True,
+        ).start()
 
     def run_once(self) -> dict[str, Any]:
         self._reload_settings_if_changed()
@@ -856,7 +878,8 @@ class Collector:
             self.database.finish_poll(poll_run_id, "success")
 
             self._update_pinned_message(pillars, current_height)
-            self._process_telegram_updates()
+            if not self._telegram_update_worker_started:
+                self._process_telegram_updates()
             notification_result = self.dispatcher.dispatch_pending()
             result = {
                 "status": "success",
@@ -876,6 +899,7 @@ class Collector:
 
     def run_forever(self, interval_seconds: int | None = None) -> None:
         interval_override = interval_seconds is not None
+        self._start_telegram_update_worker()
         logger.info(
             "Collector loop started; runtime settings are checked every %s "
             "seconds",
@@ -904,14 +928,7 @@ class Collector:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     break
-                if self._process_telegram_updates(
-                    timeout=min(10, max(0, int(remaining)))
-                ):
-                    if self._reload_settings_if_changed() and not interval_override:
-                        break
-                    time.sleep(min(1, remaining))
-                    continue
-                time.sleep(min(remaining, self.SETTINGS_CHECK_INTERVAL_SECONDS))
+                time.sleep(min(1, remaining))
                 if self._reload_settings_if_changed() and not interval_override:
                     # Apply a changed poll interval immediately instead of
                     # waiting out the previous interval.
