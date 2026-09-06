@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 import time
-from typing import Any
+from typing import Any, Iterable, Mapping
 
 from .http_wrapper import HttpWrapper
 
@@ -52,12 +53,18 @@ class TelegramWrapper:
             )
         raise RuntimeError("Telegram rate-limit retry loop did not complete")
 
-    def _get(self, method: str):
+    def _get(
+        self,
+        method: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+    ):
         if not self.enabled:
             raise RuntimeError("Telegram bot API key is not configured")
         for attempt in range(self.rate_limit_retries + 1):
             response = HttpWrapper.get(
                 f"{self.API_BASE_URL}/bot{self.bot_api_key}/{method}",
+                params=params,
                 timeout=self.timeout,
             )
             if (
@@ -94,19 +101,55 @@ class TelegramWrapper:
             },
         )
 
-    def bot_edit_message(self, chat_id: str, message_id: int, message: str):
-        return self._call(
-            "editMessageText",
-            {
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "text": message,
-                "disable_web_page_preview": True,
-            },
-        )
+    def bot_edit_message(
+        self,
+        chat_id: str,
+        message_id: int,
+        message: str,
+        *,
+        reply_markup: Mapping[str, Any] | None = None,
+    ):
+        data: dict[str, Any] = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": message,
+            "disable_web_page_preview": True,
+        }
+        if reply_markup is not None:
+            data["reply_markup"] = reply_markup
+        return self._call("editMessageText", data)
 
-    def bot_get_updates(self):
-        return self._get("getUpdates")
+    def bot_answer_callback_query(
+        self,
+        callback_query_id: str,
+        *,
+        text: str | None = None,
+        show_alert: bool = False,
+    ):
+        data: dict[str, Any] = {
+            "callback_query_id": callback_query_id,
+            "show_alert": show_alert,
+        }
+        if text:
+            data["text"] = text
+        return self._call("answerCallbackQuery", data)
+
+    def bot_get_updates(
+        self,
+        *,
+        offset: int | None = None,
+        timeout: int = 0,
+        allowed_updates: Iterable[str] | None = None,
+    ):
+        params: dict[str, Any] = {"timeout": max(0, int(timeout))}
+        if offset is not None:
+            params["offset"] = int(offset)
+        if allowed_updates is not None:
+            params["allowed_updates"] = json.dumps(
+                list(allowed_updates),
+                separators=(",", ":"),
+            )
+        return self._get("getUpdates", params=params)
 
     def bot_get_webhook_info(self):
         return self._get("getWebhookInfo")

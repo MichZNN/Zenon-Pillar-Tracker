@@ -297,6 +297,7 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn('src="/portal.js"', portal)
         self.assertIn("skeleton-stat-grid", index_content)
         self.assertIn("skeleton-performance-chart", styles)
+        self.assertIn("telegram_bot_username", self.render_page("portal.html"))
         self.assertEqual(index_content.count('class="skeleton-card"'), 4)
         self.assertIn("Total pillars", index_content)
         self.assertIn("Active pillars", index_content)

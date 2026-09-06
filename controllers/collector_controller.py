@@ -13,7 +13,14 @@ from services.settings_service import (
 )
 from models.database import Database, utc_now
 from services.logging_service import configure_logging
-from services.notification_service import NotificationDispatcher, create_pinned_stats_message
+from services.notification_service import (
+    DEFAULT_TELEGRAM_BOT_USERNAME,
+    NotificationDispatcher,
+    create_pinned_stats_keyboard,
+    create_pinned_stats_message,
+    parse_pinned_callback_data,
+    pinned_stats_page_count,
+)
 from utils.node_rpc_pool import NodeRpcPool
 from utils.node_rpc_wrapper import NodeRpcWrapper
 
@@ -68,6 +75,10 @@ class Collector:
         )
         self._settings_revision = self.database.get_settings_revision()
         self._settings_reload_error_revision: int | None = None
+        self._telegram_update_offset: int | None = None
+        self._pinned_status = "all"
+        self._pinned_page = 1
+        self._last_momentum_height: int | None = None
         self._apply_runtime_config(initial_config)
 
     def _apply_runtime_config(self, config: Mapping[str, Any]) -> None:
@@ -301,18 +312,11 @@ class Collector:
         )
         return result
 
-    def _update_pinned_message(
+    def _get_pinned_pillars(
         self,
-        pillars: Mapping[str, Mapping[str, Any]],
-        momentum_height: int,
-    ) -> None:
-        if not self.dispatcher.telegram.enabled:
-            return
-        channel_id = str(self.config.get("telegram_channel_id", "")).strip()
-        message_id = _as_int(self.config.get("telegram_pinned_message_id"))
-        if not channel_id or message_id is None or message_id <= 0:
-            return
-
+        pillars: Mapping[str, Mapping[str, Any]] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        source = pillars or {}
         current = self.database.get_pillars(
             status="all",
             include_performance=False,
@@ -321,7 +325,7 @@ class Collector:
         for item in current:
             if not item["is_present"]:
                 continue
-            current_item = dict(pillars.get(item["owner_address"], {}))
+            current_item = dict(source.get(item["owner_address"], {}))
             current_item.update(
                 {
                     "name": item["name"],
@@ -341,21 +345,186 @@ class Collector:
                 }
             )
             current_by_address[item["owner_address"]] = current_item
+        return current_by_address
 
-        message = create_pinned_stats_message(current_by_address, momentum_height)
+    def _pinned_momentum_height(self, fallback: int | None = None) -> int:
+        if fallback is not None:
+            self._last_momentum_height = fallback
+        if self._last_momentum_height is not None:
+            return self._last_momentum_height
         try:
-            response = self.dispatcher.telegram.bot_edit_message(
-                channel_id,
-                message_id,
-                message,
+            health = self.database.get_health()
+            node = health.get("node") or {}
+            self._last_momentum_height = _as_int(
+                node.get("last_momentum_height")
+            )
+        except Exception:
+            self._last_momentum_height = None
+        return self._last_momentum_height or 0
+
+    def _edit_pinned_message(
+        self,
+        pillars: Mapping[str, Mapping[str, Any]],
+        momentum_height: int,
+    ) -> None:
+        channel_id = str(self.config.get("telegram_channel_id", "")).strip()
+        message_id = _as_int(self.config.get("telegram_pinned_message_id"))
+        page_count = pinned_stats_page_count(pillars, self._pinned_status)
+        self._pinned_page = min(max(1, self._pinned_page), page_count)
+        message = create_pinned_stats_message(
+            pillars,
+            momentum_height,
+            status=self._pinned_status,
+            page=self._pinned_page,
+        )
+        reply_markup = create_pinned_stats_keyboard(
+            status=self._pinned_status,
+            page=self._pinned_page,
+            page_count=page_count,
+            bot_username=self.config.get(
+                "telegram_bot_username",
+                DEFAULT_TELEGRAM_BOT_USERNAME,
+            ),
+        )
+        response = self.dispatcher.telegram.bot_edit_message(
+            channel_id,
+            message_id,
+            message,
+            reply_markup=reply_markup,
+        )
+        if not self.dispatcher.telegram.response_ok(response):
+            logger.warning(
+                "Telegram pinned message returned HTTP %s",
+                response.status_code,
+            )
+
+    def _update_pinned_message(
+        self,
+        pillars: Mapping[str, Mapping[str, Any]],
+        momentum_height: int,
+    ) -> None:
+        if not self.dispatcher.telegram.enabled:
+            return
+        channel_id = str(self.config.get("telegram_channel_id", "")).strip()
+        message_id = _as_int(self.config.get("telegram_pinned_message_id"))
+        if not channel_id or message_id is None or message_id <= 0:
+            return
+
+        current_by_address = self._get_pinned_pillars(pillars)
+        self._last_momentum_height = momentum_height
+        try:
+            self._edit_pinned_message(current_by_address, momentum_height)
+        except Exception as exc:
+            logger.warning("Could not update Telegram pinned message: %s", exc)
+
+    def _telegram_callbacks_configured(self) -> bool:
+        if not self.dispatcher.telegram.enabled:
+            return False
+        channel_id = str(self.config.get("telegram_channel_id", "")).strip()
+        message_id = _as_int(self.config.get("telegram_pinned_message_id"))
+        return bool(channel_id and message_id is not None and message_id > 0)
+
+    def _answer_telegram_callback(
+        self,
+        callback_query_id: str,
+        text: str | None = None,
+    ) -> None:
+        try:
+            response = self.dispatcher.telegram.bot_answer_callback_query(
+                callback_query_id,
+                text=text,
             )
             if not self.dispatcher.telegram.response_ok(response):
                 logger.warning(
-                    "Telegram pinned message returned HTTP %s",
+                    "Telegram callback answer returned HTTP %s",
                     response.status_code,
                 )
         except Exception as exc:
-            logger.warning("Could not update Telegram pinned message: %s", exc)
+            logger.warning("Could not answer Telegram callback: %s", exc)
+
+    def _handle_telegram_callback(
+        self,
+        callback: Mapping[str, Any],
+    ) -> None:
+        callback_id = str(callback.get("id", "")).strip()
+        if not callback_id:
+            return
+
+        message = callback.get("message")
+        chat = message.get("chat") if isinstance(message, Mapping) else None
+        chat_id = chat.get("id") if isinstance(chat, Mapping) else None
+        channel_id = str(self.config.get("telegram_channel_id", "")).strip()
+        message_id = _as_int(self.config.get("telegram_pinned_message_id"))
+        if (
+            not isinstance(message, Mapping)
+            or str(chat_id or "") != channel_id
+            or _as_int(message.get("message_id")) != message_id
+        ):
+            self._answer_telegram_callback(
+                callback_id,
+                "This button is no longer active.",
+            )
+            return
+
+        parsed = parse_pinned_callback_data(callback.get("data"))
+        if parsed is None:
+            self._answer_telegram_callback(callback_id, "Unknown button.")
+            return
+        status, page = parsed
+        if status == self._pinned_status and page == self._pinned_page:
+            self._answer_telegram_callback(callback_id)
+            return
+
+        self._pinned_status = status
+        self._pinned_page = page
+        try:
+            pillars = self._get_pinned_pillars()
+            self._edit_pinned_message(
+                pillars,
+                self._pinned_momentum_height(),
+            )
+            self._answer_telegram_callback(callback_id)
+        except Exception as exc:
+            logger.warning("Could not handle Telegram callback: %s", exc)
+            self._answer_telegram_callback(
+                callback_id,
+                "Could not update the pillar list.",
+            )
+
+    def _process_telegram_updates(self, timeout: int = 0) -> bool:
+        if not self._telegram_callbacks_configured():
+            return False
+        try:
+            response = self.dispatcher.telegram.bot_get_updates(
+                offset=self._telegram_update_offset,
+                timeout=max(0, int(timeout)),
+                allowed_updates=("callback_query",),
+            )
+            if not self.dispatcher.telegram.response_ok(response):
+                logger.warning(
+                    "Telegram getUpdates returned HTTP %s",
+                    response.status_code,
+                )
+                return True
+            payload = response.json()
+            updates = payload.get("result", []) if isinstance(payload, Mapping) else []
+            for update in updates:
+                if not isinstance(update, Mapping):
+                    continue
+                update_id = _as_int(update.get("update_id"))
+                if update_id is not None:
+                    next_offset = update_id + 1
+                    if (
+                        self._telegram_update_offset is None
+                        or next_offset > self._telegram_update_offset
+                    ):
+                        self._telegram_update_offset = next_offset
+                callback = update.get("callback_query")
+                if isinstance(callback, Mapping):
+                    self._handle_telegram_callback(callback)
+        except Exception as exc:
+            logger.warning("Could not process Telegram updates: %s", exc)
+        return True
 
     def run_once(self) -> dict[str, Any]:
         self._reload_settings_if_changed()
@@ -454,6 +623,7 @@ class Collector:
             self.database.finish_poll(poll_run_id, "success")
 
             self._update_pinned_message(pillars, current_height)
+            self._process_telegram_updates()
             notification_result = self.dispatcher.dispatch_pending()
             result = {
                 "status": "success",
@@ -501,6 +671,13 @@ class Collector:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     break
+                if self._process_telegram_updates(
+                    timeout=min(10, max(0, int(remaining)))
+                ):
+                    if self._reload_settings_if_changed() and not interval_override:
+                        break
+                    time.sleep(min(1, remaining))
+                    continue
                 time.sleep(min(remaining, self.SETTINGS_CHECK_INTERVAL_SECONDS))
                 if self._reload_settings_if_changed() and not interval_override:
                     # Apply a changed poll interval immediately instead of

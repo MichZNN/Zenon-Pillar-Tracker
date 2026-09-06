@@ -7,7 +7,14 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from models.database import Database, utc_now
-from services.notification_service import NotificationDispatcher, format_event
+from services.notification_service import (
+    NotificationDispatcher,
+    create_pinned_stats_keyboard,
+    create_pinned_stats_message,
+    format_event,
+    parse_pinned_callback_data,
+    pinned_stats_page_count,
+)
 
 
 class NotificationDispatcherTestCase(unittest.TestCase):
@@ -17,6 +24,62 @@ class NotificationDispatcherTestCase(unittest.TestCase):
 
     def tearDown(self):
         self.temp_dir.cleanup()
+
+    def test_pinned_stats_are_paginated_and_filterable(self):
+        pillars = {
+            f"z1pillar{index}": {
+                "name": f"Pillar {index}",
+                "rank": index,
+                "weight": 100000000 * (index + 1),
+                "giveMomentumRewardPercentage": 10,
+                "giveDelegateRewardPercentage": 90,
+                "status": "active" if index % 2 == 0 else "inactive",
+                "currentStats": {
+                    "producedMomentums": index,
+                    "expectedMomentums": index + 1,
+                },
+            }
+            for index in range(45)
+        }
+
+        first_page = create_pinned_stats_message(pillars, 123, page=1)
+        second_page = create_pinned_stats_message(pillars, 123, page=2)
+        active_page = create_pinned_stats_message(
+            pillars,
+            123,
+            status="active",
+            page=1,
+        )
+
+        self.assertIn("All · 1/3", first_page)
+        self.assertIn("1 - Pillar 0", first_page)
+        self.assertIn("20 - Pillar 19", first_page)
+        self.assertNotIn("21 - Pillar 20", first_page)
+        self.assertIn("21 - Pillar 20", second_page)
+        self.assertIn("Active · 1/2", active_page)
+        self.assertIn("1 - Pillar 0", active_page)
+        self.assertNotIn("2 - Pillar 1", active_page)
+        self.assertEqual(pinned_stats_page_count(pillars, "inactive"), 2)
+
+        keyboard = create_pinned_stats_keyboard(
+            status="active",
+            page=2,
+            page_count=2,
+            bot_username="ZenonPillarTrackerBot",
+        )
+        self.assertEqual(
+            [button["text"] for button in keyboard["inline_keyboard"][0]],
+            ["⏮️", "◀️", "2/2", "▶️", "⏭️"],
+        )
+        self.assertEqual(
+            keyboard["inline_keyboard"][-1][0]["url"],
+            "https://t.me/ZenonPillarTrackerBot",
+        )
+        self.assertEqual(
+            parse_pinned_callback_data("pillar:page:inactive:3"),
+            ("inactive", 3),
+        )
+        self.assertIsNone(parse_pinned_callback_data("unknown:button"))
 
     def test_global_channel_and_pillar_routes_are_configured(self):
         config = {

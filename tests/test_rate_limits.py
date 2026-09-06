@@ -45,6 +45,43 @@ class RateLimitTestCase(unittest.TestCase):
         self.assertIs(response, success)
         sleep.assert_called_once_with(3.0)
 
+    def test_telegram_get_updates_passes_callback_query_options(self):
+        response = FakeResponse(200, payload={"ok": True, "result": []})
+        with patch(
+            "utils.telegram_wrapper.HttpWrapper.get",
+            return_value=response,
+        ) as get:
+            result = TelegramWrapper("test-token").bot_get_updates(
+                offset=42,
+                timeout=10,
+                allowed_updates=("callback_query",),
+            )
+
+        self.assertIs(result, response)
+        self.assertEqual(get.call_args.kwargs["params"]["offset"], 42)
+        self.assertEqual(get.call_args.kwargs["params"]["timeout"], 10)
+        self.assertEqual(
+            get.call_args.kwargs["params"]["allowed_updates"],
+            '["callback_query"]',
+        )
+
+    def test_telegram_edit_message_can_include_inline_keyboard(self):
+        response = FakeResponse(200, payload={"ok": True, "result": {}})
+        keyboard = {"inline_keyboard": [[{"text": "Next", "callback_data": "next"}]]}
+        with patch(
+            "utils.telegram_wrapper.HttpWrapper.post",
+            return_value=response,
+        ) as post:
+            result = TelegramWrapper("test-token").bot_edit_message(
+                "-100channel",
+                99,
+                "Pillars",
+                reply_markup=keyboard,
+            )
+
+        self.assertIs(result, response)
+        self.assertEqual(post.call_args.args[1]["reply_markup"], keyboard)
+
     def test_dashboard_limiter_returns_retry_window(self):
         limiter = ApiRateLimiter(max_requests=2, window_seconds=60)
         self.assertEqual(limiter.allow("127.0.0.1"), (True, 0))

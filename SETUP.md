@@ -563,7 +563,11 @@ Invoke-RestMethod -Uri "https://api.telegram.org/bot$botToken/getWebhookInfo"
 
 ### Configure the pinned overview
 
-The collector creates a summary containing the top pillars, reward-share percentages, weight, produced/expected momentums, and inactive warnings.
+The collector creates a compact summary with 20 pillars per page, reward-share
+percentages, weight, produced/expected momentums, and inactive warnings. The
+inline buttons switch pages and filter the list to active, inactive, or all
+pillars. Navigation is shared because the pinned message is shared by the
+channel.
 
 To enable it:
 
@@ -574,6 +578,10 @@ To enable it:
    picks up the change automatically within one minute.
 
 The bot must be allowed to edit the message. Event notifications and pinned-message updates are separate operations.
+The collector also polls Telegram callback updates while running in `--loop`
+mode. Keep `telegram_bot_username` set to the bot username so the pinned
+message can include its **Open bot** button. The default is
+`ZenonPillarTrackerBot`.
 
 ### Add notifications for specific pillars
 
