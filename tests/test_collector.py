@@ -139,6 +139,35 @@ class CollectorTestCase(unittest.TestCase):
         )
         self.assertFalse(self.collector._reload_settings_if_changed())
 
+    def test_telegram_pillar_snapshot_is_reused_until_refreshed(self):
+        source = pillar(3, 3)
+        database_item = {
+            "owner_address": "alpha",
+            "is_present": True,
+            "name": "Alpha",
+            "rank": 0,
+            "weight": 10000000000,
+            "momentum_reward_percentage": 10,
+            "delegate_reward_percentage": 90,
+            "status": "active",
+            "produced_momentums": 3,
+            "expected_momentums": 3,
+        }
+        with patch.object(
+            self.collector.database,
+            "get_pillars",
+            return_value={"items": [database_item]},
+        ) as get_pillars:
+            first = self.collector._get_pinned_pillars(source)
+            second = self.collector._get_pinned_pillars()
+
+        self.assertIs(first, second)
+        self.assertEqual(first["alpha"]["name"], "Alpha")
+        get_pillars.assert_called_once_with(
+            status="all",
+            include_performance=False,
+        )
+
     def test_pinned_callback_changes_shared_page_and_filter(self):
         self.collector.config.update(
             {
