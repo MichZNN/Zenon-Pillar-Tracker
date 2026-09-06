@@ -578,10 +578,17 @@ To enable it:
    picks up the change automatically within one minute.
 
 The bot must be allowed to edit the message. Event notifications and pinned-message updates are separate operations.
-The collector also polls Telegram callback updates while running in `--loop`
-mode. Keep `telegram_bot_username` set to the bot username so the pinned
-message can include its **Open bot** button. The default is
+The collector also polls Telegram button and message updates while running in
+`--loop` mode. Keep `telegram_bot_username` set to the bot username so the
+pinned message can include its **Open bot** button. The default is
 `ZenonPillarTrackerBot`.
+
+The **Open bot** button opens the bot chat. Press Telegram's **Start** button
+there (or send `/start`) to receive the current online/offline summary and
+the same pillar navigation buttons in a private chat. The bot also supports
+`/help`, `/status`, and `/pillars [all|active|inactive] [page]`. These commands
+are handled by the collector, so keep `python collector.py --loop` running;
+a one-shot collector run cannot receive new Telegram messages between polls.
 
 ### Add notifications for specific pillars
 

@@ -91,15 +91,21 @@ class TelegramWrapper:
             return True
         return bool(payload.get("ok", True))
 
-    def bot_send_message_to_chat(self, chat_id: str, message: str):
-        return self._call(
-            "sendMessage",
-            {
-                "chat_id": chat_id,
-                "text": message,
-                "disable_web_page_preview": True,
-            },
-        )
+    def bot_send_message_to_chat(
+        self,
+        chat_id: str,
+        message: str,
+        *,
+        reply_markup: Mapping[str, Any] | None = None,
+    ):
+        data: dict[str, Any] = {
+            "chat_id": chat_id,
+            "text": message,
+            "disable_web_page_preview": True,
+        }
+        if reply_markup is not None:
+            data["reply_markup"] = reply_markup
+        return self._call("sendMessage", data)
 
     def bot_edit_message(
         self,

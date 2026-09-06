@@ -82,6 +82,22 @@ class RateLimitTestCase(unittest.TestCase):
         self.assertIs(result, response)
         self.assertEqual(post.call_args.args[1]["reply_markup"], keyboard)
 
+    def test_telegram_send_message_can_include_inline_keyboard(self):
+        response = FakeResponse(200, payload={"ok": True, "result": {}})
+        keyboard = {"inline_keyboard": [[{"text": "Pillars", "callback_data": "pillars"}]]}
+        with patch(
+            "utils.telegram_wrapper.HttpWrapper.post",
+            return_value=response,
+        ) as post:
+            result = TelegramWrapper("test-token").bot_send_message_to_chat(
+                "private-chat",
+                "Welcome",
+                reply_markup=keyboard,
+            )
+
+        self.assertIs(result, response)
+        self.assertEqual(post.call_args.args[1]["reply_markup"], keyboard)
+
     def test_dashboard_limiter_returns_retry_window(self):
         limiter = ApiRateLimiter(max_requests=2, window_seconds=60)
         self.assertEqual(limiter.allow("127.0.0.1"), (True, 0))

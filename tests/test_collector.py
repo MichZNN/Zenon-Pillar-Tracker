@@ -175,6 +175,104 @@ class CollectorTestCase(unittest.TestCase):
         edit.assert_called_once()
         self.assertEqual(answers, [("callback-1", None)])
 
+    def test_private_bot_start_and_buttons_show_pillars(self):
+        sent = []
+        edited = []
+        answers = []
+        response = SimpleNamespace(status_code=200)
+        self.collector.dispatcher.telegram = SimpleNamespace(
+            enabled=True,
+            bot_send_message_to_chat=lambda *args, **kwargs: sent.append(
+                (args, kwargs)
+            ) or response,
+            bot_edit_message=lambda *args, **kwargs: edited.append(
+                (args, kwargs)
+            ) or response,
+            bot_answer_callback_query=lambda callback_id, text=None: answers.append(
+                (callback_id, text)
+            ) or response,
+            response_ok=lambda result: True,
+        )
+        pillars = {
+            "alpha": {
+                "name": "Alpha",
+                "rank": 0,
+                "weight": 100000000,
+                "status": "active",
+                "giveMomentumRewardPercentage": 10,
+                "giveDelegateRewardPercentage": 90,
+                "currentStats": {
+                    "producedMomentums": 3,
+                    "expectedMomentums": 3,
+                },
+            }
+        }
+
+        with patch.object(
+            self.collector,
+            "_get_pinned_pillars",
+            return_value=pillars,
+        ):
+            self.collector._handle_telegram_message(
+                {
+                    "text": "/start",
+                    "chat": {"id": 123, "type": "private"},
+                }
+            )
+            self.collector._handle_telegram_callback(
+                {
+                    "id": "private-callback",
+                    "data": "pillar:page:active:1",
+                    "message": {
+                        "message_id": 8,
+                        "chat": {"id": 123, "type": "private"},
+                    },
+                }
+            )
+
+        self.assertEqual(len(sent), 1)
+        self.assertIn("Online: 1 · Offline: 0", sent[0][0][1])
+        self.assertFalse(
+            any(
+                button.get("url")
+                for row in sent[0][1]["reply_markup"]["inline_keyboard"]
+                for button in row
+            )
+        )
+        self.assertEqual(edited[0][0][0:2], ("123", 8))
+        self.assertEqual(answers, [("private-callback", None)])
+
+    def test_telegram_update_polling_receives_private_messages(self):
+        requests = []
+        response = SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "ok": True,
+                "result": [
+                    {
+                        "update_id": 41,
+                        "message": {
+                            "text": "/start",
+                            "chat": {"id": 123, "type": "private"},
+                        },
+                    }
+                ],
+            },
+        )
+        self.collector.config["telegram_channel_id"] = "-100channel"
+        self.collector.dispatcher.telegram = SimpleNamespace(
+            enabled=True,
+            bot_get_updates=lambda **kwargs: requests.append(kwargs) or response,
+            response_ok=lambda result: True,
+        )
+
+        with patch.object(self.collector, "_handle_telegram_message") as handle:
+            self.assertTrue(self.collector._process_telegram_updates())
+
+        handle.assert_called_once()
+        self.assertEqual(requests[0]["allowed_updates"], ("callback_query", "message"))
+        self.assertEqual(self.collector._telegram_update_offset, 42)
+
 
 if __name__ == "__main__":
     unittest.main()
