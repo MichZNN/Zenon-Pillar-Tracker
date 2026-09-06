@@ -38,6 +38,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "allow_empty_pillars": False,
     "telegram_channel_id": "",
     "telegram_pinned_message_id": "",
+    "telegram_bot_username": "ZenonPillarTrackerBot",
     "telegram_dev_channel_id": "",
     "discord_channel_webhook": "",
     "reference_reward_address": "",

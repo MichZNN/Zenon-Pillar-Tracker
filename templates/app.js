@@ -3,6 +3,7 @@ const state = {
   status: "",
   pillars: null,
   performance: {},
+  performanceLoading: true,
   refreshId: 0,
 };
 let performanceRequest = null;
@@ -166,11 +167,14 @@ function renderPillars(payload) {
       '<div class="stat-item performance-stat">' +
       '<span class="stat-label">Performance · 30d</span>' +
       '<strong class="performance-value' +
-      (performanceAvailable(performance) ? '' : ' empty') + '">' +
-      formatPerformance(performance) + '</strong>' +
+      (!state.performanceLoading && !performanceAvailable(performance) ? ' empty' : '') + '">' +
+      renderPerformanceValue(performance) + '</strong>' +
       '<div class="performance-chart" role="img" ' +
-      'aria-label="Daily performance for the last 30 days">' +
-      renderPerformanceChart(performance) +
+      'aria-label="' + (state.performanceLoading
+        ? 'Loading daily performance'
+        : 'Daily performance for the last 30 days') + '"' +
+      (state.performanceLoading ? ' aria-busy="true"' : '') + '>' +
+      renderPerformanceChart(performance, state.performanceLoading) +
       '</div>' +
       '<div class="performance-chart-axis" aria-hidden="true">' +
       '<span>30d ago</span><span>Today</span>' +
@@ -238,6 +242,13 @@ function statusDurationSeconds(pillar) {
   return pillar.status_seconds ?? pillar.live_seconds;
 }
 
+function renderPerformanceValue(performance) {
+  if (state.performanceLoading) {
+    return '<span class="skeleton skeleton-performance-value" aria-hidden="true"></span>';
+  }
+  return formatPerformance(performance);
+}
+
 function formatPerformance(performance) {
   if (!performanceAvailable(performance)) return "—";
   const percentage = Number(performance?.percentage);
@@ -273,7 +284,10 @@ function performanceBarHeight(point) {
   return Math.max(4, Math.min(100, Number(point.percentage)));
 }
 
-function renderPerformanceChart(performance) {
+function renderPerformanceChart(performance, loading = false) {
+  if (loading) {
+    return '<span class="skeleton skeleton-performance-chart" aria-hidden="true"></span>';
+  }
   const points = Array.isArray(performance?.daily)
     ? performance.daily
     : [];
@@ -377,10 +391,13 @@ async function refreshPerformance(refreshId) {
     }
     const performance = await performanceRequest;
     if (refreshId !== state.refreshId) return;
-    state.performance = performance;
-    renderPillars(state.pillars);
+    state.performance = performance || {};
   } catch (error) {
     console.error(error);
+  } finally {
+    if (refreshId !== state.refreshId) return;
+    state.performanceLoading = false;
+    if (state.pillars) renderPillars(state.pillars);
   }
 }
 
@@ -395,9 +412,10 @@ async function refresh() {
         "&performance=0"
       ),
       getJson("/api/epochs?limit=11"),
-    ]);
+    ]); 
     if (refreshId !== state.refreshId) return;
     state.pillars = pillars;
+    state.performanceLoading = true;
     renderOverview(overview);
     renderPillars(pillars);
     renderEpochs(epochs);

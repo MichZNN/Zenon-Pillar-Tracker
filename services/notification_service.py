@@ -42,6 +42,10 @@ EPOCH_NOTIFICATION_EMOJIS = (
     "🥳",
     "💫",
 )
+DEFAULT_TELEGRAM_BOT_USERNAME = "ZenonPillarTrackerBot"
+PINNED_STATS_PAGE_SIZE = 20
+PINNED_STATS_MAX_LENGTH = 3900
+PINNED_STATS_STATUSES = frozenset({"all", "active", "inactive"})
 
 
 def _name(event: Mapping[str, Any]) -> str:
@@ -348,20 +352,95 @@ class NotificationDispatcher:
         return {"sent": sent, "failed": failed}
 
 
+def _pinned_rank(pillar: Mapping[str, Any]) -> int | None:
+    try:
+        return int(pillar.get("rank"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalise_pinned_status(status: Any) -> str:
+    value = str(status or "all").strip().casefold()
+    return value if value in PINNED_STATS_STATUSES else "all"
+
+
+def _ordered_pinned_pillars(
+    pillars: Mapping[str, Mapping[str, Any]],
+    status: str,
+) -> list[Mapping[str, Any]]:
+    normalised_status = _normalise_pinned_status(status)
+    ordered = [
+        pillar
+        for pillar in pillars.values()
+        if _pinned_rank(pillar) is not None
+        and (
+            normalised_status == "all"
+            or str(pillar.get("status", "")).casefold() == normalised_status
+        )
+    ]
+    return sorted(ordered, key=lambda item: _pinned_rank(item) or 0)
+
+
+def pinned_stats_page_count(
+    pillars: Mapping[str, Mapping[str, Any]],
+    status: str = "all",
+    page_size: int = PINNED_STATS_PAGE_SIZE,
+) -> int:
+    size = max(1, int(page_size))
+    count = len(_ordered_pinned_pillars(pillars, status))
+    return max(1, (count + size - 1) // size)
+
+
+def _pinned_page(
+    pillars: Mapping[str, Mapping[str, Any]],
+    status: str,
+    page: int,
+    page_size: int,
+) -> tuple[list[Mapping[str, Any]], str, int, int]:
+    size = max(1, int(page_size))
+    normalised_status = _normalise_pinned_status(status)
+    page_count = pinned_stats_page_count(
+        pillars,
+        normalised_status,
+        page_size=size,
+    )
+    try:
+        current_page = int(page)
+    except (TypeError, ValueError):
+        current_page = 1
+    current_page = min(max(1, current_page), page_count)
+    ordered = _ordered_pinned_pillars(pillars, normalised_status)
+    start = (current_page - 1) * size
+    return (
+        ordered[start : start + size],
+        normalised_status,
+        current_page,
+        page_count,
+    )
+
+
 def create_pinned_stats_message(
     pillars: Mapping[str, Mapping[str, Any]],
     momentum_height: int,
+    *,
+    status: str = "all",
+    page: int = 1,
+    page_size: int = PINNED_STATS_PAGE_SIZE,
 ) -> str:
-    ordered = sorted(
-        pillars.values(),
-        key=lambda item: (
-            item.get("rank") is None,
-            item.get("rank") if item.get("rank") is not None else 999999,
-        ),
+    page_pillars, normalised_status, current_page, page_count = _pinned_page(
+        pillars,
+        status,
+        page,
+        page_size,
     )
+    status_label = {
+        "all": "All",
+        "active": "Active",
+        "inactive": "Inactive",
+    }[normalised_status]
     title = (
-        "Pillar reward sharing rates"
-        + (" (top 70)" if len(ordered) > 70 else "")
+        "Pillar reward sharing rates · "
+        f"{status_label} · {current_page}/{page_count}"
     )
     lines = [
         title,
@@ -374,23 +453,111 @@ def create_pinned_stats_message(
         "",
     ]
 
-    for pillar in ordered:
-        rank = pillar.get("rank")
-        if rank is None or rank >= 70:
-            continue
+    for pillar in page_pillars:
+        rank = _pinned_rank(pillar)
         weight = round((int(pillar.get("weight") or 0)) / 100000000)
         stats = pillar.get("currentStats") or {}
-        status = " ⚠️" if pillar.get("status") == "inactive" else ""
+        inactive_marker = " ⚠️" if pillar.get("status") == "inactive" else ""
+        name = " ".join(str(pillar.get("name") or "Unknown pillar").split())
         line = (
-            f"{rank + 1} - {pillar.get('name')} -> "
+            f"{rank + 1} - {name} -> "
             f"M: {pillar.get('giveMomentumRewardPercentage', 0)}% "
             f"D: {pillar.get('giveDelegateRewardPercentage', 0)}% "
             f"W: {weight} "
             f"P/E: {stats.get('producedMomentums', 0)}/"
-            f"{stats.get('expectedMomentums', 0)}{status}"
+            f"{stats.get('expectedMomentums', 0)}{inactive_marker}"
         )
-        lines.append(line)
-        if len("\n".join(lines)) > 3900:
+        if len("\n".join(lines + [line])) > PINNED_STATS_MAX_LENGTH:
             lines.append("…")
             break
+        lines.append(line)
     return "\n".join(lines)
+
+
+def create_pinned_stats_keyboard(
+    *,
+    status: str = "all",
+    page: int = 1,
+    page_count: int = 1,
+    bot_username: str = DEFAULT_TELEGRAM_BOT_USERNAME,
+) -> dict[str, list[list[dict[str, str]]]]:
+    normalised_status = _normalise_pinned_status(status)
+    total_pages = max(1, int(page_count))
+    try:
+        current_page = int(page)
+    except (TypeError, ValueError):
+        current_page = 1
+    current_page = min(max(1, current_page), total_pages)
+
+    keyboard = [[
+        {
+            "text": "⏮️",
+            "callback_data": (
+                f"pillar:page:{normalised_status}:1"
+            ),
+        },
+        {
+            "text": "◀️",
+            "callback_data": (
+                f"pillar:page:{normalised_status}:{max(1, current_page - 1)}"
+            ),
+        },
+        {
+            "text": f"{current_page}/{total_pages}",
+            "callback_data": (
+                f"pillar:page:{normalised_status}:{current_page}"
+            ),
+        },
+        {
+            "text": "▶️",
+            "callback_data": (
+                f"pillar:page:{normalised_status}:"
+                f"{min(total_pages, current_page + 1)}"
+            ),
+        },
+        {
+            "text": "⏭️",
+            "callback_data": (
+                f"pillar:page:{normalised_status}:{total_pages}"
+            ),
+        },
+    ], [
+        {
+            "text": ("✅ " if normalised_status == "active" else "") + "Active",
+            "callback_data": "pillar:page:active:1",
+        },
+        {
+            "text": ("✅ " if normalised_status == "inactive" else "") + "Inactive",
+            "callback_data": "pillar:page:inactive:1",
+        },
+        {
+            "text": ("✅ " if normalised_status == "all" else "") + "All",
+            "callback_data": "pillar:page:all:1",
+        },
+    ]]
+
+    username = str(bot_username or "").strip()
+    if username:
+        bot_url = (
+            username
+            if username.startswith(("http://", "https://"))
+            else f"https://t.me/{username.lstrip('@')}"
+        )
+        keyboard.append([{"text": "🤖 Open bot", "url": bot_url}])
+    return {"inline_keyboard": keyboard}
+
+
+def parse_pinned_callback_data(
+    value: Any,
+) -> tuple[str, int] | None:
+    parts = str(value or "").split(":")
+    if len(parts) != 4 or parts[:2] != ["pillar", "page"]:
+        return None
+    status = _normalise_pinned_status(parts[2])
+    try:
+        page = int(parts[3])
+    except (TypeError, ValueError):
+        return None
+    if page < 1:
+        return None
+    return status, page

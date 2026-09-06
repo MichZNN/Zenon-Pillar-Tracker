@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from controllers.collector_controller import Collector
@@ -137,6 +138,42 @@ class CollectorTestCase(unittest.TestCase):
             self.collector.database.get_settings_revision(),
         )
         self.assertFalse(self.collector._reload_settings_if_changed())
+
+    def test_pinned_callback_changes_shared_page_and_filter(self):
+        self.collector.config.update(
+            {
+                "telegram_channel_id": "-100channel",
+                "telegram_pinned_message_id": 17,
+            }
+        )
+        answers = []
+        self.collector.dispatcher.telegram = SimpleNamespace(
+            enabled=True,
+            bot_answer_callback_query=lambda callback_id, text=None: answers.append(
+                (callback_id, text)
+            ),
+            response_ok=lambda response: True,
+        )
+        with patch.object(
+            self.collector,
+            "_get_pinned_pillars",
+            return_value={},
+        ), patch.object(self.collector, "_edit_pinned_message") as edit:
+            self.collector._handle_telegram_callback(
+                {
+                    "id": "callback-1",
+                    "data": "pillar:page:inactive:2",
+                    "message": {
+                        "message_id": 17,
+                        "chat": {"id": "-100channel"},
+                    },
+                }
+            )
+
+        self.assertEqual(self.collector._pinned_status, "inactive")
+        self.assertEqual(self.collector._pinned_page, 2)
+        edit.assert_called_once()
+        self.assertEqual(answers, [("callback-1", None)])
 
 
 if __name__ == "__main__":
