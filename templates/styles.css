@@ -322,6 +322,7 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 }
 .performance-value { color: var(--zenon-green); font-size: .9rem; }
 .performance-value.empty { color: var(--muted); }
+.skeleton-performance-value { height: 14px; margin-top: 4px; width: 42px; }
 .performance-chart {
   align-items: end;
   display: grid;
@@ -330,6 +331,11 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
   height: 44px;
   margin-top: 10px;
   padding: 0 1px;
+}
+.skeleton-performance-chart {
+  grid-column: 1 / -1;
+  height: 44px;
+  width: 100%;
 }
 .performance-bar {
   align-self: end;
