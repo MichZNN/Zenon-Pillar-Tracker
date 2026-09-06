@@ -18,9 +18,11 @@ class HttpWrapper:
         *,
         params: Mapping[str, Any] | None = None,
         timeout: float | None = None,
+        session: requests.Session | None = None,
     ) -> requests.Response:
         try:
-            return requests.get(
+            client = session or requests
+            return client.get(
                 url,
                 params=params,
                 timeout=timeout or HttpWrapper.DEFAULT_TIMEOUT,
@@ -35,9 +37,11 @@ class HttpWrapper:
         *,
         headers: Mapping[str, str] | None = None,
         timeout: float | None = None,
+        session: requests.Session | None = None,
     ) -> requests.Response:
         try:
-            return requests.post(
+            client = session or requests
+            return client.post(
                 url,
                 headers=dict(headers or {"Content-type": "application/json"}),
                 json=data,

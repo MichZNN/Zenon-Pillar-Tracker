@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from typing import Any, Iterable, Mapping
+
+import requests
 
 from .http_wrapper import HttpWrapper
 
@@ -25,6 +28,14 @@ class TelegramWrapper:
             1.0,
             float(rate_limit_max_wait_seconds),
         )
+        self._session_local = threading.local()
+
+    def _session(self) -> requests.Session:
+        session = getattr(self._session_local, "session", None)
+        if session is None:
+            session = requests.Session()
+            self._session_local.session = session
+        return session
 
     @property
     def enabled(self) -> bool:
@@ -38,6 +49,7 @@ class TelegramWrapper:
                 f"{self.API_BASE_URL}/bot{self.bot_api_key}/{method}",
                 data,
                 timeout=self.timeout,
+                session=self._session(),
             )
             if (
                 response.status_code != 429
@@ -66,6 +78,7 @@ class TelegramWrapper:
                 f"{self.API_BASE_URL}/bot{self.bot_api_key}/{method}",
                 params=params,
                 timeout=self.timeout,
+                session=self._session(),
             )
             if (
                 response.status_code != 429

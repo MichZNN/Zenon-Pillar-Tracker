@@ -260,7 +260,7 @@ class CollectorTestCase(unittest.TestCase):
             )
 
         self.assertEqual(len(sent), 1)
-        self.assertIn("Online: 1 · Offline: 0", sent[0][0][1])
+        self.assertIn("Active: 1 · Inactive: 0", sent[0][0][1])
         self.assertFalse(
             any(
                 button.get("url")
