@@ -20,6 +20,7 @@ from services.notification_service import (
     create_pinned_stats_message,
     parse_pinned_callback_data,
     pinned_stats_page_count,
+    pinned_stats_status_summary,
 )
 from utils.node_rpc_pool import NodeRpcPool
 from utils.node_rpc_wrapper import NodeRpcWrapper
@@ -79,6 +80,7 @@ class Collector:
         self._pinned_status = "all"
         self._pinned_page = 1
         self._last_momentum_height: int | None = None
+        self._telegram_pillar_snapshot: dict[str, dict[str, Any]] | None = None
         self._apply_runtime_config(initial_config)
 
     def _apply_runtime_config(self, config: Mapping[str, Any]) -> None:
@@ -316,6 +318,8 @@ class Collector:
         self,
         pillars: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> dict[str, dict[str, Any]]:
+        if pillars is None and self._telegram_pillar_snapshot is not None:
+            return self._telegram_pillar_snapshot
         source = pillars or {}
         current = self.database.get_pillars(
             status="all",
@@ -345,6 +349,7 @@ class Collector:
                 }
             )
             current_by_address[item["owner_address"]] = current_item
+        self._telegram_pillar_snapshot = current_by_address
         return current_by_address
 
     def _pinned_momentum_height(self, fallback: int | None = None) -> int:
@@ -405,24 +410,22 @@ class Collector:
     ) -> None:
         if not self.dispatcher.telegram.enabled:
             return
+        current_by_address = self._get_pinned_pillars(pillars)
+        self._last_momentum_height = momentum_height
         channel_id = str(self.config.get("telegram_channel_id", "")).strip()
         message_id = _as_int(self.config.get("telegram_pinned_message_id"))
         if not channel_id or message_id is None or message_id <= 0:
             return
 
-        current_by_address = self._get_pinned_pillars(pillars)
-        self._last_momentum_height = momentum_height
         try:
             self._edit_pinned_message(current_by_address, momentum_height)
         except Exception as exc:
             logger.warning("Could not update Telegram pinned message: %s", exc)
 
-    def _telegram_callbacks_configured(self) -> bool:
-        if not self.dispatcher.telegram.enabled:
-            return False
+    def _telegram_updates_configured(self) -> bool:
+        """Return whether the collector can receive bot updates."""
         channel_id = str(self.config.get("telegram_channel_id", "")).strip()
-        message_id = _as_int(self.config.get("telegram_pinned_message_id"))
-        return bool(channel_id and message_id is not None and message_id > 0)
+        return self.dispatcher.telegram.enabled and bool(channel_id)
 
     def _answer_telegram_callback(
         self,
@@ -442,6 +445,211 @@ class Collector:
         except Exception as exc:
             logger.warning("Could not answer Telegram callback: %s", exc)
 
+    def _send_telegram_message(
+        self,
+        chat_id: Any,
+        message: str,
+        *,
+        reply_markup: Mapping[str, Any] | None = None,
+    ) -> bool:
+        try:
+            response = self.dispatcher.telegram.bot_send_message_to_chat(
+                str(chat_id),
+                message,
+                reply_markup=reply_markup,
+            )
+            if not self.dispatcher.telegram.response_ok(response):
+                logger.warning(
+                    "Telegram sendMessage returned HTTP %s",
+                    response.status_code,
+                )
+                return False
+            return True
+        except Exception as exc:
+            logger.warning("Could not send Telegram message: %s", exc)
+            return False
+
+    @staticmethod
+    def _parse_pillars_command(arguments: list[str]) -> tuple[str, int]:
+        status = "all"
+        page = 1
+        for argument in arguments:
+            value = argument.strip().casefold()
+            if value in {"all", "active", "inactive"}:
+                status = value
+                continue
+            try:
+                page = max(1, int(value))
+            except (TypeError, ValueError):
+                continue
+        return status, page
+
+    def _private_pillar_keyboard(
+        self,
+        pillars: Mapping[str, Mapping[str, Any]],
+        status: str,
+        page: int,
+    ) -> dict[str, list[list[dict[str, str]]]]:
+        page_count = pinned_stats_page_count(pillars, status)
+        current_page = min(max(1, int(page)), page_count)
+        return create_pinned_stats_keyboard(
+            status=status,
+            page=current_page,
+            page_count=page_count,
+            include_bot_button=False,
+        )
+
+    def _send_private_pillar_message(
+        self,
+        chat_id: Any,
+        *,
+        status: str = "all",
+        page: int = 1,
+    ) -> bool:
+        pillars = self._get_pinned_pillars()
+        keyboard = self._private_pillar_keyboard(pillars, status, page)
+        return self._send_telegram_message(
+            chat_id,
+            create_pinned_stats_message(
+                pillars,
+                self._pinned_momentum_height(),
+                status=status,
+                page=page,
+            ),
+            reply_markup=keyboard,
+        )
+
+    def _edit_private_pillar_message(
+        self,
+        chat_id: Any,
+        message_id: Any,
+        *,
+        status: str,
+        page: int,
+        current_message: str | None = None,
+    ) -> bool:
+        numeric_message_id = _as_int(message_id)
+        if numeric_message_id is None:
+            return False
+        pillars = self._get_pinned_pillars()
+        page_count = pinned_stats_page_count(pillars, status)
+        current_page = min(max(1, int(page)), page_count)
+        rendered_message = create_pinned_stats_message(
+            pillars,
+            self._pinned_momentum_height(),
+            status=status,
+            page=current_page,
+        )
+        if current_message == rendered_message:
+            return True
+        response = self.dispatcher.telegram.bot_edit_message(
+            str(chat_id),
+            numeric_message_id,
+            rendered_message,
+            reply_markup=create_pinned_stats_keyboard(
+                status=status,
+                page=current_page,
+                page_count=page_count,
+                include_bot_button=False,
+            ),
+        )
+        if not self.dispatcher.telegram.response_ok(response):
+            logger.warning(
+                "Telegram private pillar message returned HTTP %s",
+                response.status_code,
+            )
+            return False
+        return True
+
+    def _handle_telegram_message(self, message: Mapping[str, Any]) -> None:
+        chat = message.get("chat")
+        if not isinstance(chat, Mapping) or chat.get("type") != "private":
+            return
+        text = str(message.get("text") or "").strip()
+        if not text.startswith("/"):
+            return
+        command_parts = text.split()
+        command = command_parts[0][1:].split("@", 1)[0].casefold()
+        chat_id = chat.get("id")
+        if chat_id is None:
+            return
+
+        if command in {"start", "help"}:
+            pillars = self._get_pinned_pillars()
+            self._send_telegram_message(
+                chat_id,
+                "\U0001f44b Zenon Pillar Tracker\n\n"
+                f"{pinned_stats_status_summary(pillars)}\n"
+                f"Momentum height: {self._pinned_momentum_height()}\n\n"
+                "Use the buttons below to browse the pillar list.\n"
+                "Commands: /status, /pillars [all|active|inactive] [page]",
+                reply_markup=self._private_pillar_keyboard(
+                    pillars,
+                    "all",
+                    1,
+                ),
+            )
+            return
+
+        if command == "status":
+            pillars = self._get_pinned_pillars()
+            self._send_telegram_message(
+                chat_id,
+                "Zenon Pillar Tracker status\n\n"
+                f"{pinned_stats_status_summary(pillars)}\n"
+                f"Momentum height: {self._pinned_momentum_height()}\n\n"
+                "Use /pillars to browse the list.",
+                reply_markup=self._private_pillar_keyboard(
+                    pillars,
+                    "all",
+                    1,
+                ),
+            )
+            return
+
+        if command == "pillars":
+            status, page = self._parse_pillars_command(command_parts[1:])
+            self._send_private_pillar_message(
+                chat_id,
+                status=status,
+                page=page,
+            )
+            return
+
+        self._send_telegram_message(
+            chat_id,
+            "Unknown command. Use /help to see what I can do.",
+        )
+
+    def _handle_private_telegram_callback(
+        self,
+        callback_id: str,
+        message: Mapping[str, Any],
+        parsed: tuple[str, int],
+    ) -> None:
+        chat = message.get("chat")
+        chat_id = chat.get("id") if isinstance(chat, Mapping) else None
+        if chat_id is None:
+            self._answer_telegram_callback(
+                callback_id,
+                "This button is no longer active.",
+            )
+            return
+        status, page = parsed
+        self._answer_telegram_callback(callback_id)
+        try:
+            updated = self._edit_private_pillar_message(
+                chat_id,
+                message.get("message_id"),
+                status=status,
+                page=page,
+                current_message=str(message.get("text") or ""),
+            )
+            if not updated:
+                logger.warning("Could not update the private pillar list")
+        except Exception as exc:
+            logger.warning("Could not handle private Telegram callback: %s", exc)
+
     def _handle_telegram_callback(
         self,
         callback: Mapping[str, Any],
@@ -453,11 +661,38 @@ class Collector:
         message = callback.get("message")
         chat = message.get("chat") if isinstance(message, Mapping) else None
         chat_id = chat.get("id") if isinstance(chat, Mapping) else None
+        parsed = parse_pinned_callback_data(callback.get("data"))
+        if (
+            isinstance(chat, Mapping)
+            and str(chat.get("type", "")).casefold() == "private"
+        ):
+            if parsed is None:
+                self._answer_telegram_callback(callback_id, "Unknown button.")
+                return
+            self._handle_private_telegram_callback(
+                callback_id,
+                message,
+                parsed,
+            )
+            return
+
         channel_id = str(self.config.get("telegram_channel_id", "")).strip()
         message_id = _as_int(self.config.get("telegram_pinned_message_id"))
+        configured_username = channel_id.lstrip("@").casefold()
+        chat_username = str(
+            chat.get("username", "") if isinstance(chat, Mapping) else ""
+        ).casefold()
+        channel_matches = (
+            str(chat_id or "") == channel_id
+            or (
+                channel_id.startswith("@")
+                and configured_username
+                and chat_username == configured_username
+            )
+        )
         if (
             not isinstance(message, Mapping)
-            or str(chat_id or "") != channel_id
+            or not channel_matches
             or _as_int(message.get("message_id")) != message_id
         ):
             self._answer_telegram_callback(
@@ -466,7 +701,6 @@ class Collector:
             )
             return
 
-        parsed = parse_pinned_callback_data(callback.get("data"))
         if parsed is None:
             self._answer_telegram_callback(callback_id, "Unknown button.")
             return
@@ -477,28 +711,24 @@ class Collector:
 
         self._pinned_status = status
         self._pinned_page = page
+        self._answer_telegram_callback(callback_id)
         try:
             pillars = self._get_pinned_pillars()
             self._edit_pinned_message(
                 pillars,
                 self._pinned_momentum_height(),
             )
-            self._answer_telegram_callback(callback_id)
         except Exception as exc:
             logger.warning("Could not handle Telegram callback: %s", exc)
-            self._answer_telegram_callback(
-                callback_id,
-                "Could not update the pillar list.",
-            )
 
     def _process_telegram_updates(self, timeout: int = 0) -> bool:
-        if not self._telegram_callbacks_configured():
+        if not self._telegram_updates_configured():
             return False
         try:
             response = self.dispatcher.telegram.bot_get_updates(
                 offset=self._telegram_update_offset,
                 timeout=max(0, int(timeout)),
-                allowed_updates=("callback_query",),
+                allowed_updates=("callback_query", "message"),
             )
             if not self.dispatcher.telegram.response_ok(response):
                 logger.warning(
@@ -522,6 +752,9 @@ class Collector:
                 callback = update.get("callback_query")
                 if isinstance(callback, Mapping):
                     self._handle_telegram_callback(callback)
+                message = update.get("message")
+                if isinstance(message, Mapping):
+                    self._handle_telegram_message(message)
         except Exception as exc:
             logger.warning("Could not process Telegram updates: %s", exc)
         return True

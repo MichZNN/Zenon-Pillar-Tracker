@@ -391,6 +391,22 @@ def pinned_stats_page_count(
     return max(1, (count + size - 1) // size)
 
 
+def pinned_stats_status_summary(
+    pillars: Mapping[str, Mapping[str, Any]],
+) -> str:
+    online = sum(
+        1
+        for pillar in pillars.values()
+        if str(pillar.get("status", "")).casefold() == "active"
+    )
+    offline = sum(
+        1
+        for pillar in pillars.values()
+        if str(pillar.get("status", "")).casefold() == "inactive"
+    )
+    return f"Online: {online} · Offline: {offline}"
+
+
 def _pinned_page(
     pillars: Mapping[str, Mapping[str, Any]],
     status: str,
@@ -448,6 +464,7 @@ def create_pinned_stats_message(
         + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         + " (UTC)",
         f"Momentum height: {momentum_height}",
+        pinned_stats_status_summary(pillars),
         "M = momentum reward %, D = delegate reward %, W = weight in ZNN",
         "P/E = produced/expected momentums",
         "",
@@ -480,6 +497,7 @@ def create_pinned_stats_keyboard(
     page: int = 1,
     page_count: int = 1,
     bot_username: str = DEFAULT_TELEGRAM_BOT_USERNAME,
+    include_bot_button: bool = True,
 ) -> dict[str, list[list[dict[str, str]]]]:
     normalised_status = _normalise_pinned_status(status)
     total_pages = max(1, int(page_count))
@@ -537,7 +555,7 @@ def create_pinned_stats_keyboard(
     ]]
 
     username = str(bot_username or "").strip()
-    if username:
+    if include_bot_button and username:
         bot_url = (
             username
             if username.startswith(("http://", "https://"))
