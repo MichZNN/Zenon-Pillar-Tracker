@@ -393,6 +393,8 @@ def pinned_stats_page_count(
 
 def pinned_stats_status_summary(
     pillars: Mapping[str, Mapping[str, Any]],
+    *,
+    include_icons: bool = False,
 ) -> str:
     active = sum(
         1
@@ -404,6 +406,8 @@ def pinned_stats_status_summary(
         for pillar in pillars.values()
         if str(pillar.get("status", "")).casefold() == "inactive"
     )
+    if include_icons:
+        return f"🟢 Active: {active} · 🔴 Inactive: {inactive}"
     return f"Active: {active} · Inactive: {inactive}"
 
 
@@ -454,20 +458,19 @@ def create_pinned_stats_message(
         "active": "Active",
         "inactive": "Inactive",
     }[normalised_status]
-    title = (
-        "Pillar reward sharing rates · "
-        f"{status_label} · {current_page}/{page_count}"
-    )
-    lines = [
-        title,
+    footer_lines = [
         "Last updated: "
         + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         + " (UTC)",
-        f"Momentum height: {momentum_height}",
-        pinned_stats_status_summary(pillars),
-        "M = momentum reward %, D = delegate reward %, W = weight in ZNN",
+        "M = momentum reward % · D = delegate reward % · W = weight in ZNN",
         "P/E = produced/expected momentums",
+    ]
+    lines = [
+        f"Filter: {status_label} pillars · Page {current_page}/{page_count}",
+        pinned_stats_status_summary(pillars, include_icons=True),
+        f"Momentum height: {momentum_height}",
         "",
+        "Pillar reward sharing rates",
     ]
 
     for pillar in page_pillars:
@@ -477,17 +480,18 @@ def create_pinned_stats_message(
         inactive_marker = " ⚠️" if pillar.get("status") == "inactive" else ""
         name = " ".join(str(pillar.get("name") or "Unknown pillar").split())
         line = (
-            f"{rank + 1} - {name} -> "
+            f"{rank + 1} · {name} • "
             f"M: {pillar.get('giveMomentumRewardPercentage', 0)}% "
             f"D: {pillar.get('giveDelegateRewardPercentage', 0)}% "
             f"W: {weight} "
             f"P/E: {stats.get('producedMomentums', 0)}/"
             f"{stats.get('expectedMomentums', 0)}{inactive_marker}"
         )
-        if len("\n".join(lines + [line])) > PINNED_STATS_MAX_LENGTH:
+        if len("\n".join(lines + [line, "", *footer_lines])) > PINNED_STATS_MAX_LENGTH:
             lines.append("…")
             break
         lines.append(line)
+    lines.extend(["", *footer_lines])
     return "\n".join(lines)
 
 
