@@ -407,7 +407,7 @@ def pinned_stats_status_summary(
         if str(pillar.get("status", "")).casefold() == "inactive"
     )
     if include_icons:
-        return f"🟢 Active: {active} · 🔴 Inactive: {inactive}"
+        return f"🟢 Active: {active} 🔴 Inactive: {inactive}"
     return f"Active: {active} · Inactive: {inactive}"
 
 
@@ -462,8 +462,8 @@ def create_pinned_stats_message(
         "Last updated: "
         + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         + " (UTC)",
-        "M = momentum reward % · D = delegate reward % · W = weight in ZNN",
-        "P/E = produced/expected momentums",
+        "M = momentum reward % · D = delegate reward % · W = weight in ZNN · P/E = produced/expected momentums",
+        "",
     ]
     lines = [
         f"Filter: {status_label} pillars · Page {current_page}/{page_count}",
