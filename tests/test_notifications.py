@@ -52,15 +52,27 @@ class NotificationDispatcherTestCase(unittest.TestCase):
             page=1,
         )
 
-        self.assertIn("All · 1/3", first_page)
-        self.assertIn("Active: 23 · Inactive: 22", first_page)
-        self.assertIn("1 - Pillar 0", first_page)
-        self.assertIn("20 - Pillar 19", first_page)
-        self.assertNotIn("21 - Pillar 20", first_page)
-        self.assertIn("21 - Pillar 20", second_page)
-        self.assertIn("Active · 1/2", active_page)
-        self.assertIn("1 - Pillar 0", active_page)
-        self.assertNotIn("2 - Pillar 1", active_page)
+        self.assertIn("Filter: All pillars · Page 1/3", first_page)
+        self.assertIn("🟢 Active: 23 · 🔴 Inactive: 22", first_page)
+        self.assertIn("1 · Pillar 0 •", first_page)
+        self.assertIn("20 · Pillar 19 •", first_page)
+        self.assertNotIn("21 · Pillar 20 •", first_page)
+        self.assertIn("21 · Pillar 20 •", second_page)
+        self.assertIn("Filter: Active pillars · Page 1/2", active_page)
+        self.assertIn("1 · Pillar 0 •", active_page)
+        self.assertNotIn("2 · Pillar 1 •", active_page)
+        self.assertLess(
+            first_page.index("Momentum height"),
+            first_page.index("Pillar reward sharing rates"),
+        )
+        self.assertLess(
+            first_page.index("Pillar reward sharing rates"),
+            first_page.index("1 · Pillar 0"),
+        )
+        self.assertLess(
+            first_page.index("20 · Pillar 19"),
+            first_page.index("Last updated"),
+        )
         self.assertEqual(pinned_stats_page_count(pillars, "inactive"), 2)
 
         keyboard = create_pinned_stats_keyboard(
@@ -85,6 +97,10 @@ class NotificationDispatcherTestCase(unittest.TestCase):
         self.assertEqual(
             pinned_stats_status_summary(pillars),
             "Active: 23 · Inactive: 22",
+        )
+        self.assertEqual(
+            pinned_stats_status_summary(pillars, include_icons=True),
+            "🟢 Active: 23 · 🔴 Inactive: 22",
         )
 
     def test_global_channel_and_pillar_routes_are_configured(self):
