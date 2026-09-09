@@ -407,7 +407,7 @@ def pinned_stats_status_summary(
         if str(pillar.get("status", "")).casefold() == "inactive"
     )
     if include_icons:
-        return f"🟢 Active: {active} · 🔴 Inactive: {inactive}"
+        return f"🟢 Active: {active} 🔴 Inactive: {inactive}"
     return f"Active: {active} · Inactive: {inactive}"
 
 
@@ -459,18 +459,17 @@ def create_pinned_stats_message(
         "inactive": "Inactive",
     }[normalised_status]
     footer_lines = [
-        "Last updated: "
-        + datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        + " (UTC)",
-        "M = momentum reward % · D = delegate reward % · W = weight in ZNN",
-        "P/E = produced/expected momentums",
+        "🕒 Updated: "
+        + datetime.now(timezone.utc).strftime("%b %d %H:%M UTC"),
+        "M = momentum reward % · D = delegate reward % · W = weight in ZNN · P/E = produced/expected momentums",
+        "",
     ]
     lines = [
-        f"Filter: {status_label} pillars · Page {current_page}/{page_count}",
         pinned_stats_status_summary(pillars, include_icons=True),
         f"Momentum height: {momentum_height}",
         "",
         "Pillar reward sharing rates",
+        f"Filter: {status_label} pillars · Page {current_page}/{page_count}",
     ]
 
     for pillar in page_pillars:
