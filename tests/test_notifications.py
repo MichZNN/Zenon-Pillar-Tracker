@@ -62,16 +62,28 @@ class NotificationDispatcherTestCase(unittest.TestCase):
         self.assertIn("1 · Pillar 0 •", active_page)
         self.assertNotIn("2 · Pillar 1 •", active_page)
         self.assertLess(
+            first_page.index("🟢 Active: 23"),
+            first_page.index("Momentum height"),
+        )
+        self.assertLess(
             first_page.index("Momentum height"),
             first_page.index("Pillar reward sharing rates"),
         )
         self.assertLess(
             first_page.index("Pillar reward sharing rates"),
+            first_page.index("Filter: All pillars"),
+        )
+        self.assertLess(
+            first_page.index("Filter: All pillars"),
             first_page.index("1 · Pillar 0"),
         )
         self.assertLess(
             first_page.index("20 · Pillar 19"),
-            first_page.index("Last updated"),
+            first_page.index("🕒 Updated"),
+        )
+        self.assertRegex(
+            first_page,
+            r"🕒 Updated: [A-Z][a-z]{2} \d{2} \d{2}:\d{2} UTC",
         )
         self.assertEqual(pinned_stats_page_count(pillars, "inactive"), 2)
 
