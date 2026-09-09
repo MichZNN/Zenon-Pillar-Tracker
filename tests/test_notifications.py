@@ -96,7 +96,7 @@ class NotificationDispatcherTestCase(unittest.TestCase):
         self.assertIsNone(parse_pinned_callback_data("unknown:button"))
         self.assertEqual(
             pinned_stats_status_summary(pillars),
-            "Active: 23 Inactive: 22",
+            "Active: 23 · Inactive: 22",
         )
         self.assertEqual(
             pinned_stats_status_summary(pillars, include_icons=True),
