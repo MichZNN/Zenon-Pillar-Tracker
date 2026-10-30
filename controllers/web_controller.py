@@ -88,6 +88,14 @@ PAGE_TEMPLATE_CONTEXT: dict[str, dict[str, Any]] = {
         "show_footer": True,
         "footer_label": "Event history",
     },
+    "404.html": {
+        "show_header": True,
+        "header_variant": "history",
+        "header_eyebrow": "Error 404",
+        "header_title": "Page not found",
+        "show_footer": True,
+        "footer_label": "Page not found",
+    },
     "pillars.html": {
         "show_header": True,
         "header_variant": "history",
@@ -218,8 +226,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def _send_file(self, path: Path) -> None:
         try:
             body = path.read_bytes()
-        except FileNotFoundError:
-            self._send_json({"error": "Not found"}, 404)
+        except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+            self._send_not_found()
             return
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         try:
@@ -237,11 +245,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self,
         template_name: str,
         context: Mapping[str, Any] | None = None,
+        status: int = 200,
     ) -> None:
         template = self.template_environment.get_template(template_name)
         body = template.render(**dict(context or {})).encode("utf-8")
         try:
-            self.send_response(200)
+            self.send_response(status)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
@@ -250,6 +259,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         except self.client_disconnect_errors:
             return
+
+    def _send_not_found(self) -> None:
+        """404 as JSON for API clients and as a page for everyone else."""
+        if urlparse(self.path).path.startswith("/api/"):
+            self._send_json({"error": "Not found"}, 404)
+            return
+        self._send_template("404.html", PAGE_TEMPLATE_CONTEXT["404.html"], 404)
 
     def _send_redirect(self, location: str, status: int = 302) -> None:
         try:
@@ -1041,6 +1057,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "Forbidden"}, 403)
                 return
             if candidate.suffix.casefold() == ".html":
+                if not candidate.is_file() or relative == "404.html":
+                    self._send_not_found()
+                    return
                 self._send_template(
                     relative,
                     PAGE_TEMPLATE_CONTEXT.get(relative, {}),

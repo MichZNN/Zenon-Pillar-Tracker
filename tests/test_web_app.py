@@ -367,6 +367,44 @@ class WebAppTestCase(unittest.TestCase):
             server.server_close()
             thread.join(timeout=5)
 
+    def test_unknown_pages_get_an_html_404_and_api_keeps_json(self):
+        try:
+            server = DashboardServer(
+                ("127.0.0.1", 0),
+                DashboardHandler,
+                self.database,
+                self.templates_dir,
+                self.templates_dir.parent / "static",
+                ApiRateLimiter(max_requests=0),
+                {},
+            )
+        except PermissionError as exc:
+            self.skipTest(f"Local socket creation is unavailable: {exc}")
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            host, port = server.server_address
+            for path in ("/dfgsdf", "/missing.html", "/static/nope.png", "/static/", "/404.html"):
+                with self.assertRaises(HTTPError) as error:
+                    urlopen(f"http://{host}:{port}{path}", timeout=5)
+                self.assertEqual(error.exception.code, 404, path)
+                self.assertEqual(
+                    error.exception.headers["Content-Type"],
+                    "text/html; charset=utf-8",
+                    path,
+                )
+                self.assertIn("Page not found", error.exception.read().decode("utf-8"))
+                error.exception.close()
+            with self.assertRaises(HTTPError) as error:
+                urlopen(f"http://{host}:{port}/api/does-not-exist", timeout=5)
+            self.assertEqual(error.exception.code, 404)
+            self.assertIn("application/json", error.exception.headers["Content-Type"])
+            error.exception.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
     def test_pages_load_shared_pillar_helpers_first(self):
         for page_name, script in (
             ("index.html", "/app.js"),

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Page not found · Zenon Pillar Tracker{% endblock %}
+
+{% block content %}
+  <main class="page-shell not-found-page">
+    <section class="section-block">
+      <h2>There's no page at this address</h2>
+      <p>The link may have a typo, or the page has moved. Pillars have their own page at <code>/pillar/&lt;owner address&gt;</code>.</p>
+      <div class="not-found-actions">
+        <a class="primary-button" href="/"><i class="fa-solid fa-house" aria-hidden="true"></i>Go to the dashboard</a>
+        <a class="ghost-button" href="/pillars">All pillars</a>
+      </div>
+    </section>
+  </main>
+{% endblock %}

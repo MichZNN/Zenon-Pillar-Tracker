@@ -1265,3 +1265,9 @@ body.modal-open { overflow: hidden; }
 
 /* Rank on pillar cards: a bit heavier so it balances the star and badge. */
 .pillar-rank { color: var(--muted); font-size: .9rem; font-weight: 800; letter-spacing: .01em; }
+
+/* 404 page */
+.not-found-page p { color: var(--muted); line-height: 1.6; margin: 8px 0 20px; max-width: 60ch; }
+.not-found-page code { color: var(--text); }
+.not-found-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.not-found-actions a { align-items: center; display: inline-flex; text-decoration: none; }
