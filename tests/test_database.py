@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -127,12 +128,13 @@ class DatabaseTestCase(unittest.TestCase):
         epoch_start_at=None,
         epoch_start_observed=False,
         epoch_start_inferred=None,
+        observed_at=None,
     ):
         self.height += 1
         run_id = self.database.begin_poll()
         result = self.database.record_observation(
             poll_run_id=run_id,
-            observed_at=utc_now(),
+            observed_at=observed_at or utc_now(),
             momentum={
                 "height": self.height,
                 "hash": f"hash-{self.height}",
@@ -261,6 +263,51 @@ class DatabaseTestCase(unittest.TestCase):
         self.assertEqual(
             self.database.get_pillars()["items"][0]["performance_last_30_days"],
             performance,
+        )
+
+    def test_performance_stores_completed_days_and_keeps_today_live(self):
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        two_days_ago = now - timedelta(days=2)
+        for minutes, produced, expected in ((0, 1, 1), (10, 2, 3)):
+            self.record(
+                {"z1alpha": make_pillar("Alpha", produced=produced, expected=expected)},
+                observed_at=(two_days_ago + timedelta(minutes=minutes)).isoformat(),
+            )
+        self.record(
+            {"z1alpha": make_pillar("Alpha", produced=3, expected=4)},
+        )
+
+        first = self.database.get_pillar_performance()["z1alpha"]
+        days = {point["date"]: point for point in first["daily"]}
+        stored_day = two_days_ago.date().isoformat()
+        self.assertEqual(days[stored_day]["produced"], 1)
+        self.assertEqual(days[stored_day]["expected"], 2)
+        self.assertEqual(days[now.date().isoformat()]["produced"], 1)
+        self.assertEqual(first["produced"], 2)
+        self.assertEqual(first["expected"], 3)
+
+        with sqlite3.connect(self.database.path) as connection:
+            stored = connection.execute(
+                "SELECT produced, expected FROM pillar_performance_daily "
+                "WHERE owner_address = 'z1alpha' AND day = ?",
+                (stored_day,),
+            ).fetchone()
+            self.assertEqual(stored, (1, 2))
+            # Completed days are read from the stored rollup, not recalculated.
+            connection.execute(
+                "UPDATE pillar_performance_daily SET produced = 2 "
+                "WHERE owner_address = 'z1alpha' AND day = ?",
+                (stored_day,),
+            )
+
+        self.record({"z1alpha": make_pillar("Alpha", produced=4, expected=5)})
+        second = self.database.get_pillar_performance()["z1alpha"]
+        days = {point["date"]: point for point in second["daily"]}
+        self.assertEqual(days[stored_day]["produced"], 2)
+        self.assertEqual(days[now.date().isoformat()]["produced"], 2)
+        self.assertEqual(
+            second["produced"],
+            sum(point["produced"] for point in second["daily"]),
         )
 
     def test_performance_counts_production_when_expected_changed_earlier(self):

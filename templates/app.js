@@ -112,6 +112,7 @@ function renderOverview(payload) {
     ? "Latest snapshot: " + formatDate(payload.last_snapshot_at)
     : "No snapshot yet";
   renderEvents(payload.recent_events || []);
+  updateListToggle("event-list");
 }
 
 function renderPillars(payload) {
@@ -186,6 +187,27 @@ function renderPillars(payload) {
     element.addEventListener("click", () => showPillar(element.dataset.owner));
   });
 }
+
+const MOBILE_COLLAPSED_ROWS = 3;
+
+function updateListToggle(listId) {
+  const list = $("#" + listId);
+  const section = list.closest(".collapsible-section");
+  const toggle = section?.querySelector(".list-toggle");
+  if (!toggle) return;
+  const rows = list.querySelectorAll(".epoch-row, .event-row").length;
+  toggle.hidden = rows <= MOBILE_COLLAPSED_ROWS;
+}
+
+document.querySelectorAll(".collapsible-section .list-toggle").forEach((toggle) => {
+  toggle.addEventListener("click", () => {
+    const section = toggle.closest(".collapsible-section");
+    const expanded = section.classList.toggle("is-expanded");
+    toggle.setAttribute("aria-expanded", String(expanded));
+    toggle.querySelector(".list-toggle-label").textContent =
+      expanded ? "Show less" : "Show more";
+  });
+});
 
 function renderEpochs(epochs) {
   const target = $("#epoch-list");
@@ -415,10 +437,13 @@ async function refresh() {
     ]); 
     if (refreshId !== state.refreshId) return;
     state.pillars = pillars;
-    state.performanceLoading = true;
+    // Keep showing the previous chart during background refreshes; only the
+    // first load shows the skeleton.
+    state.performanceLoading = !Object.keys(state.performance).length;
     renderOverview(overview);
     renderPillars(pillars);
     renderEpochs(epochs);
+    updateListToggle("epoch-list");
     void refreshPerformance(refreshId);
   } catch (error) {
     console.error(error);
