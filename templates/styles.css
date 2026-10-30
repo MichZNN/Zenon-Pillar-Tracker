@@ -1215,7 +1215,10 @@ body.modal-open { overflow: hidden; }
 }
 @media (max-width: 679px) {
   .pillar-page .section-heading { align-items: flex-start; }
-  .pillar-page .section-heading:first-child { flex-wrap: wrap; }
+  /* Title and address on top; status, star and share on one row below
+     with the back arrow on the right. */
+  .pillar-page .section-heading:first-child { align-items: stretch; flex-direction: column; }
+  .pillar-page .section-heading:first-child .section-heading-actions { flex-wrap: nowrap; justify-content: space-between; width: 100%; }
   .performance-chart.performance-chart-large { gap: 2px; height: 130px; }
 }
 
@@ -1259,3 +1262,6 @@ body.modal-open { overflow: hidden; }
 }
 .performance-bar-button.is-selected .performance-bar.is-partial,
 .performance-bar-button:hover .performance-bar.is-partial { opacity: .85; }
+
+/* Rank on pillar cards: a bit heavier so it balances the star and badge. */
+.pillar-rank { color: var(--muted); font-size: .9rem; font-weight: 800; letter-spacing: .01em; }
