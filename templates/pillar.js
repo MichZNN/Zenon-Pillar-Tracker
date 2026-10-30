@@ -66,14 +66,14 @@ function renderChart(pillar) {
     '<button class="performance-bar-button' +
     (pageState.selectedDay === point.date ? ' is-selected' : '') +
     '" type="button" data-index="' + index + '" aria-label="' +
-    escapeHtml(performanceDayLabel(point)) + '">' +
-    '<span class="performance-bar ' + performanceBarClass(point) +
+    escapeHtml(performanceDayLabel(point, pillar)) + '">' +
+    '<span class="performance-bar ' + performanceBarClasses(point, pillar) +
     '" style="height:' + performanceBarHeight(point) + '%"></span>' +
     '</button>'
   ).join("");
   const selected = points.find((point) => point.date === pageState.selectedDay);
   $("#performance-readout").textContent = selected
-    ? performanceDayLabel(selected)
+    ? performanceDayLabel(selected, pillar)
     : "Tap a bar to see that day.";
   chart.querySelectorAll(".performance-bar-button").forEach((button) => {
     const point = points[Number(button.dataset.index)];
@@ -81,7 +81,7 @@ function renderChart(pillar) {
       pageState.selectedDay = point.date;
       chart.querySelectorAll(".is-selected").forEach((item) => item.classList.remove("is-selected"));
       button.classList.add("is-selected");
-      $("#performance-readout").textContent = performanceDayLabel(point);
+      $("#performance-readout").textContent = performanceDayLabel(point, pillar);
     };
     button.addEventListener("click", select);
     button.addEventListener("mouseenter", select);

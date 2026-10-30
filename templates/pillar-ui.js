@@ -208,15 +208,38 @@ function performanceBarHeight(point) {
   return Math.max(6, Math.min(100, scaled));
 }
 
-function performanceDayLabel(point) {
-  const date = formatPerformanceDay(point.date);
-  if (!performanceAvailable(point)) return date + ": No data";
-  return date + ": " + Number(point.percentage).toFixed(1) + "% · " +
-    formatNumber(point.produced) + " of " + formatNumber(point.expected) +
-    " momentums";
+// Days are UTC calendar days. Today and the day a pillar went live only
+// cover part of the day, so their bars are drawn lighter and labelled.
+function partialDayNote(point, pillar) {
+  if (!point?.date) return null;
+  if (point.date === new Date().toISOString().slice(0, 10)) {
+    return "partial day (today so far)";
+  }
+  const liveSince = pillar?.live_since ? new Date(pillar.live_since) : null;
+  if (liveSince && !Number.isNaN(liveSince.getTime()) &&
+      liveSince.toISOString().slice(0, 10) === point.date &&
+      liveSince.toISOString().slice(11, 16) !== "00:00") {
+    return "partial day (live since " + liveSince.toISOString().slice(11, 16) + " UTC)";
+  }
+  return null;
 }
 
-function renderPerformanceChart(performance, loading = false) {
+function performanceDayLabel(point, pillar = null) {
+  const date = formatPerformanceDay(point.date);
+  const note = partialDayNote(point, pillar);
+  const suffix = note ? " · " + note : "";
+  if (!performanceAvailable(point)) return date + ": No data" + suffix;
+  return date + ": " + Number(point.percentage).toFixed(1) + "% · " +
+    formatNumber(point.produced) + " of " + formatNumber(point.expected) +
+    " momentums" + suffix;
+}
+
+function performanceBarClasses(point, pillar = null) {
+  return performanceBarClass(point) +
+    (partialDayNote(point, pillar) ? " is-partial" : "");
+}
+
+function renderPerformanceChart(performance, loading = false, pillar = null) {
   if (loading) {
     return '<span class="skeleton skeleton-performance-chart" aria-hidden="true"></span>';
   }
@@ -225,9 +248,9 @@ function renderPerformanceChart(performance, loading = false) {
     return '<span class="performance-chart-empty">Daily data is not available yet.</span>';
   }
   return points.map((point) =>
-    '<span class="performance-bar ' + performanceBarClass(point) +
+    '<span class="performance-bar ' + performanceBarClasses(point, pillar) +
     '" style="height:' + performanceBarHeight(point) + '%" ' +
-    'title="' + escapeHtml(performanceDayLabel(point)) + '" aria-hidden="true"></span>'
+    'title="' + escapeHtml(performanceDayLabel(point, pillar)) + '" aria-hidden="true"></span>'
   ).join("");
 }
 
@@ -336,7 +359,7 @@ function renderPillarCard(pillar, performance, options = {}) {
     '<div class="performance-chart" role="img" aria-label="' +
     (loading ? 'Loading daily performance' : 'Daily performance for the last 30 days') + '"' +
     (loading ? ' aria-busy="true"' : '') + '>' +
-    renderPerformanceChart(item, loading) +
+    renderPerformanceChart(item, loading, pillar) +
     '</div>' +
     '<div class="performance-chart-axis" aria-hidden="true">' +
     '<span>30d ago</span><span>Today</span>' +

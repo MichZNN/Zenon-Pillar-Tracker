@@ -1251,3 +1251,11 @@ body.modal-open { overflow: hidden; }
   .overview-grid .desktop-only { display: none; }
   .overview-grid .mobile-only { display: inline; }
 }
+
+/* Partial days (today, and the day a pillar went live) are drawn lighter. */
+.performance-bar.is-partial, .legend-dot.is-partial {
+  background-image: repeating-linear-gradient(135deg, rgba(21, 21, 21, .55) 0 3px, transparent 3px 6px);
+  opacity: .6;
+}
+.performance-bar-button.is-selected .performance-bar.is-partial,
+.performance-bar-button:hover .performance-bar.is-partial { opacity: .85; }
