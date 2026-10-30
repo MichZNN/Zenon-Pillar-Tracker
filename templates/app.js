@@ -27,8 +27,12 @@ function renderOverview(payload) {
   $("#momentum-height").textContent = node?.last_momentum_height
     ? formatNumber(node.last_momentum_height)
     : "—";
-  $("#last-update").textContent = node?.last_success_at
-    ? "Last successful update " + formatDate(node.last_success_at)
+  // Full text on desktop; a short relative time on mobile.
+  $("#last-update").innerHTML = node?.last_success_at
+    ? '<span class="desktop-only">Last successful update ' +
+      escapeHtml(formatDate(node.last_success_at)) + '</span>' +
+      '<span class="mobile-only" title="' + escapeHtml(formatDate(node.last_success_at)) +
+      '">Updated ' + escapeHtml(formatRelativeTime(node.last_success_at)) + '</span>'
     : "No successful update yet";
   $("#pillar-total").textContent = formatNumber(counts.total || 0);
   $("#pillar-active").textContent = formatNumber(counts.active || 0);

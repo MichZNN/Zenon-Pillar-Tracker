@@ -1218,3 +1218,36 @@ body.modal-open { overflow: hidden; }
   .pillar-page .section-heading:first-child { flex-wrap: wrap; }
   .performance-chart.performance-chart-large { gap: 2px; height: 130px; }
 }
+
+/* ---------- Mobile: epoch and momentum side by side ---------- */
+.mobile-only { display: none; }
+@media (max-width: 679px) {
+  .desktop-only { display: none; }
+  .mobile-only { display: inline; }
+  .hero-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero-card { min-height: 0; padding: 16px; }
+  .hero-card::after { bottom: -60px; height: 100px; right: -44px; width: 100px; }
+  .hero-value { font-size: clamp(1.5rem, 6.4vw, 2.1rem); letter-spacing: -.04em; margin: 10px 0 6px; white-space: nowrap; }
+  .skeleton-hero-value { height: clamp(1.5rem, 6.4vw, 2.1rem); margin: 10px 0 6px; }
+  .hero-card .muted { font-size: .75rem; }
+}
+
+/* ---------- Desktop: one compact overview row ---------- */
+@media (min-width: 960px) {
+  .overview-grid {
+    align-items: stretch;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    margin-bottom: 18px;
+  }
+  .overview-grid .metric-grid { margin: 0; }
+  .overview-grid .hero-card { min-height: 0; padding: 22px 16px 14px; }
+  .overview-grid .hero-card::after { bottom: -60px; height: 100px; right: -44px; width: 100px; }
+  .overview-grid .hero-value { font-size: 1.75rem; letter-spacing: -.04em; line-height: 1.45; margin: 5px 0 0; white-space: nowrap; }
+  .overview-grid .skeleton-hero-value { height: 1.75rem; margin: 5px 0 4px; }
+  .overview-grid .hero-card .muted { font-size: .72rem; }
+  /* The card is narrow now: use the short relative update time here too. */
+  .overview-grid .desktop-only { display: none; }
+  .overview-grid .mobile-only { display: inline; }
+}
