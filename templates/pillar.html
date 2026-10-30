@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Pillar · Zenon Pillar Tracker{% endblock %}
+
+{% block content %}
+  <main class="page-shell pillar-page">
+    <section class="section-block">
+      <div class="section-heading">
+        <div class="pillar-page-title">
+          <p id="pillar-rank" class="eyebrow">Pillar</p>
+          <h2>Overview</h2>
+          <div id="pillar-address" class="pillar-address"></div>
+        </div>
+        <div class="section-heading-actions">
+          <span id="pillar-actions" class="pillar-page-actions"></span>
+          <a class="section-link section-icon-link" href="/" aria-label="Back to dashboard" title="Back to dashboard"><i class="fa-solid fa-circle-arrow-left" aria-hidden="true"></i></a>
+        </div>
+      </div>
+      <div id="pillar-summary" class="pillar-summary" aria-live="polite">
+        <div class="loading-skeleton-list" aria-label="Loading pillar" aria-busy="true">
+          <div class="skeleton-list-row"><span class="skeleton skeleton-list-title"></span><span class="skeleton skeleton-list-time"></span></div>
+          <div class="skeleton-list-row"><span class="skeleton skeleton-list-title"></span><span class="skeleton skeleton-list-time"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-block">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Daily momentum production</p>
+          <h2>Performance · 30 days</h2>
+        </div>
+        <strong id="pillar-performance-total" class="performance-total">—</strong>
+      </div>
+      <p id="performance-readout" class="performance-readout" aria-live="polite">Tap a bar to see that day.</p>
+      <div class="performance-chart-frame">
+        <div class="performance-chart-scale" aria-hidden="true"><span>100%</span><span>50%</span></div>
+        <div id="pillar-performance-chart" class="performance-chart performance-chart-large"></div>
+      </div>
+      <div class="performance-chart-axis performance-chart-axis-large" aria-hidden="true"><span>30d ago</span><span>Today</span></div>
+      <div class="performance-legend">
+        <span><i class="legend-dot high"></i>95% or more</span>
+        <span><i class="legend-dot medium"></i>80–95%</span>
+        <span><i class="legend-dot low"></i>Below 80%</span>
+        <span><i class="legend-dot no-data"></i>No data</span>
+        <span><i class="legend-dot high is-partial"></i>Partial day</span>
+      </div>
+    </section>
+
+    <section class="section-block">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Changes</p>
+          <h2>Pillar events</h2>
+        </div>
+      </div>
+      <div id="pillar-events" class="event-list"></div>
+      <button id="pillar-events-toggle" class="ghost-button list-toggle-button" type="button" hidden></button>
+    </section>
+
+    <section class="section-block">
+      <details class="snapshot-details">
+        <summary><span><span class="eyebrow">Raw observations</span><strong>Recent snapshots</strong></span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></summary>
+        <div class="history-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Observed</th>
+                <th>Status</th>
+                <th>Produced</th>
+                <th>Expected</th>
+                <th>Weight</th>
+              </tr>
+            </thead>
+            <tbody id="pillar-history"></tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+  </main>
+
+{% endblock %}
+
+{% block scripts %}
+  <script src="/pillar-ui.js" defer></script>
+  <script src="/pillar.js" defer></script>
+{% endblock %}

@@ -2047,9 +2047,30 @@ class Database:
         limit: int = 200,
         offset: int = 0,
         include_performance: bool = True,
+        sort: str | None = None,
+        owners: Iterable[str] | None = None,
     ) -> dict[str, Any]:
+        """Return a page of pillars.
+
+        ``sort`` is ``rank`` (default), ``performance`` (30 days, best
+        first), ``weight`` (heaviest first) or ``name``. ``owners`` limits the
+        result to the given owner addresses, e.g. a visitor's favorites.
+        """
         clauses: list[str] = []
         params: list[Any] = []
+        if owners is not None:
+            owner_list = _string_values(list(owners))[:200]
+            if not owner_list:
+                return {
+                    "items": [],
+                    "total": 0,
+                    "limit": max(1, min(int(limit), 500)),
+                    "offset": max(0, int(offset)),
+                }
+            clauses.append(
+                f"owner_address IN ({', '.join('?' for _ in owner_list)})"
+            )
+            params.extend(owner_list)
         if status and status != "all":
             clauses.append("status = ?")
             params.append(status)
@@ -2066,22 +2087,53 @@ class Database:
             total = connection.execute(
                 f"SELECT COUNT(*) AS count FROM pillars {where}", params
             ).fetchone()["count"]
-            rows = connection.execute(
-                f"""
-                SELECT * FROM pillars
-                {where}
-                ORDER BY
-                    CASE WHEN is_present = 1 THEN 0 ELSE 1 END,
-                    CASE WHEN rank IS NULL THEN 1 ELSE 0 END,
-                    rank ASC,
-                    name COLLATE NOCASE ASC
-                LIMIT ? OFFSET ?
-                """,
-                [*params, safe_limit, safe_offset],
-            ).fetchall()
+            rank_order = """
+                CASE WHEN is_present = 1 THEN 0 ELSE 1 END,
+                CASE WHEN rank IS NULL THEN 1 ELSE 0 END,
+                rank ASC,
+                name COLLATE NOCASE ASC
+            """
+            order_by = {
+                "weight": "CASE WHEN is_present = 1 THEN 0 ELSE 1 END, "
+                          "COALESCE(weight, 0) DESC, " + rank_order,
+                "name": "name COLLATE NOCASE ASC, owner_address ASC",
+            }.get(sort or "", rank_order)
+            if sort == "performance":
+                # Performance lives outside SQL; sort the whole filtered
+                # set (a few hundred pillars at most) and page afterwards.
+                rows = connection.execute(
+                    f"SELECT * FROM pillars {where} ORDER BY {rank_order}",
+                    params,
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    f"""
+                    SELECT * FROM pillars
+                    {where}
+                    ORDER BY {order_by}
+                    LIMIT ? OFFSET ?
+                    """,
+                    [*params, safe_limit, safe_offset],
+                ).fetchall()
         items = [self._pillar_json(row) for row in rows]
-        if include_performance:
+        performance: dict[str, dict[str, Any]] | None = None
+        if sort == "performance":
             performance = self.get_pillar_performance(period_days=30)
+
+            def performance_key(item: dict[str, Any]) -> tuple[int, float]:
+                value = performance.get(item["owner_address"], {}).get(
+                    "percentage"
+                )
+                # Stable sort keeps rank order for equal values; pillars
+                # without data go last.
+                return (0, -float(value)) if value is not None else (1, 0.0)
+
+            items.sort(key=performance_key)
+            items = items[safe_offset:safe_offset + safe_limit]
+        if include_performance:
+            performance = performance or self.get_pillar_performance(
+                period_days=30
+            )
             for item in items:
                 item["performance_last_30_days"] = performance.get(
                     item["owner_address"],

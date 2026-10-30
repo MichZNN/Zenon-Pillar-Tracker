@@ -4,6 +4,7 @@
 
 {% block content %}
   <main class="page-shell">
+    <div class="overview-grid">
     <section class="hero-grid" aria-label="Network overview">
       <article class="hero-card epoch-card">
         <div class="card-label">Current epoch</div>
@@ -36,6 +37,7 @@
         <strong id="pillar-inactive"><span class="skeleton skeleton-metric" aria-hidden="true"></span></strong>
       </article>
     </section>
+    </div>
 
     <section class="content-grid">
       <section class="section-block collapsible-section">
@@ -129,6 +131,15 @@
             <option value="all" hidden>All historical records</option>
           </select>
         </label>
+        <label class="select-box">
+          <span class="sr-only">Sort pillars</span>
+          <select id="sort-filter">
+            <option value="rank">Sort: Rank</option>
+            <option value="performance">Sort: Performance</option>
+            <option value="weight">Sort: Weight</option>
+            <option value="name">Sort: Name</option>
+          </select>
+        </label>
       </div>
       <div id="pillar-list" class="pillar-list">
         <div class="loading-skeleton-grid" aria-label="Loading pillars" aria-busy="true">
@@ -196,34 +207,11 @@
       </div>
     </section>
 
-    <section id="pillar-detail" class="section-block detail-section" hidden>
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">Pillar details</p>
-          <h2 id="detail-name">—</h2>
-        </div>
-        <button id="close-detail" class="ghost-button" type="button">Close</button>
-      </div>
-      <div id="detail-summary" class="detail-summary"></div>
-      <div class="history-table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Observed</th>
-              <th>Status</th>
-              <th>Produced</th>
-              <th>Expected</th>
-              <th>Weight</th>
-            </tr>
-          </thead>
-          <tbody id="detail-history"></tbody>
-        </table>
-      </div>
-    </section>
   </main>
 
 {% endblock %}
 
 {% block scripts %}
+  <script src="/pillar-ui.js" defer></script>
   <script src="/app.js" defer></script>
 {% endblock %}

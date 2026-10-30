@@ -44,6 +44,7 @@ EPOCH_NOTIFICATION_EMOJIS = (
 )
 DEFAULT_TELEGRAM_BOT_USERNAME = "ZenonPillarTrackerBot"
 PINNED_STATS_PAGE_SIZE = 20
+TRACKER_WEBSITE_URL = "https://pillartracker.zenon.nom.co"
 PINNED_STATS_MAX_LENGTH = 3900
 PINNED_STATS_STATUSES = frozenset({"all", "active", "inactive"})
 
@@ -467,6 +468,7 @@ def create_pinned_stats_message(
     lines = [
         pinned_stats_status_summary(pillars, include_icons=True),
         f"Momentum height: {momentum_height}",
+        f"🌐 {TRACKER_WEBSITE_URL}",
         "",
         "Pillar reward sharing rates",
         f"Filter: {status_label} pillars · Page {current_page}/{page_count}",
@@ -557,6 +559,8 @@ def create_pinned_stats_keyboard(
         },
     ]]
 
+    # Link row: the bot (omitted inside the bot's own chat) and the website.
+    links: list[dict[str, str]] = []
     username = str(bot_username or "").strip()
     if include_bot_button and username:
         bot_url = (
@@ -564,7 +568,9 @@ def create_pinned_stats_keyboard(
             if username.startswith(("http://", "https://"))
             else f"https://t.me/{username.lstrip('@')}"
         )
-        keyboard.append([{"text": "🤖 Open bot", "url": bot_url}])
+        links.append({"text": "🤖 Open bot", "url": bot_url})
+    links.append({"text": "🌐 Open tracker", "url": TRACKER_WEBSITE_URL})
+    keyboard.append(links)
     return {"inline_keyboard": keyboard}
 
 

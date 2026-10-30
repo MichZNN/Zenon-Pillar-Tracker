@@ -54,6 +54,10 @@ class NotificationDispatcherTestCase(unittest.TestCase):
 
         self.assertIn("Filter: All pillars · Page 1/3", first_page)
         self.assertIn("🟢 Active: 23 🔴 Inactive: 22", first_page)
+        self.assertIn(
+            "Momentum height: 123\n🌐 https://pillartracker.zenon.nom.co\n",
+            first_page,
+        )
         self.assertIn("1 · Pillar 0 •", first_page)
         self.assertIn("20 · Pillar 19 •", first_page)
         self.assertNotIn("21 · Pillar 20 •", first_page)
@@ -98,8 +102,21 @@ class NotificationDispatcherTestCase(unittest.TestCase):
             ["⏮️", "◀️", "2/2", "▶️", "⏭️"],
         )
         self.assertEqual(
-            keyboard["inline_keyboard"][-1][0]["url"],
-            "https://t.me/ZenonPillarTrackerBot",
+            keyboard["inline_keyboard"][-1],
+            [
+                {"text": "🤖 Open bot", "url": "https://t.me/ZenonPillarTrackerBot"},
+                {"text": "🌐 Open tracker", "url": "https://pillartracker.zenon.nom.co"},
+            ],
+        )
+        private_keyboard = create_pinned_stats_keyboard(
+            status="all",
+            page=1,
+            page_count=1,
+            include_bot_button=False,
+        )
+        self.assertEqual(
+            private_keyboard["inline_keyboard"][-1],
+            [{"text": "🌐 Open tracker", "url": "https://pillartracker.zenon.nom.co"}],
         )
         self.assertEqual(
             parse_pinned_callback_data("pillar:page:inactive:3"),

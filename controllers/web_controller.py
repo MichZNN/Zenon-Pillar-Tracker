@@ -64,6 +64,14 @@ PAGE_TEMPLATE_CONTEXT: dict[str, dict[str, Any]] = {
         "show_footer": True,
         "footer_label": "Control panel",
     },
+    "pillar.html": {
+        "show_header": True,
+        "header_variant": "history",
+        "header_eyebrow": "Pillar",
+        "header_title": "Pillar",
+        "show_footer": True,
+        "footer_label": "Pillar",
+    },
     "epochs.html": {
         "show_header": True,
         "header_variant": "history",
@@ -414,6 +422,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             include_performance = _as_bool(query.get("performance", [None])[0])
             if include_performance is None:
                 include_performance = True
+            sort = query.get("sort", [None])[0]
+            if sort not in {None, "", "rank", "performance", "weight", "name"}:
+                raise ValueError("sort must be rank, performance, weight or name")
+            owners_param = query.get("owners", [None])[0]
+            owners = (
+                [value for value in owners_param.split(",") if value.strip()]
+                if owners_param is not None
+                else None
+            )
             self._send_json(
                 self.database.get_pillars(
                     status=status,
@@ -421,6 +438,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     limit=limit,
                     offset=offset,
                     include_performance=include_performance,
+                    sort=sort or None,
+                    owners=owners,
                 )
             )
             return
@@ -1003,6 +1022,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "/login": "/login.html",
             }
             requested = aliases.get(requested, requested)
+            if requested.startswith("/pillar/") and requested.count("/") == 2:
+                # Shareable pillar page: /pillar/<owner address>
+                requested = "/pillar.html"
             if requested in {"/setup", "/setup.html"}:
                 if self.database.has_users():
                     self._send_redirect(

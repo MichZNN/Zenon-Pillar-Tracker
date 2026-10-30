@@ -2,74 +2,6 @@ const historyKind = document.body.dataset.historyKind === "events"
   ? "events"
   : "epochs";
 const pageSize = historyKind === "events" ? 25 : 20;
-const eventLabels = {
-  epoch_available: "New epoch available",
-  pillar_created: "Pillar added",
-  pillar_dismantled: "Pillar dismantled",
-  pillar_name_changed: "Name changed",
-  reward_shares_changed: "Reward shares changed",
-  pillar_inactive: "Pillar inactive",
-  pillar_active: "Pillar active",
-};
-
-const $ = (selector) => document.querySelector(selector);
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function formatDate(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "UTC",
-    timeZoneName: "short",
-  }).format(date);
-}
-
-function formatNumber(value) {
-  if (value === null || value === undefined) return "—";
-  return new Intl.NumberFormat("en-US").format(value);
-}
-
-function eventLabel(type) {
-  return eventLabels[type] || type || "Event";
-}
-
-function eventDescription(event) {
-  const details = event.details || {};
-  if (event.event_type === "epoch_available") {
-    if (details.inferred) {
-      return "Epoch " + event.epoch + " · approximate date from Telegram gap";
-    }
-    return "Rewards for epoch " + event.epoch + " are available to collect";
-  }
-  if (event.event_type === "pillar_name_changed") {
-    return (details.old_name || "—") + " → " + (details.new_name || "—");
-  }
-  if (event.event_type === "reward_shares_changed") {
-    return "Reward sharing percentages updated";
-  }
-  if (event.event_type === "pillar_inactive") {
-    const name = details.name || event.owner_address || "Unknown pillar";
-    if (details.missed_momentums === undefined || details.missed_momentums === null) {
-      return name;
-    }
-    return name + " · " + details.missed_momentums + " missed checks";
-  }
-  return details.name || event.owner_address || "Network event";
-}
 
 function readQuery() {
   const params = new URLSearchParams(window.location.search);
@@ -96,14 +28,14 @@ function renderEpochs(items) {
   }
   target.innerHTML = items.map((epoch) => {
     const transition = epoch.epoch_start_at
-      ? formatDate(epoch.epoch_start_at)
+      ? renderTime(epoch.epoch_start_at, "history-time")
       : "Not recorded";
     return '<article class="history-card">' +
       '<div class="history-card-heading">' +
       '<strong>Epoch ' + escapeHtml(epoch.epoch) + '</strong>' +
       '</div>' +
       '<div class="history-card-grid">' +
-      '<div><span>Epoch transition</span><strong>' + escapeHtml(transition) + '</strong></div>' +
+      '<div><span>Epoch transition</span><strong>' + transition + '</strong></div>' +
       '</div>' +
       '</article>';
   }).join("");
@@ -118,8 +50,9 @@ function renderEvents(items) {
   target.innerHTML = items.map((event) =>
     '<article class="history-card event-history-card">' +
     '<div class="history-card-heading">' +
-    '<strong class="event-type">' + escapeHtml(eventLabel(event.event_type)) + '</strong>' +
-    '<span class="event-time">' + formatDate(event.observed_at) + '</span>' +
+    '<strong class="event-type ' + eventTone(event.event_type) + '">' +
+    escapeHtml(eventLabel(event.event_type)) + '</strong>' +
+    renderTime(event.observed_at) +
     '</div>' +
     '<p class="event-detail">' + escapeHtml(eventDescription(event)) + '</p>' +
     '<div class="history-card-meta">' +
@@ -159,13 +92,6 @@ function renderPagination(payload, query) {
       void loadPage(nextPage);
     });
   });
-}
-
-async function getJson(url) {
-  const response = await fetch(url, { cache: "no-store" });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || "Request failed");
-  return payload;
 }
 
 async function loadPage(requestedPage = readQuery().page) {
