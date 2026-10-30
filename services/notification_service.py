@@ -44,6 +44,7 @@ EPOCH_NOTIFICATION_EMOJIS = (
 )
 DEFAULT_TELEGRAM_BOT_USERNAME = "ZenonPillarTrackerBot"
 PINNED_STATS_PAGE_SIZE = 20
+TRACKER_WEBSITE_URL = "https://pillartracker.zenon.nom.co"
 PINNED_STATS_MAX_LENGTH = 3900
 PINNED_STATS_STATUSES = frozenset({"all", "active", "inactive"})
 
@@ -467,6 +468,7 @@ def create_pinned_stats_message(
     lines = [
         pinned_stats_status_summary(pillars, include_icons=True),
         f"Momentum height: {momentum_height}",
+        f"🌐 {TRACKER_WEBSITE_URL}",
         "",
         "Pillar reward sharing rates",
         f"Filter: {status_label} pillars · Page {current_page}/{page_count}",

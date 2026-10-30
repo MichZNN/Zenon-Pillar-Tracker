@@ -54,6 +54,10 @@ class NotificationDispatcherTestCase(unittest.TestCase):
 
         self.assertIn("Filter: All pillars · Page 1/3", first_page)
         self.assertIn("🟢 Active: 23 🔴 Inactive: 22", first_page)
+        self.assertIn(
+            "Momentum height: 123\n🌐 https://pillartracker.zenon.nom.co\n",
+            first_page,
+        )
         self.assertIn("1 · Pillar 0 •", first_page)
         self.assertIn("20 · Pillar 19 •", first_page)
         self.assertNotIn("21 · Pillar 20 •", first_page)
