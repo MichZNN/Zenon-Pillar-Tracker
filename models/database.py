@@ -2003,8 +2003,10 @@ class Database:
             ).fetchall()
             last_snapshot = connection.execute(
                 """
-                SELECT MAX(observed_at) AS observed_at
+                SELECT observed_at
                 FROM pillar_snapshots
+                ORDER BY id DESC
+                LIMIT 1
                 """
             ).fetchone()
         counts_dict = {row["status"]: row["count"] for row in counts}
@@ -2204,6 +2206,173 @@ class Database:
             metrics["daily"] = points
             performance[owner_address] = metrics
         return performance
+
+    def store_completed_performance_days(
+        self,
+        *,
+        now: datetime | None = None,
+        chunk_days: int = 7,
+    ) -> int:
+        """Store daily performance for every completed day with snapshots.
+
+        The collector calls this after midnight so visitors never wait for a
+        calculation, and before any snapshots are removed so pruning never
+        loses data that is not yet in the daily statistics. Returns the number
+        of days that were newly stored.
+        """
+        now = now or datetime.now(timezone.utc)
+        last_closed = (
+            (now - PERFORMANCE_FINALIZE_DELAY).date() - timedelta(days=1)
+        ).isoformat()
+        with self._connect() as connection:
+            row = connection.execute(
+                # Snapshot ids grow with time, so the lowest id is the oldest
+                # snapshot without scanning the table.
+                "SELECT observed_at FROM pillar_snapshots ORDER BY id LIMIT 1"
+            ).fetchone()
+            if row is None or not row["observed_at"]:
+                return 0
+            first_day = str(row["observed_at"]).split("T", 1)[0]
+            if first_day > last_closed:
+                return 0
+            finalized = {
+                str(item["day"])
+                for item in connection.execute(
+                    "SELECT day FROM performance_finalized_days WHERE day >= ?",
+                    (first_day,),
+                ).fetchall()
+            }
+            days = []
+            day = first_day
+            while day <= last_closed:
+                if day not in finalized:
+                    days.append(day)
+                day = _next_day(day)
+            for index in range(0, len(days), max(1, chunk_days)):
+                self._store_closed_performance_days(
+                    connection,
+                    days[index:index + max(1, chunk_days)],
+                )
+        return len(days)
+
+    def prune_snapshots(
+        self,
+        *,
+        payload_retention_days: int,
+        snapshot_retention_days: int,
+        now: datetime | None = None,
+        batch_runs: int = 120,
+    ) -> dict[str, int]:
+        """Remove old snapshot data in small transactions.
+
+        ``raw_payload`` of snapshots older than ``payload_retention_days`` is
+        cleared; whole snapshots older than ``snapshot_retention_days`` are
+        deleted, but only for days already stored in the daily performance
+        statistics. Zero disables either step. Rows are selected by poll run
+        through existing indexes, so the snapshot table is never fully
+        scanned.
+        """
+        now = now or datetime.now(timezone.utc)
+        result = {"payloads_cleared": 0, "snapshots_deleted": 0}
+
+        def last_run_before(connection, cutoff: str) -> int:
+            row = connection.execute(
+                "SELECT MAX(id) AS id FROM poll_runs WHERE started_at < ?",
+                (cutoff,),
+            ).fetchone()
+            return int(row["id"] or 0)
+
+        def first_snapshot_run(connection) -> int:
+            row = connection.execute(
+                "SELECT poll_run_id FROM pillar_snapshots ORDER BY id LIMIT 1"
+            ).fetchone()
+            return int(row["poll_run_id"]) if row else 0
+
+        def meta_int(connection, key: str) -> int:
+            row = connection.execute(
+                "SELECT value FROM schema_meta WHERE key = ?",
+                (key,),
+            ).fetchone()
+            return _as_int(row["value"], 0) if row else 0
+
+        def set_meta(connection, key: str, value: int) -> None:
+            connection.execute(
+                """
+                INSERT INTO schema_meta(key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, str(value)),
+            )
+
+        with self._connect() as connection:
+            if snapshot_retention_days > 0:
+                cutoff_day = (
+                    now.date() - timedelta(days=snapshot_retention_days)
+                ).isoformat()
+                # Never delete beyond the first day that is not yet stored in
+                # the daily statistics, and keep the day before it as the
+                # baseline for calculating that day later.
+                first = connection.execute(
+                    "SELECT observed_at FROM pillar_snapshots ORDER BY id LIMIT 1"
+                ).fetchone()
+                first_day = (
+                    str(first["observed_at"]).split("T", 1)[0] if first else None
+                )
+                limit_day = None
+                if first_day is not None and first_day < cutoff_day:
+                    finalized = {
+                        str(item["day"])
+                        for item in connection.execute(
+                            "SELECT day FROM performance_finalized_days "
+                            "WHERE day >= ? AND day <= ?",
+                            (first_day, cutoff_day),
+                        ).fetchall()
+                    }
+                    day = first_day
+                    while day < cutoff_day and day in finalized:
+                        day = _next_day(day)
+                    if day not in finalized:
+                        day = (
+                            date.fromisoformat(day) - timedelta(days=1)
+                        ).isoformat()
+                    if day > first_day:
+                        limit_day = day
+                if limit_day is not None:
+                    last_run = last_run_before(connection, _day_start(limit_day))
+                    run = first_snapshot_run(connection)
+                    while run and run <= last_run:
+                        upper = min(run + batch_runs - 1, last_run)
+                        deleted = connection.execute(
+                            "DELETE FROM pillar_snapshots "
+                            "WHERE poll_run_id >= ? AND poll_run_id <= ?",
+                            (run, upper),
+                        ).rowcount
+                        connection.commit()
+                        result["snapshots_deleted"] += max(0, deleted)
+                        run = upper + 1
+
+            if payload_retention_days > 0:
+                cutoff = (now - timedelta(days=payload_retention_days)).isoformat(
+                    timespec="seconds"
+                )
+                last_run = last_run_before(connection, cutoff)
+                run = max(
+                    meta_int(connection, "payload_pruned_through_run") + 1,
+                    first_snapshot_run(connection),
+                )
+                while run and run <= last_run:
+                    upper = min(run + batch_runs - 1, last_run)
+                    cleared = connection.execute(
+                        "UPDATE pillar_snapshots SET raw_payload = NULL "
+                        "WHERE poll_run_id >= ? AND poll_run_id <= ? "
+                        "AND raw_payload IS NOT NULL",
+                        (run, upper),
+                    ).rowcount
+                    set_meta(connection, "payload_pruned_through_run", upper)
+                    connection.commit()
+                    result["payloads_cleared"] += max(0, cleared)
+                    run = upper + 1
+        return result
 
     def _store_closed_performance_days(
         self,

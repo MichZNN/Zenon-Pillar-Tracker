@@ -131,7 +131,7 @@ class DatabaseTestCase(unittest.TestCase):
         observed_at=None,
     ):
         self.height += 1
-        run_id = self.database.begin_poll()
+        run_id = self.database.begin_poll(started_at=observed_at)
         result = self.database.record_observation(
             poll_run_id=run_id,
             observed_at=observed_at or utc_now(),
@@ -314,6 +314,73 @@ class DatabaseTestCase(unittest.TestCase):
             second["produced"],
             sum(point["produced"] for point in second["daily"]),
         )
+
+    def _snapshot_payloads(self):
+        connection = sqlite3.connect(self.database.path)
+        try:
+            return [
+                (row[0].split("T", 1)[0], row[1] is not None)
+                for row in connection.execute(
+                    "SELECT observed_at, raw_payload FROM pillar_snapshots "
+                    "ORDER BY id"
+                )
+            ]
+        finally:
+            connection.close()
+
+    def test_maintenance_stores_statistics_before_pruning(self):
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        produced = 0
+        for days_ago in (100, 99, 10, 1):
+            for minutes in (0, 10):
+                produced += 1
+                self.record(
+                    {"z1alpha": make_pillar("Alpha", produced=produced, expected=produced)},
+                    observed_at=(
+                        now - timedelta(days=days_ago, minutes=-minutes)
+                    ).isoformat(),
+                )
+        self.record({"z1alpha": make_pillar("Alpha", produced=produced + 1, expected=produced + 2)})
+        before = self.database.get_pillar_performance()["z1alpha"]
+
+        # Without stored statistics nothing may be deleted.
+        self.database._performance_cache.clear()
+        with sqlite3.connect(self.database.path) as connection:
+            connection.execute("DELETE FROM performance_finalized_days")
+            connection.execute("DELETE FROM pillar_performance_daily")
+        connection.close()
+        result = self.database.prune_snapshots(
+            payload_retention_days=0,
+            snapshot_retention_days=90,
+            now=now,
+        )
+        self.assertEqual(result["snapshots_deleted"], 0)
+
+        stored = self.database.store_completed_performance_days(now=now)
+        self.assertGreaterEqual(stored, 100)
+        result = self.database.prune_snapshots(
+            payload_retention_days=7,
+            snapshot_retention_days=90,
+            now=now,
+        )
+        self.assertEqual(result["snapshots_deleted"], 4)
+        self.assertEqual(result["payloads_cleared"], 2)
+
+        payloads = self._snapshot_payloads()
+        self.assertEqual(len(payloads), 5)
+        self.assertEqual([has for _, has in payloads], [False, False, True, True, True])
+
+        # Second run only touches new data.
+        again = self.database.prune_snapshots(
+            payload_retention_days=7,
+            snapshot_retention_days=90,
+            now=now,
+        )
+        self.assertEqual(again, {"payloads_cleared": 0, "snapshots_deleted": 0})
+
+        self.database._performance_cache.clear()
+        after = self.database.get_pillar_performance()["z1alpha"]
+        self.assertEqual(after, before)
 
     def test_performance_counts_production_when_expected_changed_earlier(self):
         self.record(
