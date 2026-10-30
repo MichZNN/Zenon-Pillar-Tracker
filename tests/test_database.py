@@ -286,7 +286,8 @@ class DatabaseTestCase(unittest.TestCase):
         self.assertEqual(first["produced"], 2)
         self.assertEqual(first["expected"], 3)
 
-        with sqlite3.connect(self.database.path) as connection:
+        connection = sqlite3.connect(self.database.path)
+        try:
             stored = connection.execute(
                 "SELECT produced, expected FROM pillar_performance_daily "
                 "WHERE owner_address = 'z1alpha' AND day = ?",
@@ -299,6 +300,10 @@ class DatabaseTestCase(unittest.TestCase):
                 "WHERE owner_address = 'z1alpha' AND day = ?",
                 (stored_day,),
             )
+            connection.commit()
+        finally:
+            # Close explicitly: Windows cannot remove an open SQLite file.
+            connection.close()
 
         self.record({"z1alpha": make_pillar("Alpha", produced=4, expected=5)})
         second = self.database.get_pillar_performance()["z1alpha"]
