@@ -3,13 +3,19 @@ from __future__ import annotations
 import json
 import sqlite3
 from secrets import token_urlsafe
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any, Iterable, Mapping
 
 
 SCHEMA_VERSION = "9"
+# Bump when the daily performance calculation changes so stored days are
+# rebuilt from the raw snapshots.
+PERFORMANCE_ROLLUP_VERSION = "1"
+# Completed UTC days are stored once this long after midnight, which leaves
+# room for a poll that started just before midnight to be committed.
+PERFORMANCE_FINALIZE_DELAY = timedelta(minutes=15)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -180,6 +186,21 @@ CREATE TABLE IF NOT EXISTS audit_log (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS pillar_performance_daily (
+    owner_address TEXT NOT NULL,
+    day TEXT NOT NULL,
+    produced INTEGER NOT NULL DEFAULT 0,
+    expected INTEGER NOT NULL DEFAULT 0,
+    observations INTEGER NOT NULL DEFAULT 0,
+    intervals INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, owner_address)
+);
+
+CREATE TABLE IF NOT EXISTS performance_finalized_days (
+    day TEXT PRIMARY KEY,
+    computed_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_poll_runs_started_at
     ON poll_runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_snapshots_owner_time
@@ -268,6 +289,25 @@ def _duration_text(seconds: int | None) -> str | None:
     if hours:
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
+
+
+def _day_start(day: str) -> str:
+    return f"{day}T00:00:00+00:00"
+
+
+def _next_day(day: str) -> str:
+    return (date.fromisoformat(day) + timedelta(days=1)).isoformat()
+
+
+def _empty_performance_day(day: str) -> dict[str, Any]:
+    return {
+        "date": day,
+        "produced": 0,
+        "expected": 0,
+        "percentage": None,
+        "observations": 0,
+        "intervals": 0,
+    }
 
 
 def _empty_performance(period_days: int = 30) -> dict[str, Any]:
@@ -427,6 +467,24 @@ def initialize_database(database_path: str | Path) -> Path:
             )
         if previous_schema_version != SCHEMA_VERSION:
             _repair_epoch_observation_metadata(connection)
+        rollup_version_row = connection.execute(
+            "SELECT value FROM schema_meta "
+            "WHERE key = 'performance_rollup_version'"
+        ).fetchone()
+        if (
+            rollup_version_row is None
+            or str(rollup_version_row[0]) != PERFORMANCE_ROLLUP_VERSION
+        ):
+            connection.execute("DELETE FROM pillar_performance_daily")
+            connection.execute("DELETE FROM performance_finalized_days")
+            connection.execute(
+                """
+                INSERT INTO schema_meta(key, value)
+                VALUES ('performance_rollup_version', ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (PERFORMANCE_ROLLUP_VERSION,),
+            )
         connection.execute(
             """
             INSERT INTO schema_meta(key, value) VALUES ('schema_version', ?)
@@ -1945,8 +2003,10 @@ class Database:
             ).fetchall()
             last_snapshot = connection.execute(
                 """
-                SELECT MAX(observed_at) AS observed_at
+                SELECT observed_at
                 FROM pillar_snapshots
+                ORDER BY id DESC
+                LIMIT 1
                 """
             ).fetchone()
         counts_dict = {row["status"]: row["count"] for row in counts}
@@ -2067,112 +2127,391 @@ class Database:
         not be summed. Only non-negative counter changes within the same epoch
         are included. A valid interval is counted when either counter advances
         because the node can expose the expected and produced increments in
-        separate snapshots. One snapshot before the period provides a baseline
-        when available. Daily points use the same valid intervals and are
-        assigned to the day of the later snapshot.
+        separate snapshots. Each interval belongs to the UTC day of its later
+        snapshot, and the snapshot just before a day starts is its baseline.
+
+        Completed days never change, so they are calculated once and stored in
+        ``pillar_performance_daily``. Only the days that are still open
+        (normally just today) are calculated from raw snapshots on request.
+        The period is the last ``period_days`` UTC days including today, so the
+        headline value always equals the sum of the daily bars.
         """
         now = datetime.now(timezone.utc)
-        cutoff = (now - timedelta(days=period_days)).isoformat(
-            timespec="seconds"
-        )
         day_keys = [
             (now.date() - timedelta(days=offset)).isoformat()
             for offset in range(period_days - 1, -1, -1)
         ]
+        first_open_day = (now - PERFORMANCE_FINALIZE_DELAY).date().isoformat()
+        closed_days = [day for day in day_keys if day < first_open_day]
+        open_days = [day for day in day_keys if day >= first_open_day]
+
+        daily: dict[str, dict[str, dict[str, Any]]] = {}
+
+        def add(owner_address: str, day: str, values: Mapping[str, Any]):
+            point = daily.setdefault(owner_address, {}).setdefault(
+                day,
+                _empty_performance_day(day),
+            )
+            for field in ("produced", "expected", "observations", "intervals"):
+                point[field] += int(values.get(field) or 0)
+
         with self._connect() as connection:
-            rows = connection.execute(
-                """
-                WITH baseline_ids AS (
-                    SELECT owner_address, MAX(id) AS id
-                    FROM pillar_snapshots
-                    WHERE observed_at < ?
-                    GROUP BY owner_address
-                ),
-                baseline AS (
-                    SELECT
-                        snapshot.id,
-                        snapshot.owner_address,
-                        snapshot.observed_at,
-                        snapshot.epoch,
-                        snapshot.produced_momentums,
-                        snapshot.expected_momentums
-                    FROM pillar_snapshots snapshot
-                    JOIN baseline_ids
-                      ON baseline_ids.id = snapshot.id
-                ),
-                recent AS (
-                    SELECT
-                        snapshot.id,
-                        snapshot.owner_address,
-                        snapshot.observed_at,
-                        snapshot.epoch,
-                        snapshot.produced_momentums,
-                        snapshot.expected_momentums
-                    FROM pillar_snapshots snapshot
-                    WHERE observed_at >= ?
+            if closed_days:
+                self._store_closed_performance_days(connection, closed_days)
+                rows = connection.execute(
+                    """
+                    SELECT owner_address, day, produced, expected,
+                           observations, intervals
+                    FROM pillar_performance_daily
+                    WHERE day >= ? AND day <= ?
+                    """,
+                    (closed_days[0], closed_days[-1]),
+                ).fetchall()
+                for row in rows:
+                    add(str(row["owner_address"]), str(row["day"]), dict(row))
+            if open_days:
+                live = self._performance_day_buckets(
+                    connection,
+                    start=_day_start(open_days[0]),
+                    end=None,
                 )
-                SELECT
-                    id,
-                    owner_address,
-                    observed_at,
-                    epoch,
-                    produced_momentums,
-                    expected_momentums
-                FROM baseline
-                UNION ALL
-                SELECT
-                    id,
-                    owner_address,
-                    observed_at,
-                    epoch,
-                    produced_momentums,
-                    expected_momentums
-                FROM recent
-                ORDER BY owner_address, observed_at, id
-                """,
-                (cutoff, cutoff),
-            ).fetchall()
+                for owner_address, owner_days in live.items():
+                    for day, values in owner_days.items():
+                        if day in open_days:
+                            add(owner_address, day, values)
 
         performance: dict[str, dict[str, Any]] = {}
-        daily_performance: dict[
-            str, dict[str, dict[str, Any]]
-        ] = {}
-        previous: dict[str, dict[str, int | None]] = {}
-        for row in rows:
-            item = dict(row)
-            owner_address = str(item["owner_address"])
-            observed_at = str(item.get("observed_at") or "")
-            is_recent = observed_at >= cutoff
-            current_epoch = _as_int(item.get("epoch"))
-            current_produced = _as_int(item.get("produced_momentums"))
-            current_expected = _as_int(item.get("expected_momentums"))
+        for owner_address, owner_daily in daily.items():
+            if not any(point["observations"] for point in owner_daily.values()):
+                continue
+            metrics = _empty_performance(period_days)
+            points = []
+            for day in day_keys:
+                point = owner_daily.get(day) or _empty_performance_day(day)
+                if point["expected"]:
+                    point["percentage"] = round(
+                        point["produced"] * 100 / point["expected"],
+                        2,
+                    )
+                for field in (
+                    "produced", "expected", "observations", "intervals"
+                ):
+                    metrics[field] += point[field]
+                points.append(point)
+            if metrics["expected"]:
+                metrics["percentage"] = round(
+                    metrics["produced"] * 100 / metrics["expected"],
+                    2,
+                )
+            metrics["daily"] = points
+            performance[owner_address] = metrics
+        return performance
 
-            if is_recent:
-                metrics = performance.setdefault(
-                    owner_address,
-                    _empty_performance(period_days),
+    def store_completed_performance_days(
+        self,
+        *,
+        now: datetime | None = None,
+        chunk_days: int = 7,
+    ) -> int:
+        """Store daily performance for every completed day with snapshots.
+
+        The collector calls this after midnight so visitors never wait for a
+        calculation, and before any snapshots are removed so pruning never
+        loses data that is not yet in the daily statistics. Returns the number
+        of days that were newly stored.
+        """
+        now = now or datetime.now(timezone.utc)
+        last_closed = (
+            (now - PERFORMANCE_FINALIZE_DELAY).date() - timedelta(days=1)
+        ).isoformat()
+        with self._connect() as connection:
+            row = connection.execute(
+                # Snapshot ids grow with time, so the lowest id is the oldest
+                # snapshot without scanning the table.
+                "SELECT observed_at FROM pillar_snapshots ORDER BY id LIMIT 1"
+            ).fetchone()
+            if row is None or not row["observed_at"]:
+                return 0
+            first_day = str(row["observed_at"]).split("T", 1)[0]
+            if first_day > last_closed:
+                return 0
+            finalized = {
+                str(item["day"])
+                for item in connection.execute(
+                    "SELECT day FROM performance_finalized_days WHERE day >= ?",
+                    (first_day,),
+                ).fetchall()
+            }
+            days = []
+            day = first_day
+            while day <= last_closed:
+                if day not in finalized:
+                    days.append(day)
+                day = _next_day(day)
+            for index in range(0, len(days), max(1, chunk_days)):
+                self._store_closed_performance_days(
+                    connection,
+                    days[index:index + max(1, chunk_days)],
                 )
-                metrics["observations"] += 1
-                owner_daily = daily_performance.setdefault(
-                    owner_address,
-                    {
-                        day: {
-                            "date": day,
-                            "produced": 0,
-                            "expected": 0,
-                            "percentage": None,
-                            "observations": 0,
-                            "intervals": 0,
-                        }
-                        for day in day_keys
-                    },
+        return len(days)
+
+    def prune_snapshots(
+        self,
+        *,
+        payload_retention_days: int,
+        snapshot_retention_days: int,
+        now: datetime | None = None,
+        batch_runs: int = 120,
+    ) -> dict[str, int]:
+        """Remove old snapshot data in small transactions.
+
+        ``raw_payload`` of snapshots older than ``payload_retention_days`` is
+        cleared; whole snapshots older than ``snapshot_retention_days`` are
+        deleted, but only for days already stored in the daily performance
+        statistics. Zero disables either step. Rows are selected by poll run
+        through existing indexes, so the snapshot table is never fully
+        scanned.
+        """
+        now = now or datetime.now(timezone.utc)
+        result = {"payloads_cleared": 0, "snapshots_deleted": 0}
+
+        def last_run_before(connection, cutoff: str) -> int:
+            row = connection.execute(
+                "SELECT MAX(id) AS id FROM poll_runs WHERE started_at < ?",
+                (cutoff,),
+            ).fetchone()
+            return int(row["id"] or 0)
+
+        def first_snapshot_run(connection) -> int:
+            row = connection.execute(
+                "SELECT poll_run_id FROM pillar_snapshots ORDER BY id LIMIT 1"
+            ).fetchone()
+            return int(row["poll_run_id"]) if row else 0
+
+        def meta_int(connection, key: str) -> int:
+            row = connection.execute(
+                "SELECT value FROM schema_meta WHERE key = ?",
+                (key,),
+            ).fetchone()
+            return _as_int(row["value"], 0) if row else 0
+
+        def set_meta(connection, key: str, value: int) -> None:
+            connection.execute(
+                """
+                INSERT INTO schema_meta(key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, str(value)),
+            )
+
+        with self._connect() as connection:
+            if snapshot_retention_days > 0:
+                cutoff_day = (
+                    now.date() - timedelta(days=snapshot_retention_days)
+                ).isoformat()
+                # Never delete beyond the first day that is not yet stored in
+                # the daily statistics, and keep the day before it as the
+                # baseline for calculating that day later.
+                first = connection.execute(
+                    "SELECT observed_at FROM pillar_snapshots ORDER BY id LIMIT 1"
+                ).fetchone()
+                first_day = (
+                    str(first["observed_at"]).split("T", 1)[0] if first else None
                 )
-                observed_day = observed_at.split("T", 1)[0]
-                if observed_day in owner_daily:
-                    owner_daily[observed_day]["observations"] += 1
+                limit_day = None
+                if first_day is not None and first_day < cutoff_day:
+                    finalized = {
+                        str(item["day"])
+                        for item in connection.execute(
+                            "SELECT day FROM performance_finalized_days "
+                            "WHERE day >= ? AND day <= ?",
+                            (first_day, cutoff_day),
+                        ).fetchall()
+                    }
+                    day = first_day
+                    while day < cutoff_day and day in finalized:
+                        day = _next_day(day)
+                    if day not in finalized:
+                        day = (
+                            date.fromisoformat(day) - timedelta(days=1)
+                        ).isoformat()
+                    if day > first_day:
+                        limit_day = day
+                if limit_day is not None:
+                    last_run = last_run_before(connection, _day_start(limit_day))
+                    run = first_snapshot_run(connection)
+                    while run and run <= last_run:
+                        upper = min(run + batch_runs - 1, last_run)
+                        deleted = connection.execute(
+                            "DELETE FROM pillar_snapshots "
+                            "WHERE poll_run_id >= ? AND poll_run_id <= ?",
+                            (run, upper),
+                        ).rowcount
+                        connection.commit()
+                        result["snapshots_deleted"] += max(0, deleted)
+                        run = upper + 1
+
+            if payload_retention_days > 0:
+                cutoff = (now - timedelta(days=payload_retention_days)).isoformat(
+                    timespec="seconds"
+                )
+                last_run = last_run_before(connection, cutoff)
+                run = max(
+                    meta_int(connection, "payload_pruned_through_run") + 1,
+                    first_snapshot_run(connection),
+                )
+                while run and run <= last_run:
+                    upper = min(run + batch_runs - 1, last_run)
+                    cleared = connection.execute(
+                        "UPDATE pillar_snapshots SET raw_payload = NULL "
+                        "WHERE poll_run_id >= ? AND poll_run_id <= ? "
+                        "AND raw_payload IS NOT NULL",
+                        (run, upper),
+                    ).rowcount
+                    set_meta(connection, "payload_pruned_through_run", upper)
+                    connection.commit()
+                    result["payloads_cleared"] += max(0, cleared)
+                    run = upper + 1
+        return result
+
+    def _store_closed_performance_days(
+        self,
+        connection: sqlite3.Connection,
+        days: list[str],
+    ) -> None:
+        """Calculate and store completed days that are not stored yet."""
+        finalized = {
+            str(row["day"])
+            for row in connection.execute(
+                """
+                SELECT day FROM performance_finalized_days
+                WHERE day >= ? AND day <= ?
+                """,
+                (days[0], days[-1]),
+            ).fetchall()
+        }
+        missing = [day for day in days if day not in finalized]
+        if not missing:
+            return
+        # One pass over the snapshots covers every missing day; days in
+        # between that were already stored are simply not written again.
+        buckets = self._performance_day_buckets(
+            connection,
+            start=_day_start(missing[0]),
+            end=_day_start(_next_day(missing[-1])),
+        )
+        missing_set = set(missing)
+        rows = [
+            (
+                owner_address,
+                day,
+                values["produced"],
+                values["expected"],
+                values["observations"],
+                values["intervals"],
+            )
+            for owner_address, owner_days in buckets.items()
+            for day, values in owner_days.items()
+            if day in missing_set and values["observations"]
+        ]
+        computed_at = utc_now()
+        connection.executemany(
+            """
+            INSERT INTO pillar_performance_daily(
+                owner_address, day, produced, expected,
+                observations, intervals
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(day, owner_address) DO UPDATE SET
+                produced = excluded.produced,
+                expected = excluded.expected,
+                observations = excluded.observations,
+                intervals = excluded.intervals
+            """,
+            rows,
+        )
+        connection.executemany(
+            """
+            INSERT OR REPLACE INTO performance_finalized_days(day, computed_at)
+            VALUES (?, ?)
+            """,
+            [(day, computed_at) for day in missing],
+        )
+        connection.commit()
+
+    def _performance_day_buckets(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        start: str,
+        end: str | None,
+    ) -> dict[str, dict[str, dict[str, int]]]:
+        """Return per pillar, per UTC day counter deltas for a time range.
+
+        Snapshots are read per pillar through the owner/time index, so only
+        the requested range is visited instead of the whole table.
+        """
+        baseline_rows = connection.execute(
+            """
+            SELECT
+                snapshot.owner_address,
+                snapshot.epoch,
+                snapshot.produced_momentums,
+                snapshot.expected_momentums
+            FROM pillars
+            JOIN pillar_snapshots snapshot
+              ON snapshot.id = (
+                  SELECT previous.id
+                  FROM pillar_snapshots previous
+                  WHERE previous.owner_address = pillars.owner_address
+                    AND previous.observed_at < ?
+                  ORDER BY previous.observed_at DESC, previous.id DESC
+                  LIMIT 1
+              )
+            """,
+            (start,),
+        ).fetchall()
+        previous: dict[str, dict[str, int | None]] = {
+            str(row["owner_address"]): {
+                "epoch": _as_int(row["epoch"]),
+                "produced": _as_int(row["produced_momentums"]),
+                "expected": _as_int(row["expected_momentums"]),
+            }
+            for row in baseline_rows
+        }
+
+        query = """
+            SELECT
+                owner_address,
+                observed_at,
+                epoch,
+                produced_momentums,
+                expected_momentums
+            FROM pillar_snapshots
+            WHERE owner_address IN (SELECT owner_address FROM pillars)
+              AND observed_at >= ?
+        """
+        params: list[Any] = [start]
+        if end is not None:
+            query += " AND observed_at < ?"
+            params.append(end)
+        query += " ORDER BY owner_address, observed_at, id"
+
+        buckets: dict[str, dict[str, dict[str, int]]] = {}
+        for row in connection.execute(query, params):
+            owner_address = str(row["owner_address"])
+            observed_day = str(row["observed_at"] or "").split("T", 1)[0]
+            current_epoch = _as_int(row["epoch"])
+            current_produced = _as_int(row["produced_momentums"])
+            current_expected = _as_int(row["expected_momentums"])
+
+            point = buckets.setdefault(owner_address, {}).setdefault(
+                observed_day,
+                {"produced": 0, "expected": 0, "observations": 0, "intervals": 0},
+            )
+            point["observations"] += 1
 
             prior = previous.get(owner_address)
-            if is_recent and prior is not None:
+            if prior is not None:
                 produced_delta = (
                     current_produced - prior["produced"]
                     if current_produced is not None
@@ -2194,55 +2533,16 @@ class Database:
                     and expected_delta >= 0
                     and (produced_delta > 0 or expected_delta > 0)
                 ):
-                    metrics = performance[owner_address]
-                    metrics["produced"] += produced_delta
-                    metrics["expected"] += expected_delta
-                    metrics["intervals"] += 1
-                    observed_day = observed_at.split("T", 1)[0]
-                    daily_point = daily_performance[owner_address].get(
-                        observed_day
-                    )
-                    if daily_point is not None:
-                        daily_point["produced"] += produced_delta
-                        daily_point["expected"] += expected_delta
-                        daily_point["intervals"] += 1
+                    point["produced"] += produced_delta
+                    point["expected"] += expected_delta
+                    point["intervals"] += 1
 
             previous[owner_address] = {
                 "epoch": current_epoch,
                 "produced": current_produced,
                 "expected": current_expected,
             }
-
-        for metrics in performance.values():
-            if metrics["expected"]:
-                metrics["percentage"] = round(
-                    metrics["produced"] * 100 / metrics["expected"],
-                    2,
-                )
-        for owner_address, metrics in performance.items():
-            owner_daily = daily_performance.get(owner_address, {})
-            daily_points = [
-                owner_daily.get(
-                    day,
-                    {
-                        "date": day,
-                        "produced": 0,
-                        "expected": 0,
-                        "percentage": None,
-                        "observations": 0,
-                        "intervals": 0,
-                    },
-                )
-                for day in day_keys
-            ]
-            for point in daily_points:
-                if point["expected"]:
-                    point["percentage"] = round(
-                        point["produced"] * 100 / point["expected"],
-                        2,
-                    )
-            metrics["daily"] = daily_points
-        return performance
+        return buckets
 
     def get_pillar(self, owner_address: str) -> dict[str, Any] | None:
         with self._connect() as connection:

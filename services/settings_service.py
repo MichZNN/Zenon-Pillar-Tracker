@@ -46,6 +46,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "log_backup_count": 5,
     "log_level": "INFO",
     "auth_session_hours": 12,
+    # Snapshot cleanup by the collector; 0 keeps data forever.
+    "snapshot_payload_retention_days": 7,
+    "snapshot_retention_days": 90,
 }
 
 
@@ -124,6 +127,17 @@ def validate_settings(settings: Mapping[str, Any]) -> None:
         "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
     }:
         raise ValueError("log_level must be DEBUG, INFO, WARNING, ERROR, or CRITICAL")
+    for key, minimum in (
+        ("snapshot_payload_retention_days", 1),
+        ("snapshot_retention_days", 2),
+    ):
+        if key in settings:
+            try:
+                value = int(settings[key])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{key} must be an integer") from exc
+            if value != 0 and value < minimum:
+                raise ValueError(f"{key} must be 0 (keep forever) or at least {minimum}")
     for key in {"node_require_sync_info", "allow_empty_pillars"}:
         if key in settings and not isinstance(settings[key], bool):
             raise ValueError(f"{key} must be a boolean")

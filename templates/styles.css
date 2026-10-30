@@ -500,6 +500,23 @@ td { font-size: .78rem; }
 .site-footer-link:first-child:hover { color: #0FBF3E; }
 .site-footer-link:last-child:hover { color: #0088CC; }
 
+.list-toggle { display: none; }
+
+@media (max-width: 679px) {
+  /* Mobile: show the latest 3 rows, or 8 when expanded. */
+  .collapsible-section .epoch-row:nth-child(n + 9),
+  .collapsible-section .event-row:nth-child(n + 9),
+  .collapsible-section:not(.is-expanded) .epoch-row:nth-child(n + 4),
+  .collapsible-section:not(.is-expanded) .event-row:nth-child(n + 4) { display: none; }
+  .collapsible-section:not(.is-expanded) .epoch-row:nth-child(3),
+  .collapsible-section:not(.is-expanded) .event-row:nth-child(3),
+  .collapsible-section .epoch-row:nth-child(8),
+  .collapsible-section .event-row:nth-child(8) { border-bottom: 0; }
+  .list-toggle:not([hidden]) { display: flex; gap: 8px; margin-top: 12px; width: 100%; }
+  .list-toggle i { font-size: .75rem; transition: transform .16s ease; }
+  .collapsible-section.is-expanded .list-toggle i { transform: rotate(180deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .skeleton { animation: none; }
 }

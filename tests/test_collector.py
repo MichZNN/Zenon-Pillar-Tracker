@@ -112,6 +112,23 @@ class CollectorTestCase(unittest.TestCase):
             1,
         )
 
+    def test_daily_maintenance_runs_once_per_day_after_midnight(self):
+        from datetime import datetime, timezone
+
+        self.collector.run_once()
+        morning = datetime(2026, 10, 30, 8, 0, tzinfo=timezone.utc)
+        first = self.collector.run_maintenance_if_due(morning)
+        self.assertIsNotNone(first)
+        self.assertIn("snapshots_deleted", first)
+        self.assertIsNone(self.collector.run_maintenance_if_due(morning))
+        # Just after midnight the previous day is not closed yet.
+        just_after_midnight = datetime(2026, 10, 31, 0, 5, tzinfo=timezone.utc)
+        self.assertIsNone(
+            self.collector.run_maintenance_if_due(just_after_midnight)
+        )
+        later = datetime(2026, 10, 31, 0, 20, tzinfo=timezone.utc)
+        self.assertIsNotNone(self.collector.run_maintenance_if_due(later))
+
     def test_momentum_timestamp_can_be_used_for_a_live_epoch_start(self):
         self.assertEqual(
             self.collector._momentum_timestamp_as_utc(

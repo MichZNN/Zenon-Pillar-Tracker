@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -127,12 +128,13 @@ class DatabaseTestCase(unittest.TestCase):
         epoch_start_at=None,
         epoch_start_observed=False,
         epoch_start_inferred=None,
+        observed_at=None,
     ):
         self.height += 1
-        run_id = self.database.begin_poll()
+        run_id = self.database.begin_poll(started_at=observed_at)
         result = self.database.record_observation(
             poll_run_id=run_id,
-            observed_at=utc_now(),
+            observed_at=observed_at or utc_now(),
             momentum={
                 "height": self.height,
                 "hash": f"hash-{self.height}",
@@ -262,6 +264,123 @@ class DatabaseTestCase(unittest.TestCase):
             self.database.get_pillars()["items"][0]["performance_last_30_days"],
             performance,
         )
+
+    def test_performance_stores_completed_days_and_keeps_today_live(self):
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        two_days_ago = now - timedelta(days=2)
+        for minutes, produced, expected in ((0, 1, 1), (10, 2, 3)):
+            self.record(
+                {"z1alpha": make_pillar("Alpha", produced=produced, expected=expected)},
+                observed_at=(two_days_ago + timedelta(minutes=minutes)).isoformat(),
+            )
+        self.record(
+            {"z1alpha": make_pillar("Alpha", produced=3, expected=4)},
+        )
+
+        first = self.database.get_pillar_performance()["z1alpha"]
+        days = {point["date"]: point for point in first["daily"]}
+        stored_day = two_days_ago.date().isoformat()
+        self.assertEqual(days[stored_day]["produced"], 1)
+        self.assertEqual(days[stored_day]["expected"], 2)
+        self.assertEqual(days[now.date().isoformat()]["produced"], 1)
+        self.assertEqual(first["produced"], 2)
+        self.assertEqual(first["expected"], 3)
+
+        connection = sqlite3.connect(self.database.path)
+        try:
+            stored = connection.execute(
+                "SELECT produced, expected FROM pillar_performance_daily "
+                "WHERE owner_address = 'z1alpha' AND day = ?",
+                (stored_day,),
+            ).fetchone()
+            self.assertEqual(stored, (1, 2))
+            # Completed days are read from the stored rollup, not recalculated.
+            connection.execute(
+                "UPDATE pillar_performance_daily SET produced = 2 "
+                "WHERE owner_address = 'z1alpha' AND day = ?",
+                (stored_day,),
+            )
+            connection.commit()
+        finally:
+            # Close explicitly: Windows cannot remove an open SQLite file.
+            connection.close()
+
+        self.record({"z1alpha": make_pillar("Alpha", produced=4, expected=5)})
+        second = self.database.get_pillar_performance()["z1alpha"]
+        days = {point["date"]: point for point in second["daily"]}
+        self.assertEqual(days[stored_day]["produced"], 2)
+        self.assertEqual(days[now.date().isoformat()]["produced"], 2)
+        self.assertEqual(
+            second["produced"],
+            sum(point["produced"] for point in second["daily"]),
+        )
+
+    def _snapshot_payloads(self):
+        connection = sqlite3.connect(self.database.path)
+        try:
+            return [
+                (row[0].split("T", 1)[0], row[1] is not None)
+                for row in connection.execute(
+                    "SELECT observed_at, raw_payload FROM pillar_snapshots "
+                    "ORDER BY id"
+                )
+            ]
+        finally:
+            connection.close()
+
+    def test_maintenance_stores_statistics_before_pruning(self):
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        produced = 0
+        for days_ago in (100, 99, 10, 1):
+            for minutes in (0, 10):
+                produced += 1
+                self.record(
+                    {"z1alpha": make_pillar("Alpha", produced=produced, expected=produced)},
+                    observed_at=(
+                        now - timedelta(days=days_ago, minutes=-minutes)
+                    ).isoformat(),
+                )
+        self.record({"z1alpha": make_pillar("Alpha", produced=produced + 1, expected=produced + 2)})
+        before = self.database.get_pillar_performance()["z1alpha"]
+
+        # Without stored statistics nothing may be deleted.
+        self.database._performance_cache.clear()
+        with sqlite3.connect(self.database.path) as connection:
+            connection.execute("DELETE FROM performance_finalized_days")
+            connection.execute("DELETE FROM pillar_performance_daily")
+        connection.close()
+        result = self.database.prune_snapshots(
+            payload_retention_days=0,
+            snapshot_retention_days=90,
+            now=now,
+        )
+        self.assertEqual(result["snapshots_deleted"], 0)
+
+        stored = self.database.store_completed_performance_days(now=now)
+        self.assertGreaterEqual(stored, 100)
+        result = self.database.prune_snapshots(
+            payload_retention_days=7,
+            snapshot_retention_days=90,
+            now=now,
+        )
+        self.assertEqual(result["snapshots_deleted"], 4)
+        self.assertEqual(result["payloads_cleared"], 2)
+
+        payloads = self._snapshot_payloads()
+        self.assertEqual(len(payloads), 5)
+        self.assertEqual([has for _, has in payloads], [False, False, True, True, True])
+
+        # Second run only touches new data.
+        again = self.database.prune_snapshots(
+            payload_retention_days=7,
+            snapshot_retention_days=90,
+            now=now,
+        )
+        self.assertEqual(again, {"payloads_cleared": 0, "snapshots_deleted": 0})
+
+        self.database._performance_cache.clear()
+        after = self.database.get_pillar_performance()["z1alpha"]
+        self.assertEqual(after, before)
 
     def test_performance_counts_production_when_expected_changed_earlier(self):
         self.record(

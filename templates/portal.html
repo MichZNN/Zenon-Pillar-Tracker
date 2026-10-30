@@ -128,6 +128,22 @@
           </section>
 
           <section class="settings-category">
+            <div class="settings-category-heading"><p class="eyebrow">Storage</p><h3>Data retention</h3></div>
+            <div class="settings-grid">
+              <label class="setting-field">
+                <span class="setting-label">Keep raw node data (days)</span>
+                <span class="setting-help">Raw node responses in older snapshots are cleared daily; zero keeps them forever.</span>
+                <input name="snapshot_payload_retention_days" type="number" min="0" step="1">
+              </label>
+              <label class="setting-field">
+                <span class="setting-label">Keep snapshots (days)</span>
+                <span class="setting-help">Older snapshots are deleted daily after their performance is stored; zero keeps them forever.</span>
+                <input name="snapshot_retention_days" type="number" min="0" step="1">
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-category">
             <div class="settings-category-heading"><p class="eyebrow">Node health</p><h3>Failover and retries</h3></div>
             <div class="settings-grid">
               <label class="setting-field">

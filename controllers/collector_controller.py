@@ -12,7 +12,11 @@ from services.settings_service import (
     load_runtime_config,
     load_runtime_config_from_database,
 )
-from models.database import Database, utc_now
+from models.database import (
+    PERFORMANCE_FINALIZE_DELAY,
+    Database,
+    utc_now,
+)
 from services.logging_service import configure_logging
 from services.notification_service import (
     DEFAULT_TELEGRAM_BOT_USERNAME,
@@ -76,6 +80,7 @@ class Collector:
             )
         )
         self._settings_revision = self.database.get_settings_revision()
+        self._maintenance_day: str | None = None
         self._settings_reload_error_revision: int | None = None
         self._telegram_update_offset: int | None = None
         self._telegram_update_worker_started = False
@@ -897,6 +902,49 @@ class Collector:
             self._mark_failed(poll_run_id, exc)
             raise
 
+    def run_maintenance_if_due(
+        self,
+        now: datetime | None = None,
+    ) -> dict[str, int] | None:
+        """Once per UTC day: store daily performance, then prune snapshots.
+
+        Runs shortly after midnight (after PERFORMANCE_FINALIZE_DELAY) and on
+        collector start. Statistics are always stored before pruning, so no
+        snapshot is removed before its day is in the daily statistics.
+        """
+        now = now or datetime.now(timezone.utc)
+        due_day = (now - PERFORMANCE_FINALIZE_DELAY).date().isoformat()
+        if self._maintenance_day == due_day:
+            return None
+        self._maintenance_day = due_day
+        started = time.monotonic()
+        try:
+            stored_days = self.database.store_completed_performance_days(
+                now=now,
+            )
+            pruned = self.database.prune_snapshots(
+                payload_retention_days=int(
+                    self.config.get("snapshot_payload_retention_days", 7) or 0
+                ),
+                snapshot_retention_days=int(
+                    self.config.get("snapshot_retention_days", 90) or 0
+                ),
+                now=now,
+            )
+        except Exception:
+            logger.exception("Daily maintenance failed")
+            return None
+        result = {"performance_days_stored": stored_days, **pruned}
+        logger.info(
+            "Daily maintenance done in %.1fs: %s performance days stored, "
+            "%s snapshot payloads cleared, %s snapshots deleted",
+            time.monotonic() - started,
+            stored_days,
+            pruned["payloads_cleared"],
+            pruned["snapshots_deleted"],
+        )
+        return result
+
     def run_forever(self, interval_seconds: int | None = None) -> None:
         interval_override = interval_seconds is not None
         self._start_telegram_update_worker()
@@ -910,6 +958,7 @@ class Collector:
                 self.run_once()
             except Exception:
                 pass
+            self.run_maintenance_if_due()
 
             try:
                 interval = max(
