@@ -559,6 +559,8 @@ def create_pinned_stats_keyboard(
         },
     ]]
 
+    # Link row: the bot (omitted inside the bot's own chat) and the website.
+    links: list[dict[str, str]] = []
     username = str(bot_username or "").strip()
     if include_bot_button and username:
         bot_url = (
@@ -566,7 +568,9 @@ def create_pinned_stats_keyboard(
             if username.startswith(("http://", "https://"))
             else f"https://t.me/{username.lstrip('@')}"
         )
-        keyboard.append([{"text": "🤖 Open bot", "url": bot_url}])
+        links.append({"text": "🤖 Open bot", "url": bot_url})
+    links.append({"text": "🌐 Open tracker", "url": TRACKER_WEBSITE_URL})
+    keyboard.append(links)
     return {"inline_keyboard": keyboard}
 
 

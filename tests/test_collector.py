@@ -278,12 +278,15 @@ class CollectorTestCase(unittest.TestCase):
 
         self.assertEqual(len(sent), 1)
         self.assertIn("Active: 1 · Inactive: 0", sent[0][0][1])
-        self.assertFalse(
-            any(
-                button.get("url")
+        # No "Open bot" button inside the bot itself; only the website link.
+        self.assertEqual(
+            [
+                button["url"]
                 for row in sent[0][1]["reply_markup"]["inline_keyboard"]
                 for button in row
-            )
+                if button.get("url")
+            ],
+            ["https://pillartracker.zenon.nom.co"],
         )
         self.assertEqual(edited[0][0][0:2], ("123", 8))
         self.assertEqual(answers, [("private-callback", None)])

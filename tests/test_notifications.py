@@ -102,8 +102,21 @@ class NotificationDispatcherTestCase(unittest.TestCase):
             ["⏮️", "◀️", "2/2", "▶️", "⏭️"],
         )
         self.assertEqual(
-            keyboard["inline_keyboard"][-1][0]["url"],
-            "https://t.me/ZenonPillarTrackerBot",
+            keyboard["inline_keyboard"][-1],
+            [
+                {"text": "🤖 Open bot", "url": "https://t.me/ZenonPillarTrackerBot"},
+                {"text": "🌐 Open tracker", "url": "https://pillartracker.zenon.nom.co"},
+            ],
+        )
+        private_keyboard = create_pinned_stats_keyboard(
+            status="all",
+            page=1,
+            page_count=1,
+            include_bot_button=False,
+        )
+        self.assertEqual(
+            private_keyboard["inline_keyboard"][-1],
+            [{"text": "🌐 Open tracker", "url": "https://pillartracker.zenon.nom.co"}],
         )
         self.assertEqual(
             parse_pinned_callback_data("pillar:page:inactive:3"),
