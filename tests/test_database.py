@@ -382,6 +382,41 @@ class DatabaseTestCase(unittest.TestCase):
         after = self.database.get_pillar_performance()["z1alpha"]
         self.assertEqual(after, before)
 
+    def test_pillars_can_be_sorted_and_limited_to_favorites(self):
+        self.record({
+            "z1alpha": make_pillar("Alpha", produced=1, expected=1, rank=0, weight=3, owner="z1alpha"),
+            "z1bravo": make_pillar("bravo", produced=1, expected=1, rank=1, weight=9, owner="z1bravo"),
+            "z1charlie": make_pillar("Charlie", produced=1, expected=1, rank=2, weight=5, owner="z1charlie"),
+        })
+        self.record({
+            "z1alpha": make_pillar("Alpha", produced=2, expected=4, rank=0, weight=3, owner="z1alpha"),
+            "z1bravo": make_pillar("bravo", produced=4, expected=4, rank=1, weight=9, owner="z1bravo"),
+            "z1charlie": make_pillar("Charlie", produced=3, expected=4, rank=2, weight=5, owner="z1charlie"),
+        })
+
+        def names(**kwargs):
+            return [
+                item["name"]
+                for item in self.database.get_pillars(
+                    include_performance=False, **kwargs
+                )["items"]
+            ]
+
+        self.assertEqual(names(), ["Alpha", "bravo", "Charlie"])
+        self.assertEqual(names(sort="weight"), ["bravo", "Charlie", "Alpha"])
+        self.assertEqual(names(sort="name"), ["Alpha", "bravo", "Charlie"])
+        self.assertEqual(names(sort="performance"), ["bravo", "Charlie", "Alpha"])
+        self.assertEqual(names(sort="performance", limit=1, offset=1), ["Charlie"])
+        favorites = self.database.get_pillars(
+            owners=["z1charlie", "z1alpha"], include_performance=False,
+        )
+        self.assertEqual(favorites["total"], 2)
+        self.assertEqual([item["name"] for item in favorites["items"]], ["Alpha", "Charlie"])
+        self.assertEqual(
+            self.database.get_pillars(owners=[], include_performance=False)["total"],
+            0,
+        )
+
     def test_performance_counts_production_when_expected_changed_earlier(self):
         self.record(
             {"z1alpha": make_pillar("Alpha", produced=0, expected=0)},

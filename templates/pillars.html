@@ -19,11 +19,21 @@
         <a data-status="" href="/pillars">All current</a>
         <a data-status="active" href="/pillars?status=active">Active</a>
         <a data-status="inactive" href="/pillars?status=inactive">Inactive</a>
+        <a data-status="favorites" href="/pillars?status=favorites"><i class="fa-solid fa-star" aria-hidden="true"></i> Favorites</a>
       </nav>
       <form id="pillar-filter-form" class="pillar-filter-form">
         <label class="search-box">
           <span class="sr-only">Search pillars</span>
           <input id="pillar-search" type="search" placeholder="Search by name or address">
+        </label>
+        <label class="select-box">
+          <span class="sr-only">Sort pillars</span>
+          <select id="sort-filter">
+            <option value="rank">Sort: Rank</option>
+            <option value="performance">Sort: Performance</option>
+            <option value="weight">Sort: Weight</option>
+            <option value="name">Sort: Name</option>
+          </select>
         </label>
         <button class="primary-button" type="submit"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>Search</button>
       </form>
@@ -40,5 +50,6 @@
 {% endblock %}
 
 {% block scripts %}
+  <script src="/pillar-ui.js" defer></script>
   <script src="/pillars.js" defer></script>
 {% endblock %}

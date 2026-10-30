@@ -1,88 +1,13 @@
 const state = {
   search: "",
   status: "",
+  sort: "rank",
   pillars: null,
   performance: {},
   performanceLoading: true,
   refreshId: 0,
 };
 let performanceRequest = null;
-
-const $ = (selector) => document.querySelector(selector);
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function formatDate(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "UTC",
-    timeZoneName: "short",
-  }).format(date);
-}
-
-function formatNumber(value) {
-  if (value === null || value === undefined) return "—";
-  return new Intl.NumberFormat("en-US").format(value);
-}
-
-function formatEpoch(value) {
-  if (value === null || value === undefined) return "—";
-  return String(value);
-}
-
-function formatDuration(seconds) {
-  if (seconds === null || seconds === undefined) return "—";
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (days) return days + "d " + hours + "h";
-  if (hours) return hours + "h " + minutes + "m";
-  return minutes + "m";
-}
-
-function statusLabel(status) {
-  const labels = {
-    active: "Active",
-    inactive: "Inactive",
-    dismantled: "Dismantled",
-    unknown: "Unknown",
-  };
-  return labels[status] || status || "Unknown";
-}
-
-function eventLabel(type) {
-  const labels = {
-    epoch_available: "New epoch available",
-    pillar_created: "Pillar added",
-    pillar_dismantled: "Pillar dismantled",
-    pillar_name_changed: "Name changed",
-    reward_shares_changed: "Reward shares changed",
-    pillar_inactive: "Pillar inactive",
-    pillar_active: "Pillar active",
-  };
-  return labels[type] || type || "Event";
-}
-
-async function getJson(url) {
-  const response = await fetch(url, { cache: "no-store" });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || "Request failed");
-  return payload;
-}
 
 function renderHealth(collector) {
   const state = collector?.state || "unknown";
@@ -124,6 +49,7 @@ function renderPillars(payload) {
     const query = new URLSearchParams();
     if (state.status && state.status !== "all") query.set("status", state.status);
     if (state.search) query.set("q", state.search);
+    if (state.sort && state.sort !== "rank") query.set("sort", state.sort);
     const queryString = query.toString();
     pillarsLink.href = "/pillars" + (queryString ? "?" + queryString : "");
   }
@@ -132,60 +58,13 @@ function renderPillars(payload) {
     list.innerHTML = '<div class="empty-state">No pillars found.</div>';
     return;
   }
-  list.innerHTML = payload.items.map((pillar) => {
-    const produced = pillar.produced_momentums ?? 0;
-    const expected = pillar.expected_momentums ?? 0;
-    const performance = state.performance[pillar.owner_address] ||
-      pillar.performance_last_30_days || {};
-    const rank = pillar.rank === null || pillar.rank === undefined
-      ? "—"
-      : pillar.rank + 1;
-    return '<article class="pillar-card">' +
-      '<div class="pillar-card-top">' +
-      '<span class="muted">#' + rank + '</span>' +
-      '<span class="status-badge ' + escapeHtml(pillar.status) + '">' +
-      statusLabel(pillar.status) + '</span>' +
-      '</div>' +
-      '<div class="pillar-title-row">' +
-      '<span class="pillar-name" data-owner="' +
-      escapeHtml(pillar.owner_address) + '">' +
-      escapeHtml(pillar.name) + '</span>' +
-      '</div>' +
-      '<div class="pillar-address">' + escapeHtml(pillar.owner_address) + '</div>' +
-      '<div class="pillar-stats">' +
-      '<div class="stat-item"><span class="stat-label">Produced / expected</span><strong>' +
-      formatNumber(produced) + " / " + formatNumber(expected) + '</strong></div>' +
-      '<div class="stat-item"><span class="stat-label">Weight</span><strong>' +
-      formatNumber(Math.round((pillar.weight || 0) / 100000000)) +
-      ' ZNN</strong></div>' +
-      '<div class="stat-item"><span class="stat-label">' +
-      statusDurationLabel(pillar.status) + '</span><strong>' +
-      formatDuration(statusDurationSeconds(pillar)) + '</strong></div>' +
-      '<div class="stat-item"><span class="stat-label">Momentum / delegate</span><strong>' +
-      pillar.momentum_reward_percentage + '% / ' +
-      pillar.delegate_reward_percentage + '%</strong></div>' +
-      '</div>' +
-      '<div class="stat-item performance-stat">' +
-      '<span class="stat-label">Performance · 30d</span>' +
-      '<strong class="performance-value' +
-      (!state.performanceLoading && !performanceAvailable(performance) ? ' empty' : '') + '">' +
-      renderPerformanceValue(performance) + '</strong>' +
-      '<div class="performance-chart" role="img" ' +
-      'aria-label="' + (state.performanceLoading
-        ? 'Loading daily performance'
-        : 'Daily performance for the last 30 days') + '"' +
-      (state.performanceLoading ? ' aria-busy="true"' : '') + '>' +
-      renderPerformanceChart(performance, state.performanceLoading) +
-      '</div>' +
-      '<div class="performance-chart-axis" aria-hidden="true">' +
-      '<span>30d ago</span><span>Today</span>' +
-      '</div>' +
-      '</div>' +
-      '</article>';
-  }).join("");
-  list.querySelectorAll("[data-owner]").forEach((element) => {
-    element.addEventListener("click", () => showPillar(element.dataset.owner));
-  });
+  list.innerHTML = favoritesFirst(payload.items).map((pillar) =>
+    renderPillarCard(
+      pillar,
+      state.performance[pillar.owner_address] || pillar.performance_last_30_days || {},
+      { loading: state.performanceLoading },
+    )
+  ).join("");
 }
 
 const MOBILE_COLLAPSED_ROWS = 3;
@@ -216,115 +95,16 @@ function renderEpochs(epochs) {
     return;
   }
   target.innerHTML = epochs.map((epoch) => {
-    const timeLabel = formatDate(epoch.epoch_start_at);
+    const timeLabel = renderTime(epoch.epoch_start_at);
     const estimateLabel = epoch.epoch_start_inferred
       ? '<span class="epoch-estimated">Estimated</span>'
       : '';
     return '<div class="epoch-row">' +
     '<div class="event-top">' +
     '<span class="epoch-number">Epoch ' + formatEpoch(epoch.epoch) + '</span>' +
-    '<span class="event-time">' + timeLabel + estimateLabel + '</span>' +
+    '<span class="event-time-group">' + timeLabel + estimateLabel + '</span>' +
     '</div>' +
     '</div>';
-  }).join("");
-}
-
-function eventDescription(event) {
-  const details = event.details || {};
-  if (event.event_type === "epoch_available") {
-    if (details.inferred) {
-      return "Epoch " + event.epoch + " · approximate date from Telegram gap";
-    }
-    return "Rewards for epoch " + event.epoch + " are available to collect";
-  }
-  if (event.event_type === "pillar_name_changed") {
-    return (details.old_name || "—") + " → " + (details.new_name || "—");
-  }
-  if (event.event_type === "reward_shares_changed") {
-    return "Reward sharing percentages updated";
-  }
-  if (event.event_type === "pillar_inactive") {
-    const name = details.name || event.owner_address || "Unknown pillar";
-    if (details.missed_momentums === undefined || details.missed_momentums === null) {
-      return name;
-    }
-    return name + " · " + details.missed_momentums + " missed checks";
-  }
-  return details.name || event.owner_address || "Network event";
-}
-
-function statusDurationLabel(status) {
-  if (status === "inactive") return "Inactive for";
-  if (status === "dismantled") return "Dismantled";
-  return "Live for";
-}
-
-function statusDurationSeconds(pillar) {
-  if (pillar.status === "dismantled") return null;
-  return pillar.status_seconds ?? pillar.live_seconds;
-}
-
-function renderPerformanceValue(performance) {
-  if (state.performanceLoading) {
-    return '<span class="skeleton skeleton-performance-value" aria-hidden="true"></span>';
-  }
-  return formatPerformance(performance);
-}
-
-function formatPerformance(performance) {
-  if (!performanceAvailable(performance)) return "—";
-  const percentage = Number(performance?.percentage);
-  return percentage.toFixed(1) + "%";
-}
-
-function performanceAvailable(performance) {
-  const percentage = Number(performance?.percentage);
-  return Number.isFinite(percentage) && Number(performance?.expected) > 0;
-}
-
-function formatPerformanceDay(value) {
-  if (!value) return "Unknown date";
-  const date = new Date(value + "T00:00:00Z");
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  }).format(date);
-}
-
-function performanceBarClass(point) {
-  if (!performanceAvailable(point)) return "no-data";
-  const percentage = Number(point.percentage);
-  if (percentage >= 95) return "high";
-  if (percentage >= 80) return "medium";
-  return "low";
-}
-
-function performanceBarHeight(point) {
-  if (!performanceAvailable(point)) return 16;
-  return Math.max(4, Math.min(100, Number(point.percentage)));
-}
-
-function renderPerformanceChart(performance, loading = false) {
-  if (loading) {
-    return '<span class="skeleton skeleton-performance-chart" aria-hidden="true"></span>';
-  }
-  const points = Array.isArray(performance?.daily)
-    ? performance.daily
-    : [];
-  if (!points.length) {
-    return '<span class="performance-chart-empty">Daily data is not available yet.</span>';
-  }
-  return points.map((point) => {
-    const date = formatPerformanceDay(point.date);
-    const label = performanceAvailable(point)
-      ? date + ": " + Number(point.percentage).toFixed(1) + "%"
-      : date + ": No data";
-    return '<span class="performance-bar ' +
-      performanceBarClass(point) +
-      '" style="height:' + performanceBarHeight(point) + '%" ' +
-      'title="' + escapeHtml(label) + '" aria-hidden="true"></span>';
   }).join("");
 }
 
@@ -337,57 +117,15 @@ function renderEvents(events) {
   target.innerHTML = events.map((event) =>
     '<div class="event-row">' +
     '<div class="event-top">' +
-    '<span class="event-type">' + escapeHtml(eventLabel(event.event_type)) + '</span>' +
-    '<span class="event-time">' + formatDate(event.observed_at) + '</span>' +
+    '<span class="event-type ' + eventTone(event.event_type) + '">' +
+    escapeHtml(eventLabel(event.event_type)) + '</span>' +
+    renderTime(event.observed_at) +
     '</div>' +
     '<div class="event-detail">' +
     escapeHtml(eventDescription(event)) +
     '</div>' +
     '</div>'
   ).join("");
-}
-
-async function showPillar(ownerAddress) {
-  try {
-    const pillar = await getJson(
-      "/api/pillars/" + encodeURIComponent(ownerAddress)
-    );
-    $("#pillar-detail").hidden = false;
-    $("#detail-name").textContent = pillar.name;
-    const detailRank = pillar.rank === null || pillar.rank === undefined
-      ? "—"
-      : pillar.rank + 1;
-    $("#detail-summary").innerHTML =
-      '<div class="detail-stat"><span>Status</span><strong>' +
-      statusLabel(pillar.status) + '</strong></div>' +
-      '<div class="detail-stat"><span>' + statusDurationLabel(pillar.status) +
-      '</span><strong>' + formatDuration(statusDurationSeconds(pillar)) + '</strong></div>' +
-      '<div class="detail-stat"><span>Performance (30 days)</span><strong>' +
-      formatPerformance(pillar.performance_last_30_days || {}) + '</strong></div>' +
-      '<div class="detail-stat"><span>Rank</span><strong>' +
-      detailRank + '</strong></div>' +
-      '<div class="detail-stat"><span>Momentum share</span><strong>' +
-      pillar.momentum_reward_percentage + '%</strong></div>' +
-      '<div class="detail-stat"><span>Delegate share</span><strong>' +
-      pillar.delegate_reward_percentage + '%</strong></div>';
-    $("#detail-history").innerHTML = (pillar.history || []).map((row) =>
-      '<tr>' +
-      '<td>' + formatDate(row.observed_at) + '</td>' +
-      '<td><span class="status-badge ' + escapeHtml(row.status) + '">' +
-      statusLabel(row.status) + '</span></td>' +
-      '<td>' + formatNumber(row.produced_momentums) + '</td>' +
-      '<td>' + formatNumber(row.expected_momentums) + '</td>' +
-      '<td>' + formatNumber(Math.round((row.weight || 0) / 100000000)) +
-      ' ZNN</td>' +
-      '</tr>'
-    ).join("") || '<tr><td colspan="5">No history yet.</td></tr>';
-    $("#pillar-detail").scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  } catch (error) {
-    console.error(error);
-  }
 }
 
 async function refreshCollectorStatus() {
@@ -431,6 +169,7 @@ async function refresh() {
       getJson(
         "/api/pillars?status=" + encodeURIComponent(state.status) +
         "&q=" + encodeURIComponent(state.search) +
+        "&sort=" + encodeURIComponent(state.sort) +
         "&performance=0"
       ),
       getJson("/api/epochs?limit=11"),
@@ -460,8 +199,13 @@ $("#status-filter").addEventListener("change", (event) => {
   state.status = event.target.value;
   refresh();
 });
-$("#close-detail").addEventListener("click", () => {
-  $("#pillar-detail").hidden = true;
+$("#sort-filter").addEventListener("change", (event) => {
+  state.sort = PILLAR_SORTS.includes(event.target.value) ? event.target.value : "rank";
+  refresh();
+});
+// Re-order the list when a star is toggled so favorites move to the top.
+window.addEventListener("favoriteschange", () => {
+  if (state.pillars) renderPillars(state.pillars);
 });
 
 refresh();

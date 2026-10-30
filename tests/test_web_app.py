@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from threading import Thread
+from urllib.error import HTTPError
 from urllib.request import urlopen
 from unittest.mock import patch
 
@@ -89,7 +90,12 @@ class WebAppTestCase(unittest.TestCase):
         self.assertNotIn(".narrow-shell", styles)
         self.assertIn("min-height: 100svh;", styles)
         self.assertIn("padding: 20px 20px 60px;", styles)
-        app = (templates_dir / "app.js").read_text()
+        # The dashboard script uses the shared pillar helpers; the inline
+        # pillar detail moved to its own page (pillar.js).
+        app = "\n".join(
+            (templates_dir / name).read_text()
+            for name in ("app.js", "pillar-ui.js", "pillar.js")
+        )
         self.assertIn("/api/overview", app)
         self.assertIn("Inactive for", app)
         self.assertIn("missed checks", app)
@@ -342,10 +348,50 @@ class WebAppTestCase(unittest.TestCase):
                     {"application/javascript", "text/javascript"},
                 )
                 self.assertIn("/api/overview", response.read().decode("utf-8"))
+            with urlopen(f"http://{host}:{port}/pillar/z1qexample", timeout=5) as response:
+                rendered = response.read().decode("utf-8")
+                self.assertEqual(response.headers["Content-Type"], "text/html; charset=utf-8")
+                self.assertIn('id="pillar-performance-chart"', rendered)
+                self.assertLess(
+                    rendered.index("/pillar-ui.js"),
+                    rendered.index("/pillar.js"),
+                )
+            with urlopen(f"http://{host}:{port}/pillar-ui.js", timeout=5) as response:
+                self.assertIn("favoriteschange", response.read().decode("utf-8"))
+            with self.assertRaises(HTTPError) as error:
+                urlopen(f"http://{host}:{port}/api/pillars?sort=bogus", timeout=5)
+            self.assertEqual(error.exception.code, 400)
+            error.exception.close()
         finally:
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
+
+    def test_pages_load_shared_pillar_helpers_first(self):
+        for page_name, script in (
+            ("index.html", "/app.js"),
+            ("pillars.html", "/pillars.js"),
+            ("pillar.html", "/pillar.js"),
+            ("epochs.html", "/history.js"),
+            ("events.html", "/history.js"),
+        ):
+            page = self.render_page(page_name)
+            self.assertIn("/pillar-ui.js", page, page_name)
+            self.assertLess(page.index("/pillar-ui.js"), page.index(script), page_name)
+        index = self.render_page("index.html")
+        self.assertIn('id="sort-filter"', index)
+        self.assertNotIn('id="pillar-detail"', index)
+        pillars = self.render_page("pillars.html")
+        self.assertIn('href="/pillars?status=favorites"', pillars)
+        self.assertIn('id="sort-filter"', pillars)
+        shared = (self.templates_dir / "pillar-ui.js").read_text()
+        for name in ("renderPillarCard", "favoriteButton", "renderTime", "eventTone", "PERFORMANCE_CHART_FLOOR"):
+            self.assertIn(name, shared)
+        for name in ("app.js", "pillars.js", "history.js", "pillar.js"):
+            script = (self.templates_dir / name).read_text()
+            # Shared helpers are declared once in pillar-ui.js only.
+            self.assertNotIn("const $ =", script, name)
+            self.assertNotIn("function escapeHtml", script, name)
 
     def test_overview_contract_is_json_serializable(self):
         overview = self.database.get_overview()
