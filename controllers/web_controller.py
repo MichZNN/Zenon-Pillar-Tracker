@@ -224,9 +224,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
     def _send_file(self, path: Path) -> None:
+        # is_file() first: reading a directory raises different errors on
+        # Linux (IsADirectoryError) and Windows (PermissionError).
+        if not path.is_file():
+            self._send_not_found()
+            return
         try:
             body = path.read_bytes()
-        except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+        except OSError:
             self._send_not_found()
             return
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
