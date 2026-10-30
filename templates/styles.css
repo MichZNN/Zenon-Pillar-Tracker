@@ -1262,3 +1262,6 @@ body.modal-open { overflow: hidden; }
 }
 .performance-bar-button.is-selected .performance-bar.is-partial,
 .performance-bar-button:hover .performance-bar.is-partial { opacity: .85; }
+
+/* Rank on pillar cards: a bit heavier so it balances the star and badge. */
+.pillar-rank { color: var(--muted); font-size: .9rem; font-weight: 800; letter-spacing: .01em; }

@@ -324,7 +324,7 @@ function renderPillarCard(pillar, performance, options = {}) {
   const favorite = isFavorite(pillar.owner_address);
   return '<article class="pillar-card' + (favorite ? ' is-favorite' : '') + '">' +
     '<div class="pillar-card-top">' +
-    '<span class="muted">#' + escapeHtml(formatRank(pillar.rank)) + '</span>' +
+    '<span class="pillar-rank">#' + escapeHtml(formatRank(pillar.rank)) + '</span>' +
     '<div class="pillar-card-actions">' +
     favoriteButton(pillar) +
     '<span class="status-badge ' + escapeHtml(pillar.status) + '">' +
