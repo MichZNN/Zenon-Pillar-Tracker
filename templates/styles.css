@@ -25,7 +25,12 @@
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
+  display: flex;
+  flex-direction: column;
   margin: 0;
+  /* Keep the footer at the bottom of the screen on short pages. */
+  min-height: 100vh;
+  min-height: 100svh;
   min-width: 320px;
   background:
     radial-gradient(circle at 90% -10%, rgba(0, 97, 235, .22), transparent 32rem),
@@ -34,6 +39,8 @@ body {
   color: var(--text);
   line-height: 1.45;
 }
+
+body > main { flex: 1 0 auto; }
 
 button, input, select { font: inherit; }
 button, select, input { color: inherit; }
@@ -111,6 +118,8 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 .health-badge.unknown { color: var(--muted); }
 
 .page-shell { padding: 28px 0 48px; }
+/* The page padding already provides the space below the header. */
+.page-shell > .section-block:first-child { margin-top: 0; }
 .hero-grid, .metric-grid, .content-grid { display: grid; gap: 12px; }
 .hero-card, .metric-card, .section-block {
   background: linear-gradient(145deg, rgba(36, 36, 36, .96), rgba(27, 27, 27, .98));
@@ -367,6 +376,7 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
   text-transform: uppercase;
 }
 .empty-state { color: var(--muted); padding: 28px 8px; text-align: center; }
+.empty-state a { color: var(--accent); }
 
 .epoch-list, .event-list, .loading-skeleton-list { display: grid; gap: 8px; }
 .skeleton-list-row {
@@ -1166,7 +1176,11 @@ body.modal-open { overflow: hidden; }
 
 /* ---------- Pillar page ---------- */
 .pillar-page-title { min-width: 0; }
-.pillar-page .pillar-address { align-items: center; display: flex; gap: 8px; margin-top: 6px; }
+.pillar-page .pillar-address { align-items: center; display: flex; gap: 8px; min-width: 0; }
+/* Address and buttons below the "Overview" heading; the back arrow stays
+   top right in the heading, in line with the title. */
+.pillar-identity { align-items: center; display: flex; flex-wrap: wrap; gap: 12px 16px; justify-content: space-between; margin: -4px 0 18px; }
+.pillar-identity[hidden] { display: none; }
 .pillar-address-text { overflow: hidden; text-overflow: ellipsis; }
 .pillar-page-actions { align-items: center; display: flex; gap: 8px; }
 .pillar-page-stats { margin-top: 0; }
@@ -1215,10 +1229,7 @@ body.modal-open { overflow: hidden; }
 }
 @media (max-width: 679px) {
   .pillar-page .section-heading { align-items: flex-start; }
-  /* Title and address on top; status, star and share on one row below
-     with the back arrow on the right. */
-  .pillar-page .section-heading:first-child { align-items: stretch; flex-direction: column; }
-  .pillar-page .section-heading:first-child .section-heading-actions { flex-wrap: nowrap; justify-content: space-between; width: 100%; }
+  .pillar-identity { align-items: flex-start; flex-direction: column; }
   .performance-chart.performance-chart-large { gap: 2px; height: 130px; }
 }
 
