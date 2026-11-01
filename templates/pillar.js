@@ -17,6 +17,7 @@ function setHeaderTitle(name) {
 function renderSummary(pillar) {
   const performance = pillar.performance_last_30_days || {};
   $("#pillar-rank").textContent = "Rank #" + formatRank(pillar.rank);
+  $("#pillar-identity").hidden = false;
   $("#pillar-address").innerHTML =
     '<span class="pillar-address-text">' + escapeHtml(pillar.owner_address) + '</span>' +
     '<button class="icon-button" type="button" data-copy="' +
