@@ -34,9 +34,15 @@ function renderSummary(pillar) {
     '<div class="stat-item"><span class="stat-label">Performance (30 days)</span><strong class="performance-value' +
     (performanceAvailable(performance) ? '' : ' empty') + '">' +
     formatPerformance(performance) + '</strong></div>' +
+    '<div class="stat-item"><span class="stat-label">Delegator APR</span><strong class="apr-value' +
+    (aprValue(performance) ? '' : ' empty') + '" title="' + escapeHtml(APR_HELP) + '">' +
+    formatApr(performance) + '</strong></div>' +
     '<div class="stat-item"><span class="stat-label">Produced / expected · this epoch</span><strong>' +
     formatNumber(pillar.produced_momentums ?? 0) + ' / ' +
     formatNumber(pillar.expected_momentums ?? 0) + '</strong></div>' +
+    '<div class="stat-item"><span class="stat-label">Momentums per day · 7d</span><strong>' +
+    (performance.delegator_apr ? formatNumber(performance.delegator_apr.momentums_per_day) : '—') +
+    '</strong></div>' +
     '<div class="stat-item"><span class="stat-label">Weight</span><strong>' +
     formatWeight(pillar.weight) + '</strong></div>' +
     '<div class="stat-item"><span class="stat-label">' +
@@ -46,7 +52,8 @@ function renderSummary(pillar) {
     escapeHtml(pillar.momentum_reward_percentage) + '%</strong></div>' +
     '<div class="stat-item"><span class="stat-label">Delegate share</span><strong>' +
     escapeHtml(pillar.delegate_reward_percentage) + '%</strong></div>' +
-    '</div>';
+    '</div>' +
+    '<p class="stat-note">' + escapeHtml(APR_HELP) + ' Reward shares can change at any time.</p>';
 }
 
 function renderChart(pillar) {

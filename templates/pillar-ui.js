@@ -254,6 +254,31 @@ function renderPerformanceChart(performance, loading = false, pillar = null) {
   ).join("");
 }
 
+/* ---------- Delegator APR ---------- */
+
+const APR_HELP = "Estimated yearly return for delegators, based on the last " +
+  "7 days of momentum production, the current weight and reward shares " +
+  "(for a 1,000 ZNN delegation).";
+
+function aprValue(performance) {
+  const value = Number(performance?.delegator_apr?.apr);
+  return Number.isFinite(value) ? value : null;
+}
+
+function formatApr(performance) {
+  const value = aprValue(performance);
+  if (value === null) return "—";
+  return (value >= 10 || value === 0 ? value.toFixed(value === 0 ? 0 : 1) : value.toFixed(2)) + "%";
+}
+
+function renderAprChip(performance, loading = false) {
+  if (loading) return '<span class="apr-chip is-loading" aria-hidden="true"></span>';
+  const value = aprValue(performance);
+  if (value === null) return "";
+  return '<span class="apr-chip' + (value === 0 ? ' is-zero' : '') + '" title="' +
+    escapeHtml(APR_HELP) + '">' + formatApr(performance) + ' APR</span>';
+}
+
 /* ---------- Favorites ---------- */
 
 const FAVORITES_KEY = "pillarTracker.favorites";
@@ -334,6 +359,7 @@ function renderPillarCard(pillar, performance, options = {}) {
     '<div class="pillar-title-row">' +
     '<a class="pillar-name pillar-card-link" href="' + pillarUrl(pillar.owner_address) + '">' +
     escapeHtml(pillar.name) + '</a>' +
+    renderAprChip(item, loading) +
     '</div>' +
     '<div class="pillar-address">' + escapeHtml(pillar.owner_address) + '</div>' +
     '<div class="pillar-stats">' +
@@ -378,7 +404,7 @@ function favoritesFirst(items) {
   ];
 }
 
-const PILLAR_SORTS = ["rank", "performance", "weight", "name"];
+const PILLAR_SORTS = ["rank", "performance", "apr", "weight", "name"];
 
 /* ---------- Shared interactions ---------- */
 
