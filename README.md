@@ -197,10 +197,12 @@ starts), the collector:
 Both settings are in the admin panel under *Data retention*; `0` keeps data
 forever. Work is done in small batches through existing indexes, so the
 dashboard keeps working while it runs. The first run after an upgrade
-catches up on the whole history and can take a minute; later runs only
-process one day. SQLite reuses freed space but does not shrink the file; run
+catches up on the whole history and can take a few minutes on a large
+database; later runs only process one day. SQLite reuses freed space but does not shrink the file; run
 `VACUUM` once with the containers stopped if you want the disk space back.
-The log shows a line `Daily maintenance done in …s` after each run.
+The log shows a line `Daily maintenance done in …s` after each run, and every
+run is also kept for a year in `maintenance_runs`, shown under *Operations* in
+the admin panel, so the history survives log rotation.
 
 ### Pillar status and missed checks
 
@@ -358,7 +360,26 @@ Available API endpoints:
 - `GET /api/health`
 - `GET /api/auth/me`
 - `GET /api/subscriptions` (authenticated user's records)
-- `/api/admin/*` (administrator only; settings, users, subscriptions, logs)
+- `/api/admin/*` (administrator only; settings, users, subscriptions, logs;
+  `GET /api/admin/logs` accepts `since=` and `until=` ISO times to search the
+  rotated log files for a period, and returns the maintenance history)
+
+### Two-factor authentication
+
+Every user can turn on two-factor authentication under *My account* in the
+portal menu. It uses standard time-based codes (TOTP, RFC 6238: SHA-1, 6
+digits, 30 seconds) that work with Google Authenticator, Microsoft
+Authenticator, 1Password, Aegis and similar apps; the QR code is generated in
+the browser (`static/vendor/qrcode-generator`, MIT licence). Turning it on
+shows ten one-time recovery codes for a lost phone; only their hashes are
+stored. After five wrong codes a user has to wait ten minutes. Turning it off
+needs the current password and a code. An administrator can reset a user's
+two-factor authentication from *Users*.
+
+Endpoints (signed-in user, CSRF protected): `GET /api/account/two-factor`,
+`POST /api/account/two-factor/setup`, `.../enable`, `.../disable` and
+`.../recovery-codes`. `POST /api/auth/login` answers `two_factor_required`
+when a code is needed; send it again with `code`.
 
 The web server binds to localhost by default. The single portal uses hashed
 passwords, expiring sessions, CSRF protection, role checks, and audit records.
@@ -378,6 +399,8 @@ The main tables are:
   completed UTC day.
 - `performance_finalized_days` — the days that are stored in
   `pillar_performance_daily`.
+- `maintenance_runs` — one row per daily maintenance run (duration, counts,
+  errors), kept for about a year.
 - `events` — status changes, availability changes, additions, removals, and poll errors.
 - `node_state` — the latest node health and synchronization information.
 - `poll_runs` — the result and timing of each collector run.

@@ -1019,13 +1019,11 @@ body.modal-open { overflow: hidden; }
   }
   .dashboard-header .site-nav { justify-self: start; }
   .dashboard-header .health-badge { justify-self: end; }
-  .portal-header .header-actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .portal-header .user-menu { justify-self: start; min-width: 0; width: min(240px, 100%); }
-  .portal-header .user-menu-toggle { justify-content: flex-start; max-width: none; width: 100%; }
-  .portal-header .header-action-link { min-width: 0; }
+  /* Portal: title and the single menu button on one row, so the sticky
+     header stays small and the menu is always within reach. */
+  .portal-header .header-inner { align-items: center; flex-direction: row; padding: 10px 0; }
+  .portal-header .header-actions { flex-wrap: nowrap; width: auto; }
+  .portal-header .user-menu-toggle { max-width: 170px; }
   .auth-shell {
     min-height: 100svh;
     padding: 20px 20px 60px;
@@ -1308,3 +1306,74 @@ body.modal-open { overflow: hidden; }
 @media (min-width: 680px) {
   .pillar-page-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+
+/* ---------- Portal: one menu in the header ---------- */
+.portal-header .user-menu-dropdown {
+  background: #111c22;
+  left: auto;
+  max-height: calc(100svh - 96px);
+  max-width: calc(100vw - 32px);
+  overflow-y: auto;
+  right: 0;
+  width: 260px;
+}
+.user-menu-group { border-bottom: 1px solid var(--line); display: grid; gap: 3px; margin-bottom: 3px; padding-bottom: 6px; }
+.user-menu-group[hidden] { display: none; }
+.user-menu-group-label { color: var(--accent); font-size: .62rem; font-weight: 800; letter-spacing: .12em; margin: 6px 10px 2px; text-transform: uppercase; }
+.user-menu-link.is-active, .user-menu-link.is-active i { color: var(--accent); }
+.user-menu-link.is-active { background: rgba(111, 243, 77, .08); }
+@media (max-width: 959px) {
+  /* The sections live in the header menu on smaller screens. */
+  .admin-menu { display: none; }
+  .admin-content > .section-block { scroll-margin-top: 84px; }
+}
+@media (min-width: 960px) {
+  /* The sidebar shows the sections on desktop. */
+  .user-menu-group { display: none !important; }
+}
+
+/* ---------- Two-factor authentication ---------- */
+.two-factor-section { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 18px; }
+.two-factor-heading { align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 6px; }
+.two-factor-heading h3 { margin: 2px 0 0; }
+.two-factor-section [hidden] { display: none !important; }
+.two-factor-steps { color: var(--muted); font-size: .85rem; margin: 6px 0 12px; padding-left: 20px; }
+.two-factor-qr { background: #fff; border-radius: 12px; height: 200px; margin: 0 0 12px; padding: 8px; width: 200px; }
+.two-factor-qr svg { display: block; height: 100%; width: 100%; }
+.two-factor-secret-help code { color: var(--text); font-size: .85rem; letter-spacing: .04em; word-break: break-all; }
+.two-factor-inline-form { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.two-factor-inline-form input {
+  background: rgba(21, 21, 21, .82);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--text);
+  flex: 1 1 140px;
+  font-size: 1.1rem;
+  height: var(--control-height);
+  letter-spacing: .2em;
+  max-width: 220px;
+  padding: 0 12px;
+}
+.two-factor-inline-form .primary-button { height: var(--control-height); }
+.recovery-codes {
+  background: rgba(10, 10, 10, .4);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  column-gap: 24px;
+  columns: 2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .9rem;
+  line-height: 1.9;
+  margin: 10px 0 12px;
+  padding: 12px 16px;
+}
+.danger-button { border-color: rgba(249, 22, 144, .35); color: var(--plasma-pink); }
+.danger-button:hover { border-color: var(--plasma-pink); color: var(--text); }
+.auth-two-factor-help { font-size: .78rem; margin: 6px 2px 0; }
+.auth-two-factor[hidden] { display: none; }
+
+/* Five log filters on one row on wide screens. */
+@media (min-width: 960px) {
+  .logs-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)); }
+}
+#two-factor-codes-left { margin-top: 10px; }

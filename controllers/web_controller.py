@@ -18,10 +18,16 @@ from urllib.parse import parse_qs, unquote, urlparse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from services.auth_service import (
+    generate_recovery_codes,
+    generate_totp_secret,
     hash_password,
+    hash_recovery_code,
+    normalise_two_factor_code,
     password_is_acceptable,
+    totp_uri,
     username_is_acceptable,
     verify_password,
+    verify_totp,
 )
 from services.settings_service import (
     DEFAULT_DATABASE_PATH,
@@ -30,7 +36,7 @@ from services.settings_service import (
     validate_settings,
 )
 from models.database import Database, InitialSetupAlreadyCompletedError
-from services.logging_service import configure_logging, read_log_tail
+from services.logging_service import configure_logging, read_log_range, read_log_tail
 from functions.status import collector_status
 from functions.subscriptions import normalise_subscription
 
@@ -424,6 +430,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/auth/me":
             self._api_auth_me()
             return
+        if path == "/api/account/two-factor":
+            user = self._require_user()
+            if user is not None:
+                self._send_json(self._two_factor_status(user))
+            return
         if path == "/api/overview":
             self._send_json(self.database.get_overview())
             return
@@ -539,16 +550,27 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if self._require_user(admin=True) is None:
                 return
             settings = self.database.get_admin_settings(self.runtime_config)
+            since = _parse_query_datetime(query.get("since", [None])[0])
+            until = _parse_query_datetime(query.get("until", [None])[0])
+            lines = int(query.get("lines", ["60"])[0])
+            limit = int(query.get("limit", ["60"])[0])
+            if since is not None or until is not None:
+                # A chosen period: search the rotated log files as well.
+                log_file = read_log_range(since, until, lines=lines)
+                audit = self.database.get_audit_log(
+                    limit,
+                    since=since.isoformat(timespec="seconds") if since else None,
+                    until=until.isoformat(timespec="seconds") if until else None,
+                )
+            else:
+                log_file = read_log_tail(settings, lines=lines)
+                audit = self.database.get_audit_log(limit)
             self._send_json(
                 {
-                    "file": read_log_tail(
-                        settings,
-                        lines=int(query.get("lines", ["60"])[0]),
-                    ),
+                    "file": log_file,
                     "collector": self._collector_diagnostics(),
-                    "audit": self.database.get_audit_log(
-                        int(query.get("limit", ["60"])[0])
-                    ),
+                    "audit": audit,
+                    "maintenance": self.database.get_maintenance_runs(30),
                 }
             )
             return
@@ -568,6 +590,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             logger.warning("Failed login for username %s", username[:80])
             self._send_json({"error": "Invalid username or password"}, 401)
             return
+        if credentials.get("totp_enabled"):
+            if not self._check_second_factor(credentials, payload.get("code")):
+                return
         duration = float(
             self.database.get_setting(
                 "auth_session_hours",
@@ -590,6 +615,144 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._csrf_cookie(session["csrf_token"]),
             ],
         )
+
+    def _check_second_factor(
+        self,
+        credentials: Mapping[str, Any],
+        code: Any,
+        *,
+        login: bool = True,
+    ) -> bool:
+        """Verify an authenticator or recovery code; send the error if not.
+
+        Returns True when the code is valid. During login a missing code
+        asks the client for one (``two_factor_required``).
+        """
+        user_id = int(credentials["id"])
+        value = normalise_two_factor_code(code)
+        if not value:
+            self._send_json(
+                {
+                    "error": "Enter the code from your authenticator app",
+                    "two_factor_required": True,
+                },
+                401 if login else 400,
+            )
+            return False
+        if TWO_FACTOR_THROTTLE.blocked(user_id):
+            logger.warning("Two-factor attempts blocked for user %s", user_id)
+            self._send_json(
+                {
+                    "error": "Too many wrong codes. Try again in 10 minutes.",
+                    "two_factor_required": True,
+                },
+                429,
+            )
+            return False
+        step = verify_totp(
+            str(credentials.get("totp_secret") or ""),
+            value,
+            last_step=credentials.get("totp_last_step"),
+        )
+        if step is not None:
+            self.database.record_totp_step(user_id, step)
+            TWO_FACTOR_THROTTLE.reset(user_id)
+            return True
+        if self.database.consume_recovery_code(user_id, hash_recovery_code(value)):
+            TWO_FACTOR_THROTTLE.reset(user_id)
+            logger.info("Recovery code used by user %s", user_id)
+            return True
+        TWO_FACTOR_THROTTLE.failed(user_id)
+        logger.warning("Wrong two-factor code for user %s", user_id)
+        self._send_json(
+            {"error": "Invalid two-factor code", "two_factor_required": True},
+            401 if login else 400,
+        )
+        return False
+
+    def _two_factor_status(self, user: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "enabled": bool(user.get("two_factor_enabled")),
+            "recovery_codes_left": self.database.recovery_codes_left(int(user["id"])),
+        }
+
+    def _two_factor_setup(self, user: Mapping[str, Any]) -> None:
+        if not self._require_csrf(user):
+            return
+        if user.get("two_factor_enabled"):
+            raise ValueError("Two-factor authentication is already on")
+        secret = generate_totp_secret()
+        self.database.set_pending_totp_secret(int(user["id"]), secret)
+        self._send_json(
+            {
+                "secret": secret,
+                "otpauth_uri": totp_uri(secret, str(user["username"])),
+            }
+        )
+
+    def _two_factor_enable(
+        self,
+        user: Mapping[str, Any],
+        payload: Mapping[str, Any],
+    ) -> None:
+        if not self._require_csrf(user):
+            return
+        credentials = self.database.get_user_credentials(str(user["username"]))
+        pending = str((credentials or {}).get("totp_pending_secret") or "")
+        if not pending:
+            raise ValueError("Start the two-factor setup first")
+        step = verify_totp(pending, payload.get("code"))
+        if step is None:
+            raise ValueError("That code is not correct. Check the time on your phone and try again.")
+        codes = generate_recovery_codes()
+        self.database.enable_totp(
+            int(user["id"]),
+            secret=pending,
+            step=step,
+            recovery_code_hashes=[hash_recovery_code(code) for code in codes],
+        )
+        self._audit(user, "enable", "two_factor", user["id"])
+        self._send_json({"enabled": True, "recovery_codes": codes})
+
+    def _two_factor_disable(
+        self,
+        user: Mapping[str, Any],
+        payload: Mapping[str, Any],
+    ) -> None:
+        if not self._require_csrf(user):
+            return
+        credentials = self.database.get_user_credentials(str(user["username"]))
+        if credentials is None or not credentials.get("totp_enabled"):
+            raise ValueError("Two-factor authentication is not on")
+        password = payload.get("password", "")
+        if not isinstance(password, str) or not verify_password(
+            password, credentials.get("password_hash", "")
+        ):
+            raise ValueError("Current password is incorrect")
+        if not self._check_second_factor(credentials, payload.get("code"), login=False):
+            return
+        self.database.disable_totp(int(user["id"]))
+        self._audit(user, "disable", "two_factor", user["id"])
+        self._send_json({"enabled": False, "recovery_codes_left": 0})
+
+    def _two_factor_new_recovery_codes(
+        self,
+        user: Mapping[str, Any],
+        payload: Mapping[str, Any],
+    ) -> None:
+        if not self._require_csrf(user):
+            return
+        credentials = self.database.get_user_credentials(str(user["username"]))
+        if credentials is None or not credentials.get("totp_enabled"):
+            raise ValueError("Two-factor authentication is not on")
+        if not self._check_second_factor(credentials, payload.get("code"), login=False):
+            return
+        codes = generate_recovery_codes()
+        self.database.set_recovery_codes(
+            int(user["id"]), [hash_recovery_code(code) for code in codes]
+        )
+        self._audit(user, "regenerate", "recovery_codes", user["id"])
+        self._send_json({"enabled": True, "recovery_codes": codes})
 
     def _setup_initial_admin(self, payload: Mapping[str, Any]) -> None:
         """Create and sign in the first administrator, once only."""
@@ -746,6 +909,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if not password_is_acceptable(password):
                 raise ValueError("Password must contain at least 12 characters")
             password_hash = hash_password(password)
+        if _as_bool(payload.get("reset_two_factor")):
+            if self.database.get_user(user_id) is None:
+                raise ValueError("User not found")
+            self.database.disable_totp(user_id)
+            TWO_FACTOR_THROTTLE.reset(user_id)
         role = payload.get("role")
         active = None
         if "active" in payload:
@@ -959,6 +1127,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 user_id = int(path.rsplit("/", 1)[1])
                 self._admin_user_update(user, user_id, payload)
             return
+        if path.startswith("/api/account/two-factor/") and method == "POST":
+            user = self._require_user()
+            if user is not None:
+                action = path.rsplit("/", 1)[1]
+                if action == "setup":
+                    self._two_factor_setup(user)
+                elif action == "enable":
+                    self._two_factor_enable(user, payload)
+                elif action == "disable":
+                    self._two_factor_disable(user, payload)
+                elif action == "recovery-codes":
+                    self._two_factor_new_recovery_codes(user, payload)
+                else:
+                    self._send_json({"error": "API endpoint not found"}, 404)
+            return
         if path == "/api/account" and method == "PATCH":
             user = self._require_user()
             if user is not None:
@@ -1132,6 +1315,53 @@ class DashboardHandler(BaseHTTPRequestHandler):
             logger.warning("%s - %s", self.address_string(), format % args)
         elif method not in {"GET", "HEAD"}:
             logger.info("%s - %s", self.address_string(), format % args)
+
+
+def _parse_query_datetime(value: str | None):
+    """Parse an ISO time from a query string as an aware UTC datetime."""
+    from datetime import datetime, timezone
+
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("since and until must be ISO 8601 times") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+class TwoFactorThrottle:
+    """Limit wrong two-factor codes per user: 5 per 10 minutes."""
+
+    def __init__(self, max_failures: int = 5, window_seconds: float = 600):
+        self.max_failures = max_failures
+        self.window_seconds = window_seconds
+        self._failures: dict[int, deque[float]] = {}
+        self._lock = Lock()
+
+    def _recent(self, user_id: int) -> deque[float]:
+        failures = self._failures.setdefault(int(user_id), deque())
+        cutoff = monotonic() - self.window_seconds
+        while failures and failures[0] < cutoff:
+            failures.popleft()
+        return failures
+
+    def blocked(self, user_id: int) -> bool:
+        with self._lock:
+            return len(self._recent(user_id)) >= self.max_failures
+
+    def failed(self, user_id: int) -> None:
+        with self._lock:
+            self._recent(user_id).append(monotonic())
+
+    def reset(self, user_id: int) -> None:
+        with self._lock:
+            self._failures.pop(int(user_id), None)
+
+
+TWO_FACTOR_THROTTLE = TwoFactorThrottle()
 
 
 class DashboardServer(ThreadingHTTPServer):

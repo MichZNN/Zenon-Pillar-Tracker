@@ -3,6 +3,9 @@ let ownSubscriptions = [];
 let adminUsers = [];
 let adminSubscriptions = [];
 let operationalLogEntries = [];
+// Entries for a chosen period in the full log view (null = latest/live).
+let periodLogEntries = null;
+let periodLogInfo = null;
 let logRefreshPromise = null;
 let logRefreshTimer = null;
 let lastLogUpdatedAt = null;
@@ -81,8 +84,12 @@ function setAccountModalOpen(open) {
   }
   modal.hidden = !open;
   updateModalBodyLock();
-  if (open) close?.focus();
-  else menuToggle?.focus();
+  if (open) {
+    void loadTwoFactor();
+    close?.focus();
+  } else {
+    menuToggle?.focus();
+  }
 }
 
 function initialiseAccountModal() {
@@ -444,6 +451,136 @@ async function loadOwnSubscriptions() {
   renderOwnSubscriptions();
 }
 
+/* ---------- Two-factor authentication (My account) ---------- */
+
+function showTwoFactorPanel(name) {
+  ["off", "setup", "codes", "on"].forEach((panel) => {
+    $(`#two-factor-${panel}`).hidden = panel !== name;
+  });
+}
+
+function renderTwoFactorStatus(status) {
+  const badge = $("#two-factor-status");
+  badge.className = `status-badge ${status.enabled ? "active" : "inactive"}`;
+  badge.textContent = status.enabled ? "On" : "Off";
+  if (status.enabled) {
+    const left = Number(status.recovery_codes_left) || 0;
+    $("#two-factor-codes-left").textContent = left
+      ? `${left} recovery code${left === 1 ? "" : "s"} left.`
+      : "No recovery codes left. Create new ones so you can still log in if you lose your phone.";
+    $("#two-factor-disable-form").reset();
+    showTwoFactorPanel("on");
+  } else {
+    showTwoFactorPanel("off");
+  }
+}
+
+async function loadTwoFactor() {
+  try {
+    renderTwoFactorStatus(await getJson("/api/account/two-factor"));
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
+function postTwoFactor(action, body = {}) {
+  return getJson(`/api/account/two-factor/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+    body: JSON.stringify(body),
+  });
+}
+
+function showRecoveryCodes(codes) {
+  $("#two-factor-code-list").textContent = (codes || []).join("\n");
+  showTwoFactorPanel("codes");
+}
+
+async function startTwoFactorSetup() {
+  try {
+    const setup = await postTwoFactor("setup");
+    const target = $("#two-factor-qr");
+    target.innerHTML = "";
+    if (typeof qrcode === "function") {
+      const qr = qrcode(0, "M");
+      qr.addData(setup.otpauth_uri);
+      qr.make();
+      target.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 3, scalable: true });
+    }
+    $("#two-factor-secret").textContent = (setup.secret.match(/.{1,4}/g) || []).join(" ");
+    $("#two-factor-enable-form").reset();
+    showTwoFactorPanel("setup");
+    $("#two-factor-enable-form").elements.code.focus();
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
+async function enableTwoFactor(event) {
+  event.preventDefault();
+  try {
+    const result = await postTwoFactor("enable", { code: event.currentTarget.elements.code.value });
+    $("#two-factor-status").className = "status-badge active";
+    $("#two-factor-status").textContent = "On";
+    showRecoveryCodes(result.recovery_codes);
+    showMessage("Two-factor authentication is on.");
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
+async function disableTwoFactor(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (!form.elements.password.value) {
+    showMessage("Enter your current password to turn off two-factor authentication.", true);
+    return;
+  }
+  try {
+    await postTwoFactor("disable", {
+      password: form.elements.password.value,
+      code: form.elements.code.value,
+    });
+    showMessage("Two-factor authentication is off.");
+    await loadTwoFactor();
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
+async function newRecoveryCodes() {
+  const form = $("#two-factor-disable-form");
+  if (!form.elements.code.value) {
+    showMessage("Enter a code from your authenticator app to create new recovery codes.", true);
+    form.elements.code.focus();
+    return;
+  }
+  try {
+    const result = await postTwoFactor("recovery-codes", { code: form.elements.code.value });
+    showRecoveryCodes(result.recovery_codes);
+    showMessage("New recovery codes created. The old ones no longer work.");
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
+function initialiseTwoFactor() {
+  $("#two-factor-start").addEventListener("click", startTwoFactorSetup);
+  $("#two-factor-cancel").addEventListener("click", () => void loadTwoFactor());
+  $("#two-factor-enable-form").addEventListener("submit", enableTwoFactor);
+  $("#two-factor-disable-form").addEventListener("submit", disableTwoFactor);
+  $("#two-factor-new-codes").addEventListener("click", newRecoveryCodes);
+  $("#two-factor-codes-done").addEventListener("click", () => void loadTwoFactor());
+  $("#copy-recovery-codes").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText($("#two-factor-code-list").textContent);
+      showMessage("Recovery codes copied.");
+    } catch (error) {
+      showMessage("Copying is not available here; select the codes and copy them manually.", true);
+    }
+  });
+}
+
 async function saveAccount(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -513,13 +650,15 @@ function resetUserForm() {
   form.elements.username.readOnly = false;
   form.elements.password.required = true;
   form.elements.active.checked = true;
+  $("#reset-two-factor-label").hidden = true;
   $("#cancel-user").hidden = true;
 }
 
 function renderUsers() {
   $("#user-list").innerHTML = adminUsers.length ? adminUsers.map((item) =>
     `<tr><td><strong>${escapeHtml(item.username)}</strong>${item.display_name ? `<small>${escapeHtml(item.display_name)}</small>` : ""}</td>` +
-    `<td>${escapeHtml(item.role)}</td><td><span class="status-badge ${item.active ? "active" : "inactive"}">${item.active ? "Active" : "Inactive"}</span></td>` +
+    `<td>${escapeHtml(item.role)}</td><td><span class="status-badge ${item.active ? "active" : "inactive"}">${item.active ? "Active" : "Inactive"}</span>` +
+    `${item.two_factor_enabled ? ' <span class="status-badge active" title="Two-factor authentication is on">2FA</span>' : ""}</td>` +
     `<td>${item.subscription_count || 0}</td><td>${escapeHtml(item.last_login_at || "—")}</td>` +
     `<td><button class="ghost-button small-button" data-edit-user="${item.id}" type="button">Edit</button></td></tr>`
   ).join("") : '<tr><td colspan="6" class="empty-state">No users.</td></tr>';
@@ -543,6 +682,8 @@ function editUser(id) {
   form.elements.password.required = false;
   form.elements.role.value = item.role;
   form.elements.active.checked = Boolean(item.active);
+  form.elements.reset_two_factor.checked = false;
+  $("#reset-two-factor-label").hidden = !item.two_factor_enabled;
   $("#cancel-user").hidden = false;
   form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -738,7 +879,8 @@ function setLogViewerContent(viewer, entries, emptyMessage) {
 
 function renderLogViews() {
   const filters = logFilterState();
-  const matchingEntries = operationalLogEntries.filter((entry) => logMatches(entry, filters));
+  const modalSource = periodLogEntries || operationalLogEntries;
+  const matchingEntries = modalSource.filter((entry) => logMatches(entry, filters));
   const previewEntries = operationalLogEntries.slice(0, LOG_PREVIEW_LIMIT);
   const visibleEntries = matchingEntries.slice(0, filters.limit);
   setLogViewerContent(
@@ -762,14 +904,73 @@ function renderLogViews() {
     const updated = lastLogUpdatedAt
       ? ` · Updated ${formatDiagnosticDate(lastLogUpdatedAt.toISOString())}`
       : "";
-    status.textContent = `${visibleEntries.length} of ${matchingEntries.length} matching entries${updated}`;
+    let periodNote = "";
+    if (periodLogEntries && periodLogInfo) {
+      periodNote = periodLogInfo.oldest_available_at
+        ? ` · Logs available since ${formatDiagnosticDate(periodLogInfo.oldest_available_at)}`
+        : "";
+      if (periodLogInfo.truncated) periodNote += " · Showing the newest part of this period";
+    }
+    status.textContent = `${visibleEntries.length} of ${matchingEntries.length} matching entries${updated}${periodNote}`;
   }
+}
+
+function logPeriodRange(period) {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const day = 24 * 60 * 60 * 1000;
+  switch (period) {
+    case "hour": return { since: new Date(now - 60 * 60 * 1000) };
+    case "today": return { since: startOfToday };
+    case "yesterday": return { since: new Date(startOfToday - day), until: startOfToday };
+    case "week": return { since: new Date(now - 7 * day) };
+    case "all": return { since: new Date(0) };
+    default: return null;
+  }
+}
+
+async function loadPeriodLogs() {
+  const range = logPeriodRange($("#log-period")?.value || "latest");
+  if (!range) {
+    periodLogEntries = null;
+    periodLogInfo = null;
+    renderLogViews();
+    return;
+  }
+  const params = new URLSearchParams({ lines: "1000", limit: "1000", since: range.since.toISOString() });
+  if (range.until) params.set("until", range.until.toISOString());
+  try {
+    const payload = await getJson(`/api/admin/logs?${params}`);
+    periodLogInfo = payload.file || {};
+    periodLogEntries = sortLogEntries([
+      ...parseApplicationLogs(periodLogInfo.lines),
+      ...parseAuditLogs(payload.audit),
+    ]);
+  } catch (error) {
+    periodLogInfo = null;
+    periodLogEntries = [createLogEntry("application", `Could not load logs for this period: ${error.message}`, { level: "ERROR" })];
+  }
+  renderLogViews();
+}
+
+function renderMaintenance(runs) {
+  const target = $("#maintenance-list");
+  if (!target) return;
+  target.innerHTML = Array.isArray(runs) && runs.length ? runs.map((run) =>
+    `<tr><td>${escapeHtml(formatDiagnosticDate(run.started_at))}</td>` +
+    `<td><span class="status-badge ${run.status === "success" ? "active" : "error"}" title="${escapeHtml(run.error || "")}">${run.status === "success" ? "Done" : "Failed"}</span></td>` +
+    `<td>${Number(run.duration_seconds || 0).toFixed(1)}s</td>` +
+    `<td>${Number(run.performance_days_stored || 0).toLocaleString("en-US")}</td>` +
+    `<td>${Number(run.payloads_cleared || 0).toLocaleString("en-US")}</td>` +
+    `<td>${Number(run.snapshots_deleted || 0).toLocaleString("en-US")}</td></tr>`
+  ).join("") : '<tr><td colspan="6" class="empty-state">No maintenance runs recorded yet. The collector runs it once a day and when it starts.</td></tr>';
 }
 
 async function loadLogs() {
   try {
     const payload = await getJson(`/api/admin/logs?limit=${LOG_FETCH_LIMIT}&lines=${LOG_FETCH_LIMIT}`);
     renderCollectorDiagnostics(payload.collector);
+    renderMaintenance(payload.maintenance);
     const file = payload.file || {};
     $("#log-file-info").textContent = `${file.path || "data_store/pillar_tracker.log"} · ${file.exists ? (file.size_bytes || 0) + " bytes" : "not created"}`;
     replaceLogSource("application", parseApplicationLogs(file.lines));
@@ -831,7 +1032,11 @@ function initialiseLogsModal() {
   if (!modal || !open || !close) return;
   open.addEventListener("click", () => setLogsModalOpen(true));
   close.addEventListener("click", () => setLogsModalOpen(false));
-  $("#refresh-modal-logs")?.addEventListener("click", () => void refreshOperations());
+  $("#refresh-modal-logs")?.addEventListener("click", () => {
+    void refreshOperations();
+    if (periodLogEntries) void loadPeriodLogs();
+  });
+  $("#log-period")?.addEventListener("change", () => void loadPeriodLogs());
   modal.addEventListener("click", (event) => {
     if (event.target === modal) setLogsModalOpen(false);
   });
@@ -882,6 +1087,7 @@ async function saveUser(event) {
   } else if (form.elements.password.value) {
     body.password = form.elements.password.value;
   }
+  if (id && form.elements.reset_two_factor.checked) body.reset_two_factor = true;
   try {
     await getJson(id ? `/api/admin/users/${id}` : "/api/admin/users", {
       method: id ? "PATCH" : "POST",
@@ -951,11 +1157,10 @@ async function initialise() {
   }
   csrfToken = me.csrf_token || "";
   $("#user-name").textContent = me.user.display_name || me.user.username;
+  // My account (display name, password, two-factor) is available to everyone.
+  $("#account-form").elements.display_name.value = me.user.display_name || "";
+  $("#account-form").addEventListener("submit", saveAccount);
   if (me.user.role !== "admin") {
-    const accountMenuLink = $("#account-menu-link");
-    accountMenuLink.hidden = false;
-    $("#account-form").elements.display_name.value = me.user.display_name || "";
-    $("#account-form").addEventListener("submit", saveAccount);
     $("#user-subscriptions-section").hidden = false;
     $("#subscription-form").addEventListener("submit", saveOwnSubscription);
     $("#cancel-edit").addEventListener("click", resetOwnSubscriptionForm);
@@ -964,6 +1169,7 @@ async function initialise() {
   }
 
   $("#admin-area").hidden = false;
+  $("#menu-admin-group").hidden = false;
   initialiseAdminNavigation();
   $("#refresh-logs").addEventListener("click", refreshOperations);
   $("#user-form").addEventListener("submit", saveUser);
@@ -981,6 +1187,7 @@ async function initialise() {
 document.addEventListener("DOMContentLoaded", async () => {
   initialiseUserMenu();
   initialiseAccountModal();
+  initialiseTwoFactor();
   initialiseLogsModal();
   $("#logout").addEventListener("click", logout);
   settingsForms().forEach((form) => form.addEventListener("submit", saveSettings));

@@ -90,3 +90,38 @@ class LoggingServiceTestCase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LogRangeTestCase(unittest.TestCase):
+    def test_reads_rotated_files_for_a_period(self):
+        from datetime import datetime, timezone
+        import tempfile
+        from pathlib import Path
+        from services.logging_service import read_log_range
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pillar_tracker.log"
+            Path(str(path) + ".1").write_text(
+                "2026-11-04T10:00:00+0000 INFO [x] old one\n"
+                "2026-11-05T10:00:00+0000 INFO [x] yesterday\n",
+                encoding="utf-8",
+            )
+            path.write_text(
+                "2026-11-06T08:00:00+0000 ERROR [x] today failed\n"
+                "Traceback (most recent call last):\n"
+                "2026-11-06T09:00:00+0000 INFO [x] today ok\n",
+                encoding="utf-8",
+            )
+            result = read_log_range(
+                datetime(2026, 11, 5, tzinfo=timezone.utc),
+                datetime(2026, 11, 6, 8, 30, tzinfo=timezone.utc),
+                path=path,
+            )
+            self.assertEqual(result["files"], 2)
+            self.assertEqual(result["oldest_available_at"], "2026-11-04T10:00:00+00:00")
+            self.assertEqual(len(result["lines"]), 2)
+            self.assertIn("today failed\nTraceback", result["lines"][0])
+            self.assertIn("yesterday", result["lines"][1])
+            limited = read_log_range(None, None, lines=1, path=path)
+            self.assertTrue(limited["truncated"])
+            self.assertIn("today ok", limited["lines"][0])

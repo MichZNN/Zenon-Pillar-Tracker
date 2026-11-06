@@ -5,8 +5,20 @@ function $(selector) {
 async function getJson(url, options = {}) {
   const response = await fetch(url, { cache: "no-store", ...options });
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || "Request failed");
+  if (!response.ok) {
+    const error = new Error(payload.error || "Request failed");
+    error.payload = payload;
+    throw error;
+  }
   return payload;
+}
+
+function showTwoFactorField() {
+  const field = $("#two-factor-field");
+  if (!field.hidden) return;
+  field.hidden = false;
+  $("#login-code").required = true;
+  $("#login-code").focus();
 }
 
 function nextLocation() {
@@ -47,10 +59,20 @@ async function initialiseLogin() {
         body: JSON.stringify({
           username: form.get("username"),
           password: form.get("password"),
+          code: form.get("code") || "",
         }),
       });
       location.replace(nextLocation());
     } catch (error) {
+      if (error.payload?.two_factor_required) {
+        const firstAsk = $("#two-factor-field").hidden;
+        showTwoFactorField();
+        message.textContent = firstAsk
+          ? "Enter the code from your authenticator app."
+          : error.message;
+        if (!firstAsk) $("#login-code").select();
+        return;
+      }
       message.textContent = error.message;
     }
   });

@@ -203,7 +203,9 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn('name="discord_webhook"', portal)
         self.assertIn('class="admin-layout"', portal)
         self.assertIn('class="admin-menu"', portal)
-        self.assertIn('id="admin-menu-toggle"', portal)
+        # On smaller screens the sections are in the header menu instead.
+        self.assertIn('id="menu-admin-group"', portal)
+        self.assertNotIn('id="admin-menu-toggle"', portal)
         self.assertIn('id="admin-menu-links"', portal)
         self.assertIn('data-admin-nav', portal)
         section_ids = (
@@ -249,7 +251,8 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn("text-align: left", styles)
         self.assertIn("left: 0;", styles)
         self.assertIn("width: max-content", styles)
-        self.assertIn(".portal-header .user-menu { justify-self: start;", styles)
+        # Portal header keeps the title and the single menu on one row.
+        self.assertIn(".portal-header .header-inner { align-items: center; flex-direction: row;", styles)
         self.assertIn("border-radius: var(--control-radius)", styles)
         self.assertIn("initialiseUserMenu", portal_js)
         self.assertIn("initialiseAccountModal", portal_js)

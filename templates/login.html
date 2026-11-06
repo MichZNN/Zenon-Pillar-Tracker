@@ -24,6 +24,13 @@
             <i class="fa-solid fa-eye" aria-hidden="true"></i>
           </button>
         </div>
+        <div id="two-factor-field" class="auth-two-factor" hidden>
+          <div class="auth-input-wrap">
+            <i class="fa-solid fa-shield-halved auth-input-icon" aria-hidden="true"></i>
+            <input id="login-code" name="code" aria-label="Authentication code" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code" maxlength="16">
+          </div>
+          <p class="muted auth-two-factor-help">Open your authenticator app and enter the code for Zenon Pillar Tracker. Lost your phone? Enter one of your recovery codes instead.</p>
+        </div>
         <button class="primary-button" type="submit"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i> Login</button>
       </form>
       <p id="login-message" class="form-message" role="status"></p>
