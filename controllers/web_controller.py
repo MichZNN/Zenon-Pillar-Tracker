@@ -114,6 +114,9 @@ PAGE_TEMPLATE_CONTEXT: dict[str, dict[str, Any]] = {
 }
 
 SESSION_COOKIE = "zenon_tracker_session"
+TRUSTED_DEVICE_COOKIE = "zenon_tracker_trusted"
+TRUSTED_DEVICE_DAYS = 30
+LOGIN_CHALLENGE_SECONDS = 300
 CSRF_COOKIE = "zenon_tracker_csrf"
 MAX_REQUEST_BODY_BYTES = 2 * 1024 * 1024
 
@@ -590,9 +593,69 @@ class DashboardHandler(BaseHTTPRequestHandler):
             logger.warning("Failed login for username %s", username[:80])
             self._send_json({"error": "Invalid username or password"}, 401)
             return
-        if credentials.get("totp_enabled"):
-            if not self._check_second_factor(credentials, payload.get("code")):
-                return
+        if credentials.get("totp_enabled") and not self.database.use_trusted_device(
+            int(credentials["id"]), self._cookie(TRUSTED_DEVICE_COOKIE)
+        ):
+            # Step 2 follows on its own screen; hand out a short-lived token.
+            self._send_json(
+                {
+                    "two_factor_required": True,
+                    "challenge": LOGIN_CHALLENGES.create(int(credentials["id"])),
+                    "expires_in": LOGIN_CHALLENGE_SECONDS,
+                }
+            )
+            return
+        self._start_session(credentials)
+
+    def _login_verify(self, payload: Mapping[str, Any]) -> None:
+        """Second login step: the code for a pending challenge."""
+        challenge = payload.get("challenge")
+        user_id = LOGIN_CHALLENGES.user_id(challenge)
+        user = self.database.get_user(user_id) if user_id is not None else None
+        credentials = (
+            self.database.get_user_credentials(str(user["username"])) if user else None
+        )
+        if (
+            credentials is None
+            or not credentials.get("active")
+            or not credentials.get("totp_enabled")
+        ):
+            self._send_json(
+                {"error": "This login has expired. Enter your password again.", "restart": True},
+                401,
+            )
+            return
+        if not self._check_second_factor(credentials, payload.get("code")):
+            return
+        LOGIN_CHALLENGES.consume(challenge)
+        cookies: list[str] = []
+        if _as_bool(payload.get("trust_device")):
+            device = self.database.create_trusted_device(
+                int(credentials["id"]),
+                days=TRUSTED_DEVICE_DAYS,
+                user_agent=self.headers.get("User-Agent", ""),
+                ip_address=self._request_ip(),
+            )
+            cookies.append(
+                f"{TRUSTED_DEVICE_COOKIE}={device['token']}; "
+                + self._cookie_flags(
+                    http_only=True, max_age=TRUSTED_DEVICE_DAYS * 24 * 3600
+                )
+            )
+            self._audit(
+                self.database.get_user(int(credentials["id"])),
+                "trust",
+                "device",
+                details={"days": TRUSTED_DEVICE_DAYS},
+            )
+        self._start_session(credentials, extra_cookies=cookies)
+
+    def _start_session(
+        self,
+        credentials: Mapping[str, Any],
+        *,
+        extra_cookies: list[str] | None = None,
+    ) -> None:
         duration = float(
             self.database.get_setting(
                 "auth_session_hours",
@@ -613,6 +676,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             cookies=[
                 self._session_cookie(session["token"], session["expires_at"]),
                 self._csrf_cookie(session["csrf_token"]),
+                *(extra_cookies or []),
             ],
         )
 
@@ -674,7 +738,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return {
             "enabled": bool(user.get("two_factor_enabled")),
             "recovery_codes_left": self.database.recovery_codes_left(int(user["id"])),
+            "trusted_devices": self.database.list_trusted_devices(int(user["id"])),
         }
+
+    def _two_factor_forget_devices(self, user: Mapping[str, Any]) -> None:
+        if not self._require_csrf(user):
+            return
+        removed = self.database.forget_trusted_devices(int(user["id"]))
+        self._audit(user, "forget", "trusted_devices", details={"count": removed})
+        self._send_json(
+            {**self._two_factor_status(user), "forgotten": removed},
+            cookies=[self._expired_cookie(TRUSTED_DEVICE_COOKIE)],
+        )
 
     def _two_factor_setup(self, user: Mapping[str, Any]) -> None:
         if not self._require_csrf(user):
@@ -1107,6 +1182,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/auth/login" and method == "POST":
             self._login(payload)
             return
+        if path == "/api/auth/login/verify" and method == "POST":
+            self._login_verify(payload)
+            return
         if path == "/api/auth/logout" and method == "POST":
             self._logout(self._current_user())
             return
@@ -1139,6 +1217,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     self._two_factor_disable(user, payload)
                 elif action == "recovery-codes":
                     self._two_factor_new_recovery_codes(user, payload)
+                elif action == "forget-devices":
+                    self._two_factor_forget_devices(user)
                 else:
                     self._send_json({"error": "API endpoint not found"}, 404)
             return
@@ -1362,6 +1442,53 @@ class TwoFactorThrottle:
 
 
 TWO_FACTOR_THROTTLE = TwoFactorThrottle()
+
+
+class LoginChallenges:
+    """Short-lived, single-use tokens between the password and the code step.
+
+    After a correct password the browser only holds this token, not the
+    password, while the user looks up the code.
+    """
+
+    def __init__(self, ttl_seconds: float = LOGIN_CHALLENGE_SECONDS):
+        self.ttl_seconds = ttl_seconds
+        self._items: dict[str, tuple[int, float]] = {}
+        self._lock = Lock()
+
+    @staticmethod
+    def _key(token: str) -> str:
+        import hashlib
+
+        return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+
+    def create(self, user_id: int) -> str:
+        import secrets
+
+        token = secrets.token_urlsafe(32)
+        now = monotonic()
+        with self._lock:
+            self._items = {
+                key: value for key, value in self._items.items() if value[1] > now
+            }
+            self._items[self._key(token)] = (int(user_id), now + self.ttl_seconds)
+        return token
+
+    def user_id(self, token: Any) -> int | None:
+        if not token:
+            return None
+        with self._lock:
+            item = self._items.get(self._key(str(token)))
+        if item is None or item[1] <= monotonic():
+            return None
+        return item[0]
+
+    def consume(self, token: Any) -> None:
+        with self._lock:
+            self._items.pop(self._key(str(token)), None)
+
+
+LOGIN_CHALLENGES = LoginChallenges()
 
 
 class DashboardServer(ThreadingHTTPServer):

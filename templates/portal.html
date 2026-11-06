@@ -54,6 +54,11 @@
 
         <div id="two-factor-on" hidden>
           <p id="two-factor-codes-left" class="muted"></p>
+          <div class="trusted-devices-block">
+            <span class="setting-label">Trusted devices</span>
+            <div id="trusted-device-list" class="trusted-devices"></div>
+            <button id="forget-trusted-devices" class="ghost-button" type="button" hidden><i class="fa-solid fa-laptop" aria-hidden="true"></i> Forget all trusted devices</button>
+          </div>
           <form id="two-factor-disable-form" class="form-grid compact-form">
             <label>Current password<input name="password" type="password" autocomplete="current-password" placeholder="Needed to turn it off"></label>
             <label>Authentication code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="16" placeholder="Code from your app or a recovery code" required></label>

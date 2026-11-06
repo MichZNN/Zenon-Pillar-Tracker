@@ -225,6 +225,20 @@ CREATE TABLE IF NOT EXISTS maintenance_runs (
     error TEXT
 );
 
+CREATE TABLE IF NOT EXISTS trusted_devices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    last_used_at TEXT,
+    user_agent TEXT NOT NULL DEFAULT '',
+    ip_address TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_trusted_devices_user
+    ON trusted_devices(user_id, expires_at);
+
 CREATE INDEX IF NOT EXISTS idx_poll_runs_started_at
     ON poll_runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_snapshots_owner_time
@@ -313,6 +327,12 @@ def _duration_text(seconds: int | None) -> str | None:
     if hours:
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
+
+
+def _token_hash(token: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
 
 
 def _pillar_rewards_per_day(epoch: int) -> tuple[float, float]:
@@ -900,6 +920,12 @@ class Database:
                 "WHERE id = ?",
                 values,
             )
+            if "password_hash" in changes:
+                # A new password also ends "trust this device".
+                connection.execute(
+                    "DELETE FROM trusted_devices WHERE user_id = ?",
+                    (int(user_id),),
+                )
         return self.get_user(int(user_id))  # type: ignore[return-value]
 
     def set_pending_totp_secret(self, user_id: int, secret: str) -> None:
@@ -941,6 +967,10 @@ class Database:
                 """,
                 (utc_now(), int(user_id)),
             )
+            connection.execute(
+                "DELETE FROM trusted_devices WHERE user_id = ?",
+                (int(user_id),),
+            )
 
     def record_totp_step(self, user_id: int, step: int) -> None:
         with self._connect() as connection:
@@ -981,6 +1011,80 @@ class Database:
                 (int(user_id),),
             ).fetchone()
         return len(_load_json(row["recovery_codes_json"] if row else None, []) or [])
+
+    def create_trusted_device(
+        self,
+        user_id: int,
+        *,
+        days: int = 30,
+        user_agent: str = "",
+        ip_address: str = "",
+    ) -> dict[str, str]:
+        """Remember a device so its next logins skip the two-factor step."""
+        token = token_urlsafe(32)
+        now = datetime.now(timezone.utc)
+        expires_at = (now + timedelta(days=days)).isoformat(timespec="seconds")
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM trusted_devices WHERE expires_at <= ?",
+                (now.isoformat(timespec="seconds"),),
+            )
+            connection.execute(
+                """
+                INSERT INTO trusted_devices(
+                    user_id, token_hash, created_at, expires_at, user_agent, ip_address
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(user_id),
+                    _token_hash(token),
+                    now.isoformat(timespec="seconds"),
+                    expires_at,
+                    str(user_agent or "")[:300],
+                    str(ip_address or "")[:64],
+                ),
+            )
+        return {"token": token, "expires_at": expires_at}
+
+    def use_trusted_device(self, user_id: int, token: str | None) -> bool:
+        if not token:
+            return False
+        now = utc_now()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id FROM trusted_devices
+                WHERE user_id = ? AND token_hash = ? AND expires_at > ?
+                """,
+                (int(user_id), _token_hash(token), now),
+            ).fetchone()
+            if row is None:
+                return False
+            connection.execute(
+                "UPDATE trusted_devices SET last_used_at = ? WHERE id = ?",
+                (now, int(row["id"])),
+            )
+        return True
+
+    def list_trusted_devices(self, user_id: int) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, created_at, expires_at, last_used_at, user_agent
+                FROM trusted_devices
+                WHERE user_id = ? AND expires_at > ?
+                ORDER BY created_at DESC
+                """,
+                (int(user_id), utc_now()),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def forget_trusted_devices(self, user_id: int) -> int:
+        with self._connect() as connection:
+            return connection.execute(
+                "DELETE FROM trusted_devices WHERE user_id = ?",
+                (int(user_id),),
+            ).rowcount
 
     def mark_user_login(self, user_id: int) -> None:
         with self._connect() as connection:

@@ -376,10 +376,22 @@ stored. After five wrong codes a user has to wait ten minutes. Turning it off
 needs the current password and a code. An administrator can reset a user's
 two-factor authentication from *Users*.
 
-Endpoints (signed-in user, CSRF protected): `GET /api/account/two-factor`,
-`POST /api/account/two-factor/setup`, `.../enable`, `.../disable` and
-`.../recovery-codes`. `POST /api/auth/login` answers `two_factor_required`
-when a code is needed; send it again with `code`.
+Login has two steps for users with two-factor authentication: the password
+first, then a separate screen for the code (or a recovery code). After a
+correct password the server hands out a single-use challenge that is valid
+for five minutes, so the browser does not keep the password. On that screen
+*Trust this device for 30 days* sets an HttpOnly cookie (only its hash is
+stored in `trusted_devices`); later logins on that device only need the
+password. Trusted devices are listed under *My account* and can be forgotten
+there; they also end when two-factor authentication is turned off or reset,
+and when the password changes. Users without two-factor authentication never
+see the second step.
+
+Endpoints: `POST /api/auth/login` answers `two_factor_required` with a
+`challenge` when a code is needed; `POST /api/auth/login/verify` takes
+`challenge`, `code` and `trust_device`. Signed-in user, CSRF protected:
+`GET /api/account/two-factor`, `POST /api/account/two-factor/setup`,
+`.../enable`, `.../disable`, `.../recovery-codes` and `.../forget-devices`.
 
 The web server binds to localhost by default. The single portal uses hashed
 passwords, expiring sessions, CSRF protection, role checks, and audit records.
@@ -399,6 +411,7 @@ The main tables are:
   completed UTC day.
 - `performance_finalized_days` — the days that are stored in
   `pillar_performance_daily`.
+- `trusted_devices` — hashed "trust this device" tokens with an expiry, per user.
 - `maintenance_runs` — one row per daily maintenance run (duration, counts,
   errors), kept for about a year.
 - `events` — status changes, availability changes, additions, removals, and poll errors.

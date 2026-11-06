@@ -469,9 +469,44 @@ function renderTwoFactorStatus(status) {
       ? `${left} recovery code${left === 1 ? "" : "s"} left.`
       : "No recovery codes left. Create new ones so you can still log in if you lose your phone.";
     $("#two-factor-disable-form").reset();
+    renderTrustedDevices(status.trusted_devices || []);
     showTwoFactorPanel("on");
   } else {
     showTwoFactorPanel("off");
+  }
+}
+
+function describeBrowser(userAgent) {
+  const value = String(userAgent || "");
+  const browser = /Edg\//.test(value) ? "Edge"
+    : /Firefox\//.test(value) ? "Firefox"
+      : /Chrome\//.test(value) ? "Chrome"
+        : /Safari\//.test(value) ? "Safari" : "Browser";
+  const system = /iPhone|iPad/.test(value) ? "iOS"
+    : /Android/.test(value) ? "Android"
+      : /Mac OS X/.test(value) ? "macOS"
+        : /Windows/.test(value) ? "Windows"
+          : /Linux/.test(value) ? "Linux" : "";
+  return system ? `${browser} on ${system}` : browser;
+}
+
+function renderTrustedDevices(devices) {
+  const list = $("#trusted-device-list");
+  list.innerHTML = devices.length ? devices.map((device) =>
+    `<div class="trusted-device"><strong>${escapeHtml(describeBrowser(device.user_agent))}</strong>` +
+    `<small>Trusted ${escapeHtml(formatDiagnosticDate(device.created_at))} · until ${escapeHtml(formatDiagnosticDate(device.expires_at))}` +
+    `${device.last_used_at ? ` · last used ${escapeHtml(formatDiagnosticDate(device.last_used_at))}` : ""}</small></div>`
+  ).join("") : '<p class="muted">No trusted devices. Tick “Trust this device for 30 days” when you log in to skip the code on that device.</p>';
+  $("#forget-trusted-devices").hidden = !devices.length;
+}
+
+async function forgetTrustedDevices() {
+  try {
+    const status = await postTwoFactor("forget-devices");
+    renderTrustedDevices(status.trusted_devices || []);
+    showMessage("Trusted devices forgotten. The next login on them asks for a code again.");
+  } catch (error) {
+    showMessage(error.message, true);
   }
 }
 
@@ -570,6 +605,7 @@ function initialiseTwoFactor() {
   $("#two-factor-enable-form").addEventListener("submit", enableTwoFactor);
   $("#two-factor-disable-form").addEventListener("submit", disableTwoFactor);
   $("#two-factor-new-codes").addEventListener("click", newRecoveryCodes);
+  $("#forget-trusted-devices").addEventListener("click", forgetTrustedDevices);
   $("#two-factor-codes-done").addEventListener("click", () => void loadTwoFactor());
   $("#copy-recovery-codes").addEventListener("click", async () => {
     try {

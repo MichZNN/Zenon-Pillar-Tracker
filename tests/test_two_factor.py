@@ -85,14 +85,15 @@ class TwoFactorWebTestCase(unittest.TestCase):
         self.thread.join(timeout=5)
         self.temp_dir.cleanup()
 
-    def request(self, method, path, body=None, session=None):
+    def request(self, method, path, body=None, session=None, cookies=None):
         headers = {"Content-Type": "application/json"}
+        cookie_values = dict(cookies or {})
         if session:
-            headers["Cookie"] = (
-                f"zenon_tracker_session={session['token']}; "
-                f"zenon_tracker_csrf={session['csrf']}"
-            )
+            cookie_values["zenon_tracker_session"] = session["token"]
+            cookie_values["zenon_tracker_csrf"] = session["csrf"]
             headers["X-CSRF-Token"] = session["csrf"]
+        if cookie_values:
+            headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookie_values.items())
         request = Request(
             self.base + path,
             data=json.dumps(body).encode() if body is not None else None,
@@ -107,29 +108,43 @@ class TwoFactorWebTestCase(unittest.TestCase):
             error.close()
             return error.code, payload, error.headers
 
-    def login(self, username, password, code=None):
+    @staticmethod
+    def set_cookies(headers):
+        cookies = {}
+        for value in headers.get_all("Set-Cookie") or []:
+            name, _, rest = value.partition("=")
+            cookies[name] = rest.split(";", 1)[0]
+        return cookies
+
+    def session_from(self, payload, headers):
+        cookies = self.set_cookies(headers)
+        return {"token": cookies["zenon_tracker_session"], "csrf": payload["csrf_token"]}
+
+    def login(self, username, password, code=None, *, trust=False, cookies=None):
+        """Run the login steps; returns (status, payload, session, set-cookies)."""
         status, payload, headers = self.request(
             "POST",
             "/api/auth/login",
-            {"username": username, "password": password, "code": code or ""},
+            {"username": username, "password": password},
+            cookies=cookies,
         )
-        session = None
-        if status == 200:
-            cookies = {}
-            for value in headers.get_all("Set-Cookie") or []:
-                name, _, rest = value.partition("=")
-                cookies[name] = rest.split(";", 1)[0]
-            session = {
-                "token": cookies["zenon_tracker_session"],
-                "csrf": payload["csrf_token"],
-            }
-        return status, payload, session
+        if status == 200 and payload.get("two_factor_required"):
+            if code is None:
+                return status, payload, None, {}
+            status, payload, headers = self.request(
+                "POST",
+                "/api/auth/login/verify",
+                {"challenge": payload["challenge"], "code": code, "trust_device": trust},
+            )
+        if status == 200 and payload.get("authenticated"):
+            return status, payload, self.session_from(payload, headers), self.set_cookies(headers)
+        return status, payload, None, {}
 
     def current_code(self, secret, offset=0):
         return totp_code(secret, int(time.time() // TOTP_PERIOD_SECONDS) + offset)
 
     def test_enable_login_recovery_and_disable(self):
-        status, _, session = self.login("operator", "another correct password")
+        status, _, session, _ = self.login("operator", "another correct password")
         self.assertEqual(status, 200)
 
         status, setup, _ = self.request("POST", "/api/account/two-factor/setup", {}, session)
@@ -155,24 +170,35 @@ class TwoFactorWebTestCase(unittest.TestCase):
         self.assertNotIn(secret, json.dumps(me))
         self.assertNotIn("totp_secret", json.dumps(me))
 
-        # Login now asks for a code, rejects a wrong one, accepts a right one.
-        status, payload, _ = self.login("operator", "another correct password")
-        self.assertEqual(status, 401)
+        # Step 1 only checks the password and hands out a challenge, no session.
+        status, payload, session_none, cookies = self.login("operator", "another correct password")
+        self.assertEqual(status, 200)
         self.assertTrue(payload["two_factor_required"])
-        status, payload, _ = self.login("operator", "another correct password", "123456")
+        self.assertTrue(payload["challenge"])
+        self.assertNotIn("csrf_token", payload)
+        self.assertIsNone(session_none)
+        status, payload, _, _ = self.login("operator", "wrong password!!!", "123456")
         self.assertEqual(status, 401)
-        status, _, session = self.login(
+        status, payload, _, _ = self.login("operator", "another correct password", "123456")
+        self.assertEqual(status, 401)
+        status, _, session, _ = self.login(
             "operator", "another correct password", self.current_code(secret, 1)
         )
         self.assertEqual(status, 200)
+        # An unknown or used challenge asks to start again.
+        status, payload, _ = self.request(
+            "POST", "/api/auth/login/verify", {"challenge": "nope", "code": "123456"}
+        )
+        self.assertEqual(status, 401)
+        self.assertTrue(payload["restart"])
 
         # A recovery code works once.
-        status, _, _ = self.login("operator", "another correct password", recovery_codes[0])
+        status, _, _, _ = self.login("operator", "another correct password", recovery_codes[0])
         self.assertEqual(status, 200)
-        status, _, _ = self.login("operator", "another correct password", recovery_codes[0])
+        status, _, _, _ = self.login("operator", "another correct password", recovery_codes[0])
         self.assertEqual(status, 401)
         status, info, _ = self.request("GET", "/api/account/two-factor", session=session)
-        self.assertEqual(info, {"enabled": True, "recovery_codes_left": 9})
+        self.assertEqual(info, {"enabled": True, "recovery_codes_left": 9, "trusted_devices": []})
 
         # Turning it off needs the password and a code.
         status, _, _ = self.request(
@@ -185,8 +211,8 @@ class TwoFactorWebTestCase(unittest.TestCase):
             {"password": "another correct password", "code": recovery_codes[1]}, session,
         )
         self.assertEqual(status, 200)
-        status, _, _ = self.login("operator", "another correct password")
-        self.assertEqual(status, 200)
+        status, payload, _, _ = self.login("operator", "another correct password")
+        self.assertTrue(payload.get("authenticated"))
 
     def test_wrong_codes_are_throttled_and_admin_can_reset(self):
         secret = "JBSWY3DPEHPK3PXP"
@@ -195,14 +221,14 @@ class TwoFactorWebTestCase(unittest.TestCase):
             self.user["id"], secret=secret, step=0, recovery_code_hashes=[]
         )
         for _ in range(5):
-            status, _, _ = self.login("operator", "another correct password", "000000")
+            status, _, _, _ = self.login("operator", "another correct password", "000000")
             self.assertEqual(status, 401)
-        status, payload, _ = self.login(
+        status, payload, _, _ = self.login(
             "operator", "another correct password", self.current_code(secret)
         )
         self.assertEqual(status, 429)
 
-        status, _, admin_session = self.login("admin", "correct horse battery")
+        status, _, admin_session, _ = self.login("admin", "correct horse battery")
         self.assertEqual(status, 200)
         status, updated, _ = self.request(
             "PATCH", f"/api/admin/users/{self.user['id']}",
@@ -210,8 +236,45 @@ class TwoFactorWebTestCase(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertFalse(updated["two_factor_enabled"])
-        status, _, _ = self.login("operator", "another correct password")
+        status, payload, _, _ = self.login("operator", "another correct password")
+        self.assertTrue(payload.get("authenticated"))
+
+    def test_trusted_device_skips_the_code_until_revoked(self):
+        secret = "JBSWY3DPEHPK3PXP"
+        self.database.enable_totp(self.user["id"], secret=secret, step=0, recovery_code_hashes=[])
+
+        status, _, session, cookies = self.login(
+            "operator", "another correct password", self.current_code(secret), trust=True
+        )
         self.assertEqual(status, 200)
+        trusted = {"zenon_tracker_trusted": cookies["zenon_tracker_trusted"]}
+        self.assertNotIn(cookies["zenon_tracker_trusted"], json.dumps(self.database.list_trusted_devices(self.user["id"])))
+
+        # With the cookie the password is enough; without it a code is asked.
+        status, payload, _, _ = self.login("operator", "another correct password", cookies=trusted)
+        self.assertTrue(payload.get("authenticated"))
+        status, payload, _, _ = self.login("operator", "another correct password")
+        self.assertTrue(payload.get("two_factor_required"))
+        # The cookie is tied to this user.
+        self.database.enable_totp(self.admin["id"], secret=secret, step=0, recovery_code_hashes=[])
+        status, payload, _, _ = self.login("admin", "correct horse battery", cookies=trusted)
+        self.assertTrue(payload.get("two_factor_required"))
+
+        status, info, _ = self.request("GET", "/api/account/two-factor", session=session)
+        self.assertEqual(len(info["trusted_devices"]), 1)
+        status, info, _ = self.request("POST", "/api/account/two-factor/forget-devices", {}, session)
+        self.assertEqual(info["trusted_devices"], [])
+        status, payload, _, _ = self.login("operator", "another correct password", cookies=trusted)
+        self.assertTrue(payload.get("two_factor_required"))
+
+        # A password change also ends the trust.
+        status, _, session, cookies = self.login(
+            "operator", "another correct password", self.current_code(secret, 1), trust=True
+        )
+        trusted = {"zenon_tracker_trusted": cookies["zenon_tracker_trusted"]}
+        self.database.update_user(self.user["id"], password_hash=hash_password("a brand new password"))
+        status, payload, _, _ = self.login("operator", "a brand new password", cookies=trusted)
+        self.assertTrue(payload.get("two_factor_required"))
 
 
 if __name__ == "__main__":
