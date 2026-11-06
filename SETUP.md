@@ -567,7 +567,10 @@ The collector creates a compact summary with 20 pillars per page, reward-share
 percentages, weight, produced/expected momentums, and inactive warnings. The
 inline buttons switch pages and filter the list to active, inactive, or all
 pillars. Navigation is shared because the pinned message is shared by the
-channel.
+channel. The message links to the tracker website
+(`TRACKER_WEBSITE_URL` in `services/notification_service.py`) below the
+momentum height, and a link row offers **🤖 Open bot** and **🌐 Open tracker**;
+inside the bot's private chat only the tracker button is shown.
 
 To enable it:
 

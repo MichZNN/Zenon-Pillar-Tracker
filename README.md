@@ -160,7 +160,8 @@ The collector:
 - stores epoch, pillar, snapshot, node-health, poll-run, and event data;
 - detects status transitions and pillar additions/removals;
 - calculates how long each pillar has continuously been live;
-- sends notifications through the configured notification channels.
+- sends notifications through the configured notification channels;
+- runs daily maintenance (see below).
 
 Run continuously:
 
@@ -179,6 +180,27 @@ Rapid successive saves are safe: the collector observes the latest committed
 SQLite revision and reloads the resulting configuration once. Docker Compose
 and systemd supervise the collector process itself; the web portal does not
 control Docker or systemd lifecycle commands.
+
+### Daily maintenance
+
+Once per UTC day, 15 minutes after midnight (and once when the collector
+starts), the collector:
+
+1. stores the daily performance of every completed day in
+   `pillar_performance_daily` (see [Pillar performance](#pillar-performance));
+2. clears `raw_payload` of snapshots older than
+   `snapshot_payload_retention_days` (default 7);
+3. deletes snapshots older than `snapshot_retention_days` (default 90), but
+   only for days that are already stored in the daily statistics, and always
+   keeps the day before the first unstored day as a baseline.
+
+Both settings are in the admin panel under *Data retention*; `0` keeps data
+forever. Work is done in small batches through existing indexes, so the
+dashboard keeps working while it runs. The first run after an upgrade
+catches up on the whole history and can take a minute; later runs only
+process one day. SQLite reuses freed space but does not shrink the file; run
+`VACUUM` once with the containers stopped if you want the disk space back.
+The log shows a line `Daily maintenance done in …s` after each run.
 
 ### Pillar status and missed checks
 
@@ -214,21 +236,22 @@ individual pillar.
 
 The Zenon [pillar API reference](https://github.com/zenon-network/znn-wiki/blob/master/api.md)
 defines `producedMomentums` and `expectedMomentums` as counters for the current
-epoch. The tracker calculates the dashboard's 30-day performance from counter
-changes, because the counters reset at every epoch boundary. For each pillar,
-snapshots are ordered chronologically and one snapshot before the 30-day cutoff
-is used as a baseline when available.
+epoch. The tracker calculates performance from counter changes, because the
+counters reset at every epoch boundary.
 
-For each adjacent pair, the tracker uses the interval only when both snapshots
-belong to the same epoch and neither counter went backwards. If either counter
-advanced, both deltas are included:
+Performance is calculated per UTC calendar day. For each pillar, snapshots
+are ordered chronologically and the last snapshot before the day starts is
+used as the baseline. For each adjacent pair, the tracker uses the interval
+only when both snapshots belong to the same epoch and neither counter went
+backwards. If either counter advanced, both deltas are included and assigned
+to the day of the later snapshot:
 
 ```
 produced += current.producedMomentums - previous.producedMomentums
 expected += current.expectedMomentums - previous.expectedMomentums
 ```
 
-The aggregate percentage is then:
+The percentage is then:
 
 ```
 produced / expected * 100
@@ -242,13 +265,47 @@ be counted. Older versions only counted intervals where `expectedMomentums`
 advanced, which discarded valid production-only updates and made performance
 appear substantially too low.
 
-The dashboard also returns daily points using the same valid intervals, assigned
-to the day of the later snapshot. A day without a compatible interval is shown
-as no data, not as 0%. Performance is independent of the active/inactive status:
-a pillar may be active now while its 30-day production ratio remains low because
-of earlier missed production. The API also returns `observations` (snapshots in
-the requested period) and `intervals` (snapshot pairs that contributed to the
-calculation), which help explain a value or identify insufficient data.
+Completed days never change, so each day is calculated once and stored in
+`pillar_performance_daily`; only the open day (normally today) is calculated
+from raw snapshots on request. The 30-day value covers the last 30 UTC days
+including today, so it always equals the sum of the daily bars. A day without
+a compatible interval is shown as no data, not as 0%. Today and the day a
+pillar went live only cover part of a day; the charts draw those bars hatched.
+
+Because an epoch does not start at midnight, a day usually spans two epochs,
+so daily numbers are not directly comparable to the current epoch's
+`producedMomentums / expectedMomentums`. Performance is independent of the
+active/inactive status: a pillar may be active now while its 30-day ratio
+remains low because of earlier missed production. The API also returns
+`observations` (snapshots in the period) and `intervals` (snapshot pairs that
+contributed to the calculation).
+
+Changing the calculation requires bumping `PERFORMANCE_ROLLUP_VERSION` in
+`models/database.py`; the stored days are then rebuilt from the snapshots that
+are still available.
+
+### Delegator APR
+
+The dashboard estimates the yearly return for someone delegating to a pillar,
+following go-zenon's pillar reward code
+(`vm/embedded/implementation/pillars.go` and `vm/constants/embedded.go`).
+The network emits a fixed amount of ZNN per epoch (one epoch is 8,640
+momentums, about one day), which changes every 30 epochs and has stayed at
+4,320 ZNN since epoch 300. Pillars receive 24% of it as delegation rewards and 50% as momentum
+rewards (0.25 ZNN per produced momentum at the current step). Per delegated
+ZNN, a pillar with momentum share `M%` and delegate share `D%` pays:
+
+```
+D% * delegation pool per day * uptime / total weight
++ M% * momentums produced per day * reward per momentum / pillar weight
+```
+
+Momentums per day and uptime (produced / expected) are averaged over the last
+7 completed days from `pillar_performance_daily`; a pillar's partial first day
+is skipped. The estimate is for a 1,000 ZNN delegation, which is added to the
+weights so pillars with very little weight do not show an unrealistic value.
+Larger delegations dilute a pillar's momentum rewards, so their APR is lower.
+Reward shares can change at any time.
 
 ## Start the dashboard
 
@@ -269,8 +326,16 @@ The dashboard shows:
 - live duration based on the latest continuous status transition;
 - a preview of epoch history and status/availability events, with links to
   paginated history pages at `/epochs` and `/events`;
-- a full pillar directory at `/pillars`, where `?status=active` or
-  `?status=inactive` creates a shareable filtered view;
+- a full pillar directory at `/pillars`, where `?status=active`,
+  `?status=inactive` or `?status=favorites` and `?sort=` create a shareable
+  view;
+- a shareable page per pillar at `/pillar/<owner address>` with key stats,
+  delegator APR, a tappable 30-day performance chart, the pillar's events and
+  recent snapshots;
+- favorites (a star on every card, stored in the browser) that are pinned to
+  the top of the dashboard;
+- sorting by rank, performance, APR, weight or name;
+- an HTML 404 page for unknown pages;
 - node health and recent poll runs;
 - a responsive mobile-first layout.
 
@@ -278,8 +343,13 @@ Available API endpoints:
 
 - `GET /api/overview`
 - `GET /api/collector-status`
-- `GET /api/pillars`
-- `GET /api/performance?days=30`
+- `GET /api/pillars` (accepts `status=`, `q=`, `limit=`, `offset=`,
+  `sort=rank|performance|apr|weight|name`, `owners=` as a comma-separated list
+  of owner addresses, and `performance=0` to leave out performance data)
+- `GET /api/pillars/<owner address>` (one pillar with performance, recent
+  snapshots and events)
+- `GET /api/performance?days=30` (per pillar: totals, daily points and
+  `delegator_apr`)
 - `GET /api/epochs`
 - `GET /api/events`
 - `GET /api/epochs?limit=20&offset=0&paged=1` (paginated response)
@@ -302,7 +372,12 @@ The main tables are:
 - `epochs` — one record per observed epoch.
 - `epochs.epoch_start_at` — timestamp of the first observed momentum carrying that epoch, or an optional historical estimate; `epoch_start_inferred` identifies estimates; `announcement_at` records the first successful Telegram announcement time when live notifications are enabled.
 - `pillars` — the latest known identity and metadata for each pillar.
-- `pillar_snapshots` — the pillar state observed during an epoch.
+- `pillar_snapshots` — the pillar state observed during an epoch; the daily
+  maintenance clears old raw payloads and removes old rows.
+- `pillar_performance_daily` — stored produced/expected counts per pillar per
+  completed UTC day.
+- `performance_finalized_days` — the days that are stored in
+  `pillar_performance_daily`.
 - `events` — status changes, availability changes, additions, removals, and poll errors.
 - `node_state` — the latest node health and synchronization information.
 - `poll_runs` — the result and timing of each collector run.
