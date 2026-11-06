@@ -444,8 +444,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if include_performance is None:
                 include_performance = True
             sort = query.get("sort", [None])[0]
-            if sort not in {None, "", "rank", "performance", "weight", "name"}:
-                raise ValueError("sort must be rank, performance, weight or name")
+            if sort not in {None, "", "rank", "performance", "apr", "weight", "name"}:
+                raise ValueError("sort must be rank, performance, apr, weight or name")
             owners_param = query.get("owners", [None])[0]
             owners = (
                 [value for value in owners_param.split(",") if value.strip()]

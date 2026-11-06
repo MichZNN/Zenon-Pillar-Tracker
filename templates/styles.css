@@ -1282,3 +1282,29 @@ body.modal-open { overflow: hidden; }
 .not-found-page code { color: var(--text); }
 .not-found-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .not-found-actions a { align-items: center; display: inline-flex; text-decoration: none; }
+
+/* ---------- Delegator APR ---------- */
+.pillar-title-row .pillar-name { flex: 1 1 auto; min-width: 0; }
+.apr-chip {
+  background: rgba(111, 243, 77, .09);
+  border: 1px solid rgba(111, 243, 77, .3);
+  border-radius: 999px;
+  color: var(--zenon-green);
+  flex: 0 0 auto;
+  font-size: .72rem;
+  font-weight: 800;
+  padding: 4px 9px;
+  white-space: nowrap;
+}
+.apr-chip.is-zero { background: transparent; border-color: var(--line); color: var(--muted); }
+.apr-chip.is-loading { border-color: transparent; height: 24px; width: 72px; }
+.apr-chip.is-loading { animation: skeleton-shimmer 1.5s ease-in-out infinite; background: linear-gradient(90deg, rgba(255, 255, 255, .06) 25%, rgba(111, 243, 77, .16) 50%, rgba(255, 255, 255, .06) 75%); background-size: 220% 100%; }
+@media (hover: hover) {
+  .pillar-card .apr-chip { position: relative; z-index: 1; }
+}
+.apr-value { color: var(--zenon-green); font-size: 1rem; }
+.apr-value.empty { color: var(--muted); }
+.stat-note { color: var(--muted); font-size: .7rem; margin: 12px 0 0; }
+@media (min-width: 680px) {
+  .pillar-page-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

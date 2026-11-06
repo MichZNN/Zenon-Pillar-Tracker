@@ -418,12 +418,13 @@ class WebAppTestCase(unittest.TestCase):
             self.assertLess(page.index("/pillar-ui.js"), page.index(script), page_name)
         index = self.render_page("index.html")
         self.assertIn('id="sort-filter"', index)
+        self.assertIn('<option value="apr">Sort: APR</option>', index)
         self.assertNotIn('id="pillar-detail"', index)
         pillars = self.render_page("pillars.html")
         self.assertIn('href="/pillars?status=favorites"', pillars)
         self.assertIn('id="sort-filter"', pillars)
         shared = (self.templates_dir / "pillar-ui.js").read_text()
-        for name in ("renderPillarCard", "favoriteButton", "renderTime", "eventTone", "PERFORMANCE_CHART_FLOOR"):
+        for name in ("renderPillarCard", "favoriteButton", "renderTime", "eventTone", "PERFORMANCE_CHART_FLOOR", "renderAprChip"):
             self.assertIn(name, shared)
         for name in ("app.js", "pillars.js", "history.js", "pillar.js"):
             script = (self.templates_dir / name).read_text()

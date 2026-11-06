@@ -17,6 +17,19 @@ PERFORMANCE_ROLLUP_VERSION = "1"
 # room for a poll that started just before midnight to be committed.
 PERFORMANCE_FINALIZE_DELAY = timedelta(minutes=15)
 
+# Delegator APR estimate (see Database.get_delegator_apr).
+ZNN_DECIMALS = 100_000_000
+APR_SAMPLE_DAYS = 7
+APR_REFERENCE_DELEGATION_ZNN = 1000
+# go-zenon vm/constants/embedded.go: network ZNN emission per epoch (one
+# epoch = one day of 8,640 momentums) changes every 30 epochs and then stays
+# at the last value; pillars get 24% (delegation) and 50% (momentums) of it.
+_NETWORK_ZNN_REWARD_STEPS = (10, 6, 5, 7, 5, 4, 7, 4, 3, 7, 3)
+_MOMENTUMS_PER_EPOCH = 8640
+_REWARD_TICK_EPOCHS = 30
+_DELEGATION_REWARD_PERCENTAGE = 24
+_MOMENTUM_REWARD_PERCENTAGE = 50
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta (
     key TEXT PRIMARY KEY,
@@ -289,6 +302,17 @@ def _duration_text(seconds: int | None) -> str | None:
     if hours:
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
+
+
+def _pillar_rewards_per_day(epoch: int) -> tuple[float, float]:
+    """Return (delegation pool per day, reward per produced momentum) in ZNN."""
+    tick = min(max(0, int(epoch)) // _REWARD_TICK_EPOCHS, len(_NETWORK_ZNN_REWARD_STEPS) - 1)
+    network_per_epoch = _NETWORK_ZNN_REWARD_STEPS[tick] * _MOMENTUMS_PER_EPOCH / 6
+    delegation_pool = network_per_epoch * _DELEGATION_REWARD_PERCENTAGE / 100
+    reward_per_momentum = (
+        network_per_epoch * _MOMENTUM_REWARD_PERCENTAGE / 100 / _MOMENTUMS_PER_EPOCH
+    )
+    return delegation_pool, reward_per_momentum
 
 
 def _day_start(day: str) -> str:
@@ -2053,7 +2077,8 @@ class Database:
         """Return a page of pillars.
 
         ``sort`` is ``rank`` (default), ``performance`` (30 days, best
-        first), ``weight`` (heaviest first) or ``name``. ``owners`` limits the
+        first), ``apr`` (delegator APR, best first), ``weight`` (heaviest
+        first) or ``name``. ``owners`` limits the
         result to the given owner addresses, e.g. a visitor's favorites.
         """
         clauses: list[str] = []
@@ -2098,7 +2123,7 @@ class Database:
                           "COALESCE(weight, 0) DESC, " + rank_order,
                 "name": "name COLLATE NOCASE ASC, owner_address ASC",
             }.get(sort or "", rank_order)
-            if sort == "performance":
+            if sort in {"performance", "apr"}:
                 # Performance lives outside SQL; sort the whole filtered
                 # set (a few hundred pillars at most) and page afterwards.
                 rows = connection.execute(
@@ -2117,12 +2142,15 @@ class Database:
                 ).fetchall()
         items = [self._pillar_json(row) for row in rows]
         performance: dict[str, dict[str, Any]] | None = None
-        if sort == "performance":
+        if sort in {"performance", "apr"}:
             performance = self.get_pillar_performance(period_days=30)
 
             def performance_key(item: dict[str, Any]) -> tuple[int, float]:
-                value = performance.get(item["owner_address"], {}).get(
-                    "percentage"
+                metrics = performance.get(item["owner_address"], {})
+                value = (
+                    (metrics.get("delegator_apr") or {}).get("apr")
+                    if sort == "apr"
+                    else metrics.get("percentage")
                 )
                 # Stable sort keeps rank order for equal values; pillars
                 # without data go last.
@@ -2164,6 +2192,9 @@ class Database:
             if cached is not None:
                 return cached
             result = self._calculate_pillar_performance(period_days)
+            for owner_address, apr in self.get_delegator_apr().items():
+                if owner_address in result:
+                    result[owner_address]["delegator_apr"] = apr
             self._performance_cache[cache_key] = result
             while len(self._performance_cache) > 8:
                 self._performance_cache.pop(next(iter(self._performance_cache)))
@@ -2424,6 +2455,100 @@ class Database:
                     connection.commit()
                     result["payloads_cleared"] += max(0, cleared)
                     run = upper + 1
+        return result
+
+    def get_delegator_apr(
+        self,
+        *,
+        now: datetime | None = None,
+        sample_days: int = APR_SAMPLE_DAYS,
+    ) -> dict[str, dict[str, Any]]:
+        """Estimate the yearly return for someone delegating to each pillar.
+
+        Mirrors go-zenon's pillar reward code
+        (vm/embedded/implementation/pillars.go): per delegated ZNN a pillar
+        pays
+            D% * delegation pool * uptime / total weight
+          + M% * momentums produced * reward per momentum / pillar weight
+        Momentums per day and uptime come from the stored daily statistics
+        of the last ``sample_days`` completed days; a pillar's first (partial)
+        day is skipped. The estimate is for a 1,000 ZNN delegation, which
+        is added to the weights so a pillar without weight does not show an
+        infinite return.
+        """
+        now = now or datetime.now(timezone.utc)
+        last_closed = (now - PERFORMANCE_FINALIZE_DELAY).date() - timedelta(days=1)
+        days = [
+            (last_closed - timedelta(days=offset)).isoformat()
+            for offset in range(sample_days - 1, -1, -1)
+        ]
+        with self._connect() as connection:
+            self._store_closed_performance_days(connection, days)
+            daily_rows = connection.execute(
+                """
+                SELECT owner_address, day, produced, expected
+                FROM pillar_performance_daily
+                WHERE day >= ? AND day <= ?
+                """,
+                (days[0], days[-1]),
+            ).fetchall()
+            pillar_rows = connection.execute(
+                """
+                SELECT owner_address, weight, momentum_reward_percentage,
+                       delegate_reward_percentage, live_since, is_present,
+                       last_seen_epoch
+                FROM pillars
+                """
+            ).fetchall()
+
+        present = [row for row in pillar_rows if row["is_present"]]
+        if not present:
+            return {}
+        epoch = max(int(row["last_seen_epoch"] or 0) for row in present)
+        delegation_pool, reward_per_momentum = _pillar_rewards_per_day(epoch)
+        delegated = APR_REFERENCE_DELEGATION_ZNN
+        total_weight = sum(
+            (row["weight"] or 0) / ZNN_DECIMALS for row in present
+        ) + delegated
+
+        per_owner: dict[str, list[tuple[int, int]]] = {}
+        live_days = {
+            str(row["owner_address"]): str(row["live_since"] or "").split("T", 1)[0]
+            for row in pillar_rows
+        }
+        for row in daily_rows:
+            owner_address = str(row["owner_address"])
+            live_day = live_days.get(owner_address, "")
+            # Skip the day a pillar went live: it only covers part of a day.
+            if live_day and str(row["day"]) <= live_day:
+                continue
+            per_owner.setdefault(owner_address, []).append(
+                (int(row["produced"] or 0), int(row["expected"] or 0))
+            )
+
+        result: dict[str, dict[str, Any]] = {}
+        for row in present:
+            owner_address = str(row["owner_address"])
+            samples = [item for item in per_owner.get(owner_address, []) if item[1] > 0]
+            if not samples:
+                continue
+            produced = sum(item[0] for item in samples)
+            expected = sum(item[1] for item in samples)
+            momentums_per_day = produced / len(samples)
+            uptime = produced / expected if expected else 0.0
+            weight = (row["weight"] or 0) / ZNN_DECIMALS + delegated
+            momentum_share = (row["momentum_reward_percentage"] or 0) / 100
+            delegate_share = (row["delegate_reward_percentage"] or 0) / 100
+            per_znn_per_day = (
+                delegate_share * delegation_pool * uptime / total_weight
+                + momentum_share * momentums_per_day * reward_per_momentum / weight
+            )
+            result[owner_address] = {
+                "apr": round(per_znn_per_day * 365 * 100, 2),
+                "momentums_per_day": round(momentums_per_day, 1),
+                "uptime": round(uptime * 100, 2),
+                "sample_days": len(samples),
+            }
         return result
 
     def _store_closed_performance_days(

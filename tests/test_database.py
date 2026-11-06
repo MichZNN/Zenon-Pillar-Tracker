@@ -357,7 +357,9 @@ class DatabaseTestCase(unittest.TestCase):
         self.assertEqual(result["snapshots_deleted"], 0)
 
         stored = self.database.store_completed_performance_days(now=now)
-        self.assertGreaterEqual(stored, 100)
+        # 100 days ago up to yesterday; in the first minutes after midnight
+        # UTC yesterday is not closed yet, so allow one day less.
+        self.assertGreaterEqual(stored, 99)
         result = self.database.prune_snapshots(
             payload_retention_days=7,
             snapshot_retention_days=90,
@@ -407,6 +409,8 @@ class DatabaseTestCase(unittest.TestCase):
         self.assertEqual(names(sort="name"), ["Alpha", "bravo", "Charlie"])
         self.assertEqual(names(sort="performance"), ["bravo", "Charlie", "Alpha"])
         self.assertEqual(names(sort="performance", limit=1, offset=1), ["Charlie"])
+        # Without stored daily statistics there is no APR yet: rank order.
+        self.assertEqual(names(sort="apr"), ["Alpha", "bravo", "Charlie"])
         favorites = self.database.get_pillars(
             owners=["z1charlie", "z1alpha"], include_performance=False,
         )
@@ -416,6 +420,54 @@ class DatabaseTestCase(unittest.TestCase):
             self.database.get_pillars(owners=[], include_performance=False)["total"],
             0,
         )
+
+    def test_delegator_apr_follows_go_zenon_reward_formula(self):
+        now = datetime(2026, 11, 6, 12, 0, tzinfo=timezone.utc)
+        connection = sqlite3.connect(self.database.path)
+        try:
+            for owner, weight, momentum, delegate, live_since in (
+                ("z1top", 99_000 * 10**8, 60, 100, "2026-01-01T00:00:00+00:00"),
+                ("z1own", 0, 0, 0, "2026-11-01T19:00:00+00:00"),
+            ):
+                connection.execute(
+                    "INSERT INTO pillars(owner_address, first_seen_at, live_since, name, "
+                    "status_since, weight, momentum_reward_percentage, "
+                    "delegate_reward_percentage, is_present, last_seen_epoch) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1806)",
+                    (owner, live_since, live_since, owner, live_since, weight, momentum, delegate),
+                )
+            for offset in range(1, 8):
+                day = (now.date() - timedelta(days=offset)).isoformat()
+                connection.execute(
+                    "INSERT INTO performance_finalized_days(day, computed_at) VALUES (?, 'x')",
+                    (day,),
+                )
+                for owner, produced, expected in (("z1top", 168, 170), ("z1own", 50, 50)):
+                    connection.execute(
+                        "INSERT INTO pillar_performance_daily(owner_address, day, produced, "
+                        "expected, observations, intervals) VALUES (?, ?, ?, ?, 1440, 1440)",
+                        (owner, day, produced, expected),
+                    )
+            connection.commit()
+        finally:
+            connection.close()
+
+        apr = self.database.get_delegator_apr(now=now)
+
+        # Epoch 1806 is past the last reward step: 3 * 8640 / 6 = 4320 ZNN a
+        # day, 24% for delegation (1036.8) and 50% for momentums (0.25 each).
+        total_weight = 99_000 + 1000
+        uptime = 168 / 170
+        expected_top = (
+            1.0 * 1036.8 * uptime / total_weight
+            + 0.6 * 168 * 0.25 / (99_000 + 1000)
+        ) * 365 * 100
+        self.assertAlmostEqual(apr["z1top"]["apr"], round(expected_top, 2), places=2)
+        self.assertEqual(apr["z1top"]["momentums_per_day"], 168.0)
+        self.assertEqual(apr["z1top"]["sample_days"], 7)
+        # 0/0 shares nothing; the partial day it went live is skipped.
+        self.assertEqual(apr["z1own"]["apr"], 0.0)
+        self.assertEqual(apr["z1own"]["sample_days"], 4)
 
     def test_performance_counts_production_when_expected_changed_earlier(self):
         self.record(
