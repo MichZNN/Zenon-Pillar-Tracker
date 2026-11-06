@@ -39,7 +39,7 @@ class WebAppTestCase(unittest.TestCase):
 
     def test_dashboard_assets_exist(self):
         templates_dir = self.templates_dir
-        base = (templates_dir / "base.html").read_text()
+        base = (templates_dir / "base.html").read_text(encoding="utf-8")
         index = self.render_page("index.html")
         self.assertIn("Zenon Pillar Tracker", index)
         self.assertIn('/static/icons/favicon-180.png', index)
@@ -59,7 +59,7 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn('{% include "footer.html" %}', base)
         self.assertIn('fa-brands fa-github', index)
         self.assertIn('fa-brands fa-telegram', index)
-        styles = (templates_dir / "styles.css").read_text().lower()
+        styles = (templates_dir / "styles.css").read_text(encoding="utf-8").lower()
         self.assertIn(".site-footer-link:first-child:hover", styles)
         self.assertIn(".site-footer-link:last-child:hover", styles)
         self.assertIn("color: #0fbf3e;", styles)
@@ -74,7 +74,7 @@ class WebAppTestCase(unittest.TestCase):
             "site.webmanifest",
         ):
             self.assertTrue((static_dir / filename).exists())
-        styles = (templates_dir / "styles.css").read_text().lower()
+        styles = (templates_dir / "styles.css").read_text(encoding="utf-8").lower()
         self.assertIn("@media (min-width: 680px)", styles)
         self.assertIn("nth-child(n + 3)", styles)
         self.assertIn(".skeleton-card { min-height: 380px; }", styles)
@@ -93,7 +93,7 @@ class WebAppTestCase(unittest.TestCase):
         # The dashboard script uses the shared pillar helpers; the inline
         # pillar detail moved to its own page (pillar.js).
         app = "\n".join(
-            (templates_dir / name).read_text()
+            (templates_dir / name).read_text(encoding="utf-8")
             for name in ("app.js", "pillar-ui.js", "pillar.js")
         )
         self.assertIn("/api/overview", app)
@@ -134,7 +134,7 @@ class WebAppTestCase(unittest.TestCase):
             "index.html", "login.html", "setup.html", "portal.html",
             "epochs.html", "events.html", "pillars.html",
         ):
-            raw_page = (templates_dir / page_name).read_text()
+            raw_page = (templates_dir / page_name).read_text(encoding="utf-8")
             self.assertNotIn('/static/icons/favicon-', raw_page)
         self.assertNotIn('class="page-shell narrow-shell history-page"', self.render_page("epochs.html"))
         self.assertNotIn('class="page-shell narrow-shell history-page"', self.render_page("events.html"))
@@ -147,7 +147,7 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn('" pillar" + (total === 1 ? "" : "s")', app)
         self.assertIn('data-history-kind="epochs"', self.render_page("epochs.html"))
         self.assertIn('data-history-kind="events"', self.render_page("events.html"))
-        epochs_js = (templates_dir / "history.js").read_text()
+        epochs_js = (templates_dir / "history.js").read_text(encoding="utf-8")
         self.assertNotIn("ZNN reward", epochs_js)
         self.assertNotIn("QSR reward", epochs_js)
         self.assertNotIn("Last seen", epochs_js)
@@ -165,14 +165,14 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn("Pillar directory", pillars_page)
         self.assertIn('href="/pillars?status=active"', pillars_page)
         self.assertIn('href="/pillars?status=inactive"', pillars_page)
-        history_js = (templates_dir / "history.js").read_text()
+        history_js = (templates_dir / "history.js").read_text(encoding="utf-8")
         self.assertIn("offset", history_js)
         self.assertIn("pagination", history_js)
-        pillars_js = (templates_dir / "pillars.js").read_text()
+        pillars_js = (templates_dir / "pillars.js").read_text(encoding="utf-8")
         self.assertIn("history.pushState", pillars_js)
         setup = self.render_page("setup.html")
         self.assertIn('id="setup-form"', setup)
-        self.assertIn("/api/setup/admin", (templates_dir / "setup.js").read_text())
+        self.assertIn("/api/setup/admin", (templates_dir / "setup.js").read_text(encoding="utf-8"))
         portal = self.render_page("portal.html")
         self.assertIn('class="site-header portal-header"', portal)
         self.assertIn('id="user-menu-toggle"', portal)
@@ -237,7 +237,7 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn('value="reward_shares_changed"', portal)
         self.assertNotIn('id="settings-json"', portal)
         self.assertNotIn("Settings are stored in SQLite", portal)
-        portal_js = (templates_dir / "portal.js").read_text()
+        portal_js = (templates_dir / "portal.js").read_text(encoding="utf-8")
         login = self.render_page("login.html")
         self.assertIn('placeholder="Username"', login)
         self.assertIn('placeholder="Password"', login)
@@ -426,11 +426,11 @@ class WebAppTestCase(unittest.TestCase):
         pillars = self.render_page("pillars.html")
         self.assertIn('href="/pillars?status=favorites"', pillars)
         self.assertIn('id="sort-filter"', pillars)
-        shared = (self.templates_dir / "pillar-ui.js").read_text()
+        shared = (self.templates_dir / "pillar-ui.js").read_text(encoding="utf-8")
         for name in ("renderPillarCard", "favoriteButton", "renderTime", "eventTone", "PERFORMANCE_CHART_FLOOR", "renderAprChip"):
             self.assertIn(name, shared)
         for name in ("app.js", "pillars.js", "history.js", "pillar.js"):
-            script = (self.templates_dir / name).read_text()
+            script = (self.templates_dir / name).read_text(encoding="utf-8")
             # Shared helpers are declared once in pillar-ui.js only.
             self.assertNotIn("const $ =", script, name)
             self.assertNotIn("function escapeHtml", script, name)
