@@ -1534,7 +1534,9 @@ body.modal-open { overflow: hidden; }
   min-height: 0;
   padding: 22px 24px 24px;
 }
-.overview-grid .hero-card { grid-column: span 3; }
+/* The momentum height is the longest number: give it two thirds. */
+.overview-grid .epoch-card { grid-column: span 2; }
+.overview-grid .momentum-card { grid-column: span 4; }
 .overview-grid .metric-card { grid-column: span 2; }
 .overview-grid .card-label, .overview-grid .metric-label {
   color: var(--muted);
@@ -1570,8 +1572,8 @@ body.modal-open { overflow: hidden; }
 .overview-grid .metric-card.positive strong, .overview-grid .metric-card.warning strong { color: var(--text); }
 .overview-grid .hero-card .muted { color: var(--muted); font-size: .75rem; margin-top: 6px; }
 @media (min-width: 960px) {
-  /* The two chain values lead, the three counts follow. */
-  .overview-grid { grid-template-columns: 1.3fr 1.3fr 1fr 1fr 1fr; }
+  /* The momentum height is the longest value, so it gets the widest cell. */
+  .overview-grid { grid-template-columns: 1fr 1.5fr 1fr 1fr 1fr; }
   .overview-grid .hero-card, .overview-grid .metric-card { grid-column: auto; }
 }
 @media (max-width: 679px) {
@@ -1912,3 +1914,10 @@ button[hidden] { display: none !important; }
 #logs-modal ::placeholder { color: #8c8c8c; font-weight: 400; opacity: 1; }
 #logs-modal .log-viewer { border-color: rgba(255, 255, 255, .08); color: #d0d0d0; }
 #logs-modal .muted { font-size: .8125rem; }
+/* A shorter label where the cell is narrow (the epoch cell on phones). */
+.overview-grid .label-short { display: none; }
+@media (max-width: 679px) {
+  .overview-grid .label-full { display: none; }
+  .overview-grid .label-short { display: inline; }
+}
+.last-update-short .fa-rotate { font-size: .7em; margin-right: 6px; opacity: .8; vertical-align: .12em; }

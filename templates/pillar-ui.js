@@ -50,7 +50,27 @@ function formatRelativeTime(value) {
   if (hours < 24) return hours + "h ago";
   const days = Math.floor(hours / 24);
   if (days < 30) return days + "d ago";
-  return formatDate(value);
+  return formatShortDate(value);
+}
+
+// "Aug 31, 10:35 AM UTC", with the year only when it is not the current one.
+// Short enough for a phone; the full date stays in the tooltip.
+function formatShortDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const sameYear = date.getUTCFullYear() === new Date().getUTCFullYear();
+  const day = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+    timeZone: "UTC",
+  }).format(date);
+  const time = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC",
+  }).format(date);
+  return day + ", " + time + " UTC";
 }
 
 // A relative time ("3h ago") that shows the exact UTC time on hover, and

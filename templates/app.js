@@ -32,8 +32,13 @@ function renderOverview(payload) {
   $("#last-update").innerHTML = node?.last_success_at
     ? '<span class="desktop-only">Last successful update ' +
       escapeHtml(formatDate(node.last_success_at)) + '</span>' +
-      '<span class="mobile-only" title="' + escapeHtml(formatDate(node.last_success_at)) +
-      '">Updated ' + escapeHtml(formatRelativeTime(node.last_success_at)) + '</span>'
+      // Compact form: a refresh icon stands for "Updated"; screen readers
+      // still hear the word, and the tooltip gives the full date.
+      '<span class="mobile-only last-update-short" title="Last successful update ' +
+      escapeHtml(formatDate(node.last_success_at)) + '">' +
+      '<i class="fa-solid fa-rotate" aria-hidden="true"></i>' +
+      '<span class="sr-only">Updated </span>' +
+      escapeHtml(formatRelativeTime(node.last_success_at)) + '</span>'
     : "No successful update yet";
   $("#pillar-total").textContent = formatNumber(counts.total || 0);
   $("#pillar-active").textContent = formatNumber(counts.active || 0);
