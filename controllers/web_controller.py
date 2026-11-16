@@ -27,7 +27,15 @@ from services.auth_service import (
     totp_uri,
     username_is_acceptable,
     verify_password,
+    verify_recovery_code,
     verify_totp,
+)
+from services.secret_box import (
+    SecretKeyError,
+    encryption_enabled,
+    is_encrypted,
+    open_secret,
+    seal_secret,
 )
 from services.settings_service import (
     DEFAULT_DATABASE_PATH,
@@ -713,16 +721,25 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 429,
             )
             return False
+        try:
+            secret = open_secret(credentials.get("totp_secret"))
+        except SecretKeyError as exc:
+            # Authenticator codes cannot be checked without the key; recovery
+            # codes below still work, so nobody is locked out.
+            logger.error("Two-factor secret unavailable for user %s: %s", user_id, exc)
+            secret = ""
         step = verify_totp(
-            str(credentials.get("totp_secret") or ""),
+            secret,
             value,
             last_step=credentials.get("totp_last_step"),
-        )
+        ) if secret else None
         if step is not None:
             self.database.record_totp_step(user_id, step)
             TWO_FACTOR_THROTTLE.reset(user_id)
             return True
-        if self.database.consume_recovery_code(user_id, hash_recovery_code(value)):
+        if self.database.consume_recovery_code(
+            user_id, lambda stored: verify_recovery_code(value, stored)
+        ):
             TWO_FACTOR_THROTTLE.reset(user_id)
             logger.info("Recovery code used by user %s", user_id)
             return True
@@ -757,7 +774,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if user.get("two_factor_enabled"):
             raise ValueError("Two-factor authentication is already on")
         secret = generate_totp_secret()
-        self.database.set_pending_totp_secret(int(user["id"]), secret)
+        self.database.set_pending_totp_secret(int(user["id"]), seal_secret(secret))
         self._send_json(
             {
                 "secret": secret,
@@ -773,7 +790,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if not self._require_csrf(user):
             return
         credentials = self.database.get_user_credentials(str(user["username"]))
-        pending = str((credentials or {}).get("totp_pending_secret") or "")
+        try:
+            pending = open_secret((credentials or {}).get("totp_pending_secret"))
+        except SecretKeyError as exc:
+            logger.error("Pending two-factor secret unavailable: %s", exc)
+            raise ValueError("Start the two-factor setup again") from exc
         if not pending:
             raise ValueError("Start the two-factor setup first")
         step = verify_totp(pending, payload.get("code"))
@@ -782,7 +803,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         codes = generate_recovery_codes()
         self.database.enable_totp(
             int(user["id"]),
-            secret=pending,
+            secret=seal_secret(pending),
             step=step,
             recovery_code_hashes=[hash_recovery_code(code) for code in codes],
         )
@@ -1517,6 +1538,24 @@ class DashboardServer(ThreadingHTTPServer):
         )
 
 
+def seal_stored_totp_secrets(database: Database) -> int:
+    """Encrypt two-factor secrets that are still stored in plain text.
+
+    Runs at startup once TOTP_ENCRYPTION_KEY is set; without the key it
+    does nothing, so deployments without the key keep working.
+    """
+    if not encryption_enabled():
+        logger.warning(
+            "TOTP_ENCRYPTION_KEY is not set; two-factor secrets are stored "
+            "unencrypted. Create a key with tools/generate_totp_key.py."
+        )
+        return 0
+    sealed = database.seal_totp_secrets(seal_secret, is_encrypted)
+    if sealed:
+        logger.info("Encrypted the two-factor secrets of %s user(s)", sealed)
+    return sealed
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Serve the Zenon Pillar Tracker dashboard and admin panel."
@@ -1577,6 +1616,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         runtime_config, database = load_runtime_database(database_path)
         configure_logging(runtime_config)
+        seal_stored_totp_secrets(database)
     except Exception as exc:
         # Keep failures that happen while opening the database/configuration
         # visible in the mounted default log and in Docker stderr.

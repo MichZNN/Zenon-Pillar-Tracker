@@ -6,7 +6,7 @@ from secrets import token_urlsafe
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 
 SCHEMA_VERSION = "10"
@@ -1037,6 +1037,31 @@ class Database:
                 (int(step), int(user_id)),
             )
 
+    def seal_totp_secrets(self, seal: Callable[[str], str | None], is_sealed: Callable[[str], bool]) -> int:
+        """Re-store plain two-factor secrets with ``seal``; return how many."""
+        updated = 0
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                "SELECT id, totp_secret, totp_pending_secret FROM users "
+                "WHERE totp_secret IS NOT NULL OR totp_pending_secret IS NOT NULL"
+            ).fetchall()
+            for row in rows:
+                values = {}
+                for column in ("totp_secret", "totp_pending_secret"):
+                    value = row[column]
+                    if value and not is_sealed(value):
+                        values[column] = seal(value)
+                if not values:
+                    continue
+                assignments = ", ".join(f"{column} = ?" for column in values)
+                connection.execute(
+                    f"UPDATE users SET {assignments} WHERE id = ?",
+                    (*values.values(), int(row["id"])),
+                )
+                updated += 1
+        return updated
+
     def set_recovery_codes(self, user_id: int, code_hashes: list[str]) -> None:
         with self._connect() as connection:
             connection.execute(
@@ -1044,8 +1069,13 @@ class Database:
                 (_json(code_hashes), utc_now(), int(user_id)),
             )
 
-    def consume_recovery_code(self, user_id: int, code_hash: str) -> bool:
-        """Remove a recovery code after use; return whether it was valid."""
+    def consume_recovery_code(
+        self,
+        user_id: int,
+        matches: Callable[[str], bool],
+    ) -> bool:
+        """Remove the stored recovery code that ``matches``; return whether
+        one did. ``matches`` checks a typed code against one stored hash."""
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
@@ -1053,9 +1083,10 @@ class Database:
                 (int(user_id),),
             ).fetchone()
             codes = _load_json(row["recovery_codes_json"] if row else None, []) or []
-            if code_hash not in codes:
+            used = next((stored for stored in codes if matches(stored)), None)
+            if used is None:
                 return False
-            codes.remove(code_hash)
+            codes.remove(used)
             connection.execute(
                 "UPDATE users SET recovery_codes_json = ? WHERE id = ?",
                 (_json(codes), int(user_id)),

@@ -372,8 +372,9 @@ portal menu. It uses standard time-based codes (TOTP, RFC 6238: SHA-1, 6
 digits, 30 seconds) that work with Google Authenticator, Microsoft
 Authenticator, 1Password, Aegis and similar apps; the QR code is generated in
 the browser (`static/vendor/qrcode-generator`, MIT licence). Turning it on
-shows ten one-time recovery codes for a lost phone; only their hashes are
-stored. After five wrong codes a user has to wait ten minutes. Turning it off
+shows ten one-time recovery codes for a lost phone; only salted PBKDF2 hashes
+of them are stored (codes from before that change keep working until used or
+replaced). After five wrong codes a user has to wait ten minutes. Turning it off
 needs the current password and a code. An administrator can reset a user's
 two-factor authentication from *Users*.
 
@@ -387,6 +388,24 @@ password. Trusted devices are listed under *My account* and can be forgotten
 there; they also end when two-factor authentication is turned off or reset,
 and when the password changes. Users without two-factor authentication never
 see the second step.
+
+The authenticator secret has to be readable by the server to check codes, so
+it is encrypted instead of hashed. Set `TOTP_ENCRYPTION_KEY` in `.env` to
+store it encrypted (Fernet: AES with an integrity check); the key stays out of
+the database, so a copy of the database alone does not reveal the secrets.
+Create a key and add the printed line to `.env`:
+
+```
+python tools/generate_totp_key.py
+```
+
+On a Docker deployment: `docker compose run --rm web python tools/generate_totp_key.py`.
+After a restart the web app encrypts the secrets that are already stored.
+Without the key the secrets are stored unencrypted and the web app logs a
+warning at startup. Keep a copy of the key: if it is lost or changed,
+authenticator codes stop working and users with two-factor authentication can
+only log in with a recovery code (an administrator can then reset their
+two-factor authentication).
 
 Endpoints: `POST /api/auth/login` answers `two_factor_required` with a
 `challenge` when a code is needed; `POST /api/auth/login/verify` takes

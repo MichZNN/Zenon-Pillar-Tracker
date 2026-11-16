@@ -7,11 +7,13 @@ import time
 import unittest
 from pathlib import Path
 from threading import Thread
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from controllers.web_controller import (
     TWO_FACTOR_THROTTLE,
+    seal_stored_totp_secrets,
     ApiRateLimiter,
     DashboardHandler,
     DashboardServer,
@@ -21,10 +23,22 @@ from services.auth_service import (
     TOTP_PERIOD_SECONDS,
     generate_recovery_codes,
     hash_password,
+    hash_recovery_code,
+    hash_token,
     totp_code,
     totp_uri,
+    verify_recovery_code,
     verify_totp,
 )
+from services import secret_box
+from services.secret_box import SecretKeyError, generate_key, open_secret, seal_secret
+
+TEST_KEY = generate_key()
+
+
+def with_key(key):
+    """Patch the TOTP_ENCRYPTION_KEY lookup for the duration of a block."""
+    return patch.object(secret_box, "get_env_value", return_value=key)
 
 
 class TotpTestCase(unittest.TestCase):
@@ -45,6 +59,44 @@ class TotpTestCase(unittest.TestCase):
         self.assertEqual(len(codes), 10)
         self.assertEqual(len(set(codes)), 10)
         self.assertRegex(codes[0], r"^[a-z2-9]{5}-[a-z2-9]{5}$")
+
+
+class RecoveryCodeHashTestCase(unittest.TestCase):
+    def test_salted_hash_verifies_only_the_right_code(self):
+        stored = hash_recovery_code("k3m9q-2xw7p")
+        self.assertTrue(stored.startswith("pbkdf2_sha256$"))
+        # A fresh salt every time: the same code never gives the same hash.
+        self.assertNotEqual(stored, hash_recovery_code("k3m9q-2xw7p"))
+        self.assertTrue(verify_recovery_code("K3M9Q 2XW7P", stored))
+        self.assertFalse(verify_recovery_code("k3m9q-2xw7q", stored))
+        self.assertFalse(verify_recovery_code("", stored))
+
+    def test_codes_stored_before_salting_still_work(self):
+        legacy = hash_token("k3m9q2xw7p")
+        self.assertTrue(verify_recovery_code("k3m9q-2xw7p", legacy))
+        self.assertFalse(verify_recovery_code("aaaaa-bbbbb", legacy))
+
+
+class SecretBoxTestCase(unittest.TestCase):
+    def test_without_a_key_secrets_stay_plain(self):
+        with with_key(""):
+            self.assertEqual(seal_secret("ABCDEF"), "ABCDEF")
+            self.assertEqual(open_secret("ABCDEF"), "ABCDEF")
+
+    def test_with_a_key_secrets_are_encrypted(self):
+        with with_key(TEST_KEY):
+            sealed = seal_secret("ABCDEF")
+            self.assertTrue(sealed.startswith("enc:v1:"))
+            self.assertNotIn("ABCDEF", sealed)
+            self.assertEqual(open_secret(sealed), "ABCDEF")
+            # Plain values from before the key keep working.
+            self.assertEqual(open_secret("ABCDEF"), "ABCDEF")
+        with with_key(""), self.assertRaises(SecretKeyError):
+            open_secret(sealed)
+        with with_key(generate_key()), self.assertRaises(SecretKeyError):
+            open_secret(sealed)
+        with with_key("not a key"), self.assertRaises(SecretKeyError):
+            seal_secret("ABCDEF")
 
 
 class TwoFactorWebTestCase(unittest.TestCase):
@@ -275,6 +327,56 @@ class TwoFactorWebTestCase(unittest.TestCase):
         self.database.update_user(self.user["id"], password_hash=hash_password("a brand new password"))
         status, payload, _, _ = self.login("operator", "a brand new password", cookies=trusted)
         self.assertTrue(payload.get("two_factor_required"))
+
+
+    def stored_secret(self, user_id):
+        with self.database._connect() as connection:
+            return connection.execute(
+                "SELECT totp_secret FROM users WHERE id = ?", (user_id,)
+            ).fetchone()[0]
+
+    def test_secret_is_stored_encrypted_when_a_key_is_set(self):
+        with with_key(TEST_KEY):
+            status, _, session, _ = self.login("operator", "another correct password")
+            status, setup, _ = self.request("POST", "/api/account/two-factor/setup", {}, session)
+            secret = setup["secret"]
+            status, enabled, _ = self.request(
+                "POST", "/api/account/two-factor/enable",
+                {"code": self.current_code(secret)}, session,
+            )
+            self.assertEqual(status, 200)
+            stored = self.stored_secret(self.user["id"])
+            self.assertTrue(stored.startswith("enc:v1:"))
+            self.assertNotIn(secret, stored)
+            status, _, session, _ = self.login(
+                "operator", "another correct password", self.current_code(secret, 1)
+            )
+            self.assertEqual(status, 200)
+        # Without the key the authenticator code cannot be checked, but a
+        # recovery code still lets the user in.
+        with with_key(""):
+            status, _, _, _ = self.login(
+                "operator", "another correct password", self.current_code(secret, 2)
+            )
+            self.assertEqual(status, 401)
+            status, _, _, _ = self.login(
+                "operator", "another correct password", enabled["recovery_codes"][0]
+            )
+            self.assertEqual(status, 200)
+
+    def test_plain_secrets_are_encrypted_at_startup_with_a_key(self):
+        secret = base64.b32encode(b"12345678901234567890").decode()
+        self.database.enable_totp(self.user["id"], secret=secret, step=0, recovery_code_hashes=[])
+        with with_key(""):
+            self.assertEqual(seal_stored_totp_secrets(self.database), 0)
+        self.assertEqual(self.stored_secret(self.user["id"]), secret)
+        with with_key(TEST_KEY):
+            self.assertEqual(seal_stored_totp_secrets(self.database), 1)
+            stored = self.stored_secret(self.user["id"])
+            self.assertTrue(stored.startswith("enc:v1:"))
+            self.assertEqual(open_secret(stored), secret)
+            # Running it again changes nothing.
+            self.assertEqual(seal_stored_totp_secrets(self.database), 0)
 
 
 if __name__ == "__main__":
