@@ -34,7 +34,9 @@ from services.secret_box import (
     SecretKeyError,
     encryption_enabled,
     is_encrypted,
+    key_count,
     open_secret,
+    reseal_secret,
     seal_secret,
 )
 from services.settings_service import (
@@ -737,7 +739,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.database.record_totp_step(user_id, step)
             TWO_FACTOR_THROTTLE.reset(user_id)
             return True
-        if self.database.consume_recovery_code(
+        # Only something shaped like a recovery code (10 characters, not all
+        # digits) is checked against the slow recovery hashes.
+        looks_like_recovery = len(value) == 10 and not value.isdigit()
+        if looks_like_recovery and self.database.consume_recovery_code(
             user_id, lambda stored: verify_recovery_code(value, stored)
         ):
             TWO_FACTOR_THROTTLE.reset(user_id)
@@ -755,6 +760,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return {
             "enabled": bool(user.get("two_factor_enabled")),
             "recovery_codes_left": self.database.recovery_codes_left(int(user["id"])),
+            "recovery_codes_outdated": self.database.recovery_codes_outdated(int(user["id"])),
             "trusted_devices": self.database.list_trusted_devices(int(user["id"])),
         }
 
@@ -768,13 +774,32 @@ class DashboardHandler(BaseHTTPRequestHandler):
             cookies=[self._expired_cookie(TRUSTED_DEVICE_COOKIE)],
         )
 
+    def _seal_or_refuse(self, secret: str) -> str:
+        """Encrypt a new secret, or refuse setup when that is not possible.
+
+        Refuses too when secrets are already encrypted but the key is gone,
+        so no plain secrets are mixed in until the key is back.
+        """
+        try:
+            if not encryption_enabled() and any(
+                is_encrypted(value) for _, _, value in self.database.totp_secret_values()
+            ):
+                raise SecretKeyError("TOTP_ENCRYPTION_KEY is missing")
+            return seal_secret(secret) or secret
+        except SecretKeyError as exc:
+            logger.error("Two-factor setup refused: %s", exc)
+            raise ValueError(
+                "Two-factor authentication is unavailable right now; "
+                "contact the administrator"
+            ) from exc
+
     def _two_factor_setup(self, user: Mapping[str, Any]) -> None:
         if not self._require_csrf(user):
             return
         if user.get("two_factor_enabled"):
             raise ValueError("Two-factor authentication is already on")
         secret = generate_totp_secret()
-        self.database.set_pending_totp_secret(int(user["id"]), seal_secret(secret))
+        self.database.set_pending_totp_secret(int(user["id"]), self._seal_or_refuse(secret))
         self._send_json(
             {
                 "secret": secret,
@@ -800,10 +825,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
         step = verify_totp(pending, payload.get("code"))
         if step is None:
             raise ValueError("That code is not correct. Check the time on your phone and try again.")
+        sealed = self._seal_or_refuse(pending)
         codes = generate_recovery_codes()
         self.database.enable_totp(
             int(user["id"]),
-            secret=seal_secret(pending),
+            secret=sealed,
             step=step,
             recovery_code_hashes=[hash_recovery_code(code) for code in codes],
         )
@@ -1539,21 +1565,60 @@ class DashboardServer(ThreadingHTTPServer):
 
 
 def seal_stored_totp_secrets(database: Database) -> int:
-    """Encrypt two-factor secrets that are still stored in plain text.
+    """Check and encrypt the stored two-factor secrets at startup.
 
-    Runs at startup once TOTP_ENCRYPTION_KEY is set; without the key it
-    does nothing, so deployments without the key keep working.
+    - Without TOTP_ENCRYPTION_KEY nothing changes; the log says whether the
+      secrets are plain (a warning) or already encrypted (an error, because
+      authenticator codes then fail and only recovery codes work).
+    - With the key, plain secrets are encrypted, and with several keys the
+      older ones are re-encrypted with the first key.
+    - An invalid key or a secret the key cannot open is logged as an error;
+      the web app still starts, so the dashboard stays up.
+
+    Returns the number of stored values that were (re-)encrypted.
     """
-    if not encryption_enabled():
-        logger.warning(
-            "TOTP_ENCRYPTION_KEY is not set; two-factor secrets are stored "
-            "unencrypted. Create a key with tools/generate_totp_key.py."
-        )
+    try:
+        values = database.totp_secret_values()
+        encrypted = [value for value in values if is_encrypted(value[2])]
+        if not encryption_enabled():
+            if encrypted:
+                logger.error(
+                    "%s two-factor secret(s) are encrypted but TOTP_ENCRYPTION_KEY "
+                    "is not set: authenticator codes fail, recovery codes still work",
+                    len(encrypted),
+                )
+            else:
+                logger.warning(
+                    "TOTP_ENCRYPTION_KEY is not set; two-factor secrets are stored "
+                    "unencrypted. Create a key with tools/generate_totp_key.py."
+                )
+            return 0
+        rotate = key_count() > 1
+        updates: list[tuple[int, str, str, str]] = []
+        unreadable = 0
+        for user_id, column, stored in values:
+            try:
+                if not is_encrypted(stored):
+                    updates.append((user_id, column, stored, seal_secret(stored)))
+                elif rotate:
+                    updates.append((user_id, column, stored, reseal_secret(stored)))
+                else:
+                    open_secret(stored)
+            except SecretKeyError:
+                unreadable += 1
+        if unreadable:
+            logger.error(
+                "%s two-factor secret(s) cannot be decrypted with TOTP_ENCRYPTION_KEY "
+                "(key missing or changed?): those users need a recovery code",
+                unreadable,
+            )
+        replaced = database.replace_totp_values(updates) if updates else 0
+        if replaced:
+            logger.info("Encrypted %s stored two-factor secret(s)", replaced)
+        return replaced
+    except SecretKeyError as exc:
+        logger.error("Two-factor encryption is not available: %s", exc)
         return 0
-    sealed = database.seal_totp_secrets(seal_secret, is_encrypted)
-    if sealed:
-        logger.info("Encrypted the two-factor secrets of %s user(s)", sealed)
-    return sealed
 
 
 def main(argv: list[str] | None = None) -> int:

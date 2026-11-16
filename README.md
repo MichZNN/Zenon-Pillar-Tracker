@@ -405,7 +405,25 @@ Without the key the secrets are stored unencrypted and the web app logs a
 warning at startup. Keep a copy of the key: if it is lost or changed,
 authenticator codes stop working and users with two-factor authentication can
 only log in with a recovery code (an administrator can then reset their
-two-factor authentication).
+two-factor authentication). The web app logs an error at startup when stored
+secrets cannot be decrypted, and it keeps running with an invalid key so the
+dashboard stays up; new two-factor setups are refused until the key is fixed.
+
+In Docker the key reaches the container through `env_file`, which is only
+read when the container is created: run the deployment again (or
+`docker compose up -d`). `docker compose restart` does not pick up a new key.
+
+Back up the database before the first start with the key, and do not roll
+back to a version without encryption afterwards: older versions cannot read
+encrypted secrets or the new recovery-code hashes.
+
+To rotate the key, put the new key first and the old one after it,
+comma-separated (`TOTP_ENCRYPTION_KEY=new,old`), and redeploy; the web app
+re-encrypts the stored secrets with the new key at startup. Then remove the
+old key and redeploy once more.
+
+Recovery codes created before salted hashing are marked as outdated under
+*My account*; creating new ones replaces them.
 
 Endpoints: `POST /api/auth/login` answers `two_factor_required` with a
 `challenge` when a code is needed; `POST /api/auth/login/verify` takes

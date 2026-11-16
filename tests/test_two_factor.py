@@ -71,6 +71,16 @@ class RecoveryCodeHashTestCase(unittest.TestCase):
         self.assertFalse(verify_recovery_code("k3m9q-2xw7q", stored))
         self.assertFalse(verify_recovery_code("", stored))
 
+    def test_malformed_stored_hashes_never_match(self):
+        for stored in (
+            "pbkdf2_sha256$120000$!!!$!!!",
+            "md5$120000$c2FsdA$ZGlnZXN0",
+            "pbkdf2_sha256$500$c2FsdA$ZGlnZXN0",
+            "pbkdf2_sha256$99999999$c2FsdA$ZGlnZXN0",
+            "pbkdf2_sha256$x$c2FsdA$ZGlnZXN0",
+        ):
+            self.assertFalse(verify_recovery_code("k3m9q-2xw7p", stored), stored)
+
     def test_codes_stored_before_salting_still_work(self):
         legacy = hash_token("k3m9q2xw7p")
         self.assertTrue(verify_recovery_code("k3m9q-2xw7p", legacy))
@@ -82,6 +92,16 @@ class SecretBoxTestCase(unittest.TestCase):
         with with_key(""):
             self.assertEqual(seal_secret("ABCDEF"), "ABCDEF")
             self.assertEqual(open_secret("ABCDEF"), "ABCDEF")
+
+    def test_several_keys_rotate_to_the_first(self):
+        old_key, new_key = generate_key(), generate_key()
+        with with_key(old_key):
+            sealed = seal_secret("ABCDEF")
+        with with_key(f"{new_key},{old_key}"):
+            self.assertEqual(open_secret(sealed), "ABCDEF")
+            resealed = secret_box.reseal_secret(sealed)
+        with with_key(new_key):
+            self.assertEqual(open_secret(resealed), "ABCDEF")
 
     def test_with_a_key_secrets_are_encrypted(self):
         with with_key(TEST_KEY):
@@ -250,7 +270,15 @@ class TwoFactorWebTestCase(unittest.TestCase):
         status, _, _, _ = self.login("operator", "another correct password", recovery_codes[0])
         self.assertEqual(status, 401)
         status, info, _ = self.request("GET", "/api/account/two-factor", session=session)
-        self.assertEqual(info, {"enabled": True, "recovery_codes_left": 9, "trusted_devices": []})
+        self.assertEqual(
+            info,
+            {
+                "enabled": True,
+                "recovery_codes_left": 9,
+                "recovery_codes_outdated": False,
+                "trusted_devices": [],
+            },
+        )
 
         # Turning it off needs the password and a code.
         status, _, _ = self.request(
@@ -377,6 +405,68 @@ class TwoFactorWebTestCase(unittest.TestCase):
             self.assertEqual(open_secret(stored), secret)
             # Running it again changes nothing.
             self.assertEqual(seal_stored_totp_secrets(self.database), 0)
+
+
+    def test_invalid_key_does_not_stop_startup(self):
+        secret = base64.b32encode(b"12345678901234567890").decode()
+        self.database.enable_totp(self.user["id"], secret=secret, step=0, recovery_code_hashes=[])
+        with with_key("not a key"):
+            self.assertEqual(seal_stored_totp_secrets(self.database), 0)
+        self.assertEqual(self.stored_secret(self.user["id"]), secret)
+
+    def test_setup_with_an_invalid_key_gives_a_clear_error(self):
+        status, _, session, _ = self.login("operator", "another correct password")
+        with with_key("not a key"):
+            status, payload, _ = self.request("POST", "/api/account/two-factor/setup", {}, session)
+        self.assertEqual(status, 400)
+        self.assertIn("unavailable", payload["error"])
+
+    def test_setup_is_refused_while_encrypted_secrets_lack_the_key(self):
+        with with_key(TEST_KEY):
+            self.database.enable_totp(
+                self.admin["id"], secret=seal_secret("ABCDEFGH"), step=0, recovery_code_hashes=[]
+            )
+        status, _, session, _ = self.login("operator", "another correct password")
+        with with_key(""):
+            status, payload, _ = self.request("POST", "/api/account/two-factor/setup", {}, session)
+        self.assertEqual(status, 400)
+        self.assertIn("unavailable", payload["error"])
+
+    def test_old_unsalted_recovery_codes_work_once_and_are_flagged(self):
+        secret = base64.b32encode(b"12345678901234567890").decode()
+        self.database.enable_totp(
+            self.user["id"], secret=secret, step=0,
+            recovery_code_hashes=[hash_token("k3m9q2xw7p")],
+        )
+        status, _, session, _ = self.login("operator", "another correct password", "k3m9q-2xw7p")
+        self.assertEqual(status, 200)
+        status, _, _, _ = self.login("operator", "another correct password", "k3m9q-2xw7p")
+        self.assertEqual(status, 401)
+        self.database.set_recovery_codes(self.user["id"], [hash_token("aaaaabbbbb")])
+        status, info, _ = self.request("GET", "/api/account/two-factor", session=session)
+        self.assertTrue(info["recovery_codes_outdated"])
+
+    def test_checking_recovery_codes_does_not_hold_the_write_lock(self):
+        import sqlite3
+        self.database.set_recovery_codes(self.user["id"], [hash_recovery_code("k3m9q-2xw7p")])
+        writable = []
+
+        def matches(stored):
+            # While a code is being checked, another writer must get through.
+            other = sqlite3.connect(self.database.path, timeout=0.2)
+            try:
+                other.execute("BEGIN IMMEDIATE")
+                other.rollback()
+                writable.append(True)
+            except sqlite3.OperationalError:
+                writable.append(False)
+            finally:
+                other.close()
+            return verify_recovery_code("k3m9q-2xw7p", stored)
+
+        self.assertTrue(self.database.consume_recovery_code(self.user["id"], matches))
+        self.assertEqual(writable, [True])
+        self.assertFalse(self.database.consume_recovery_code(self.user["id"], matches))
 
 
 if __name__ == "__main__":

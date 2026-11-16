@@ -465,9 +465,12 @@ function renderTwoFactorStatus(status) {
   badge.textContent = status.enabled ? "On" : "Off";
   if (status.enabled) {
     const left = Number(status.recovery_codes_left) || 0;
-    $("#two-factor-codes-left").textContent = left
+    $("#two-factor-codes-left").textContent = (left
       ? `${left} recovery code${left === 1 ? "" : "s"} left.`
-      : "No recovery codes left. Create new ones so you can still log in if you lose your phone.";
+      : "No recovery codes left. Create new ones so you can still log in if you lose your phone.") +
+      (left && status.recovery_codes_outdated
+        ? " These codes were made with an older, weaker method; create new ones to protect them better."
+        : "");
     $("#two-factor-disable-form").reset();
     renderTrustedDevices(status.trusted_devices || []);
     showTwoFactorPanel("on");

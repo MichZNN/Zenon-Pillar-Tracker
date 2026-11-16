@@ -200,7 +200,7 @@ def verify_recovery_code(code: object, stored: str) -> bool:
     try:
         scheme, iterations_text, salt_text, digest_text = stored.split("$", 3)
         iterations = int(iterations_text)
-        if scheme != RECOVERY_CODE_SCHEME or iterations < 10_000:
+        if scheme != RECOVERY_CODE_SCHEME or not 10_000 <= iterations <= 1_000_000:
             return False
         salt = base64.urlsafe_b64decode(salt_text + "=" * (-len(salt_text) % 4))
         expected = base64.urlsafe_b64decode(digest_text + "=" * (-len(digest_text) % 4))

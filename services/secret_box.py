@@ -9,20 +9,29 @@ database, so a copied database alone does not reveal the secrets.
 Without the key, secrets are stored as before, so a deployment keeps working
 until the key is added. Stored values carry a prefix, which lets plain and
 encrypted secrets coexist while existing ones are being encrypted.
+
+Key rotation: ``TOTP_ENCRYPTION_KEY`` may hold several comma-separated keys.
+New values are encrypted with the first key; any key can decrypt, and the
+web app re-encrypts older values with the first key at startup.
 """
 
 from __future__ import annotations
 
-from cryptography.fernet import Fernet, InvalidToken
+from threading import Lock
+
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
 from utils.env_loader import get_env_value
 
 TOTP_KEY_ENV = "TOTP_ENCRYPTION_KEY"
 ENCRYPTED_PREFIX = "enc:v1:"
 
+_cache_lock = Lock()
+_cache: tuple[str, MultiFernet | None] | None = None
+
 
 class SecretKeyError(RuntimeError):
-    """A stored secret cannot be decrypted with the configured key."""
+    """The key is invalid, missing, or does not decrypt a stored secret."""
 
 
 def generate_key() -> str:
@@ -30,21 +39,44 @@ def generate_key() -> str:
     return Fernet.generate_key().decode("ascii")
 
 
-def _fernet() -> Fernet | None:
-    key = get_env_value(TOTP_KEY_ENV)
-    if not key:
-        return None
+def _configured_keys() -> list[str]:
     try:
-        return Fernet(key.encode("ascii"))
-    except (ValueError, UnicodeEncodeError) as exc:
-        raise SecretKeyError(
-            f"{TOTP_KEY_ENV} is not a valid key; create one with "
-            "tools/generate_totp_key.py"
-        ) from exc
+        value = get_env_value(TOTP_KEY_ENV)
+    except ValueError as exc:
+        # A malformed .env line; do not echo it back to a request.
+        raise SecretKeyError("The .env file could not be read") from exc
+    return [key.strip() for key in value.split(",") if key.strip()]
+
+
+def _fernet() -> MultiFernet | None:
+    """Return the configured keys as one MultiFernet, or None without a key."""
+    global _cache
+    keys = _configured_keys()
+    cache_key = ",".join(keys)
+    with _cache_lock:
+        if _cache is not None and _cache[0] == cache_key:
+            return _cache[1]
+    if not keys:
+        fernet = None
+    else:
+        try:
+            fernet = MultiFernet([Fernet(key.encode("ascii")) for key in keys])
+        except (ValueError, UnicodeEncodeError) as exc:
+            raise SecretKeyError(
+                f"{TOTP_KEY_ENV} is not a valid key; create one with "
+                "tools/generate_totp_key.py"
+            ) from exc
+    with _cache_lock:
+        _cache = (cache_key, fernet)
+    return fernet
 
 
 def encryption_enabled() -> bool:
     return _fernet() is not None
+
+
+def key_count() -> int:
+    return len(_configured_keys())
 
 
 def is_encrypted(stored: str | None) -> bool:
@@ -79,3 +111,20 @@ def open_secret(stored: str | None) -> str:
             f"A two-factor secret cannot be decrypted with {TOTP_KEY_ENV}; "
             "was the key changed?"
         ) from exc
+
+
+def reseal_secret(stored: str) -> str:
+    """Return ``stored`` encrypted with the first key (plain or older key)."""
+    fernet = _fernet()
+    if fernet is None:
+        raise SecretKeyError(f"{TOTP_KEY_ENV} is not set")
+    if not is_encrypted(stored):
+        return seal_secret(stored) or stored
+    try:
+        token = fernet.rotate(stored[len(ENCRYPTED_PREFIX):].encode("ascii"))
+    except InvalidToken as exc:
+        raise SecretKeyError(
+            f"A two-factor secret cannot be decrypted with {TOTP_KEY_ENV}; "
+            "was the key changed?"
+        ) from exc
+    return ENCRYPTED_PREFIX + token.decode("ascii")
