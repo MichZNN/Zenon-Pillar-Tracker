@@ -73,8 +73,8 @@ PAGE_TEMPLATE_CONTEXT: dict[str, dict[str, Any]] = {
     "pillar.html": {
         "show_header": True,
         "header_variant": "history",
-        "header_eyebrow": "Pillar",
-        "header_title": "Pillar",
+        "header_eyebrow": "Network of Momentum",
+        "header_title": "Zenon Pillar Tracker",
         "show_footer": True,
         "footer_label": "Pillar",
     },

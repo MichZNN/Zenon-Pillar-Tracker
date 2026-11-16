@@ -99,9 +99,9 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn("/api/overview", app)
         self.assertIn("Inactive for", app)
         self.assertIn("missed checks", app)
-        self.assertIn("Performance (30 days)", app)
+        self.assertIn("Performance · 30d", app)
         self.assertIn("class=\"stat-item\"", app)
-        self.assertIn("class=\"stat-item performance-stat\"", app)
+        self.assertIn("class=\"pc-performance\"", app)
         self.assertIn("Produced / expected", app)
         self.assertIn("Momentum / delegate", app)
         self.assertIn("formatEpoch", app)
@@ -308,9 +308,9 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn("skeleton-performance-chart", styles)
         self.assertIn("telegram_bot_username", self.render_page("portal.html"))
         self.assertEqual(index_content.count('class="skeleton-card"'), 4)
-        self.assertIn("Total pillars", index_content)
-        self.assertIn("Active pillars", index_content)
-        self.assertIn("Inactive pillars", index_content)
+        self.assertIn("Total<span class=\"metric-label-suffix\"> pillars</span>", index_content)
+        self.assertIn("Active<span class=\"metric-label-suffix\"> pillars</span>", index_content)
+        self.assertIn("Inactive<span class=\"metric-label-suffix\"> pillars</span>", index_content)
         self.assertLess(
             index_content.index('id="epoch-list"'),
             index_content.index('id="pillar-list"'),
@@ -427,7 +427,7 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn('href="/pillars?status=favorites"', pillars)
         self.assertIn('id="sort-filter"', pillars)
         shared = (self.templates_dir / "pillar-ui.js").read_text(encoding="utf-8")
-        for name in ("renderPillarCard", "favoriteButton", "renderTime", "eventTone", "PERFORMANCE_CHART_FLOOR", "renderAprChip"):
+        for name in ("renderPillarCard", "favoriteButton", "renderTime", "eventTone", "PERFORMANCE_CHART_FLOOR", "renderAprStat"):
             self.assertIn(name, shared)
         for name in ("app.js", "pillars.js", "history.js", "pillar.js"):
             script = (self.templates_dir / name).read_text(encoding="utf-8")

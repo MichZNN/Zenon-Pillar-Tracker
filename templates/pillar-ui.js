@@ -148,7 +148,16 @@ function eventDescription(event) {
     return (details.old_name || "—") + " → " + (details.new_name || "—");
   }
   if (event.event_type === "reward_shares_changed") {
-    return "Reward sharing percentages updated";
+    const name = details.name || event.owner_address || "Unknown pillar";
+    const percent = (value) => (value === null || value === undefined ? "unknown" : value + "%");
+    const changes = [];
+    if (details.momentum) {
+      changes.push("Momentum " + percent(details.momentum.old) + " → " + percent(details.momentum.new));
+    }
+    if (details.delegate) {
+      changes.push("Delegate " + percent(details.delegate.old) + " → " + percent(details.delegate.new));
+    }
+    return changes.length ? name + " · " + changes.join(" · ") : name;
   }
   if (event.event_type === "pillar_inactive") {
     const name = details.name || event.owner_address || "Unknown pillar";
@@ -265,19 +274,66 @@ function aprValue(performance) {
   return Number.isFinite(value) ? value : null;
 }
 
+// Above this the estimate is dominated by a small weight or a recent
+// reward share change and usually drops quickly.
+const APR_CAUTION_THRESHOLD = 100;
+
 function formatApr(performance) {
   const value = aprValue(performance);
   if (value === null) return "—";
-  return (value >= 10 || value === 0 ? value.toFixed(value === 0 ? 0 : 1) : value.toFixed(2)) + "%";
+  if (value === 0) return "0%";
+  if (value >= APR_CAUTION_THRESHOLD) return "~" + Math.round(value) + "%";
+  return (value >= 10 ? value.toFixed(1) : value.toFixed(2)) + "%";
 }
 
-function renderAprChip(performance, loading = false) {
-  if (loading) return '<span class="apr-chip is-loading" aria-hidden="true"></span>';
+// Why an APR estimate should not be taken at face value, or "".
+function aprCaution(performance) {
   const value = aprValue(performance);
   if (value === null) return "";
-  return '<span class="apr-chip' + (value === 0 ? ' is-zero' : '') + '" title="' +
-    escapeHtml(APR_HELP) + '">' + formatApr(performance) + ' APR</span>';
+  const days = Number(performance?.delegator_apr?.sample_days);
+  if (Number.isFinite(days) && days < 7) {
+    return "Based on only " + days + (days === 1 ? " day" : " days") + " of data.";
+  }
+  if (value >= APR_CAUTION_THRESHOLD) {
+    return "Unusually high. This happens with a small weight or a recent " +
+      "reward share change, and drops as delegations grow.";
+  }
+  return "";
 }
+
+let aprInfoCounter = 0;
+
+function aprInfoParts(performance) {
+  const caution = aprCaution(performance);
+  const infoId = "apr-info-" + (++aprInfoCounter);
+  return {
+    caution,
+    button: '<button class="apr-info-button" type="button" aria-expanded="false" ' +
+      'aria-controls="' + infoId + '" aria-label="How is the delegator APR estimated?" ' +
+      'title="' + escapeHtml(APR_HELP) + '">' +
+      '<i class="fa-solid fa-circle-info" aria-hidden="true"></i></button>',
+    value: (caution ? '<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>' : '') +
+      formatApr(performance),
+    panel: '<p class="apr-info" id="' + infoId + '" hidden>' +
+      (caution ? '<span class="apr-info-caution"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>' + escapeHtml(caution) + '</span> ' : '') +
+      escapeHtml(APR_HELP) + ' Reward shares can change at any time.</p>',
+  };
+}
+
+// The APR as a stat tile on the pillar page, with the reward shares below.
+function renderAprTile(pillar, performance) {
+  const value = aprValue(performance);
+  const info = aprInfoParts(performance);
+  const tone = value === null || value === 0 ? " is-zero" : info.caution ? " is-caution" : "";
+  return '<div class="stat-item stat-apr' + tone + '">' +
+    '<span class="stat-label">Delegator APR' + (value === null ? '' : info.button) + '</span>' +
+    '<strong class="apr-tile-value">' + (value === null ? 'Not available' : info.value) + '</strong>' +
+    '<span class="stat-sub">Shares ' + escapeHtml(pillar.momentum_reward_percentage) +
+    '% / ' + escapeHtml(pillar.delegate_reward_percentage) + '%</span>' +
+    (value === null ? '' : info.panel) +
+    '</div>';
+}
+
 
 /* ---------- Favorites ---------- */
 
@@ -341,54 +397,77 @@ function syncFavoriteButtons(ownerAddress, favorite) {
 
 /* ---------- Pillar card ---------- */
 
+function formatCompactWeight(weight) {
+  const znn = (weight || 0) / 100000000;
+  if (znn >= 1000000) return (znn / 1000000).toFixed(znn >= 10000000 ? 1 : 2).replace(/\.?0+$/, "") + "M ZNN";
+  if (znn >= 10000) return Math.round(znn / 1000) + "K ZNN";
+  return formatNumber(Math.round(znn)) + " ZNN";
+}
+
+// The APR as a quiet label/value pair; the info card explains it.
+function renderAprStat(performance, loading = false) {
+  if (loading) {
+    return '<div class="pc-stat"><dt>APR</dt>' +
+      '<dd><span class="skeleton skeleton-apr" aria-hidden="true"></span></dd></div>';
+  }
+  const value = aprValue(performance);
+  if (value === null) {
+    return '<div class="pc-stat"><dt>APR</dt><dd class="is-muted">No data</dd></div>';
+  }
+  const info = aprInfoParts(performance);
+  const tone = value === 0 ? " is-muted" : info.caution ? " is-caution" : "";
+  return '<div class="pc-stat pc-apr"><dt>APR' + info.button + '</dt>' +
+    '<dd class="' + tone.trim() + '">' + info.value + info.panel + '</dd></div>';
+}
+
 function renderPillarCard(pillar, performance, options = {}) {
   const loading = Boolean(options.loading);
   const produced = pillar.produced_momentums ?? 0;
   const expected = pillar.expected_momentums ?? 0;
   const item = performance || pillar.performance_last_30_days || {};
   const favorite = isFavorite(pillar.owner_address);
+  const seconds = statusDurationSeconds(pillar);
+  const duration = seconds === null || seconds === undefined ? "" : formatDuration(seconds);
   return '<article class="pillar-card' + (favorite ? ' is-favorite' : '') + '">' +
-    '<div class="pillar-card-top">' +
-    '<span class="pillar-rank">#' + escapeHtml(formatRank(pillar.rank)) + '</span>' +
-    '<div class="pillar-card-actions">' +
-    favoriteButton(pillar) +
-    '<span class="status-badge ' + escapeHtml(pillar.status) + '">' +
-    escapeHtml(statusLabel(pillar.status)) + '</span>' +
-    '</div>' +
-    '</div>' +
-    '<div class="pillar-title-row">' +
+    '<div class="pc-head">' +
+    '<div class="pc-title">' +
+    '<span class="pc-rank">' + escapeHtml(formatRank(pillar.rank)) + '</span>' +
     '<a class="pillar-name pillar-card-link" href="' + pillarUrl(pillar.owner_address) + '">' +
     escapeHtml(pillar.name) + '</a>' +
-    renderAprChip(item, loading) +
     '</div>' +
-    '<div class="pillar-address">' + escapeHtml(pillar.owner_address) + '</div>' +
-    '<div class="pillar-stats">' +
-    '<div class="stat-item"><span class="stat-label">Produced / expected</span><strong>' +
-    formatNumber(produced) + " / " + formatNumber(expected) + '</strong></div>' +
-    '<div class="stat-item"><span class="stat-label">Weight</span><strong>' +
-    formatWeight(pillar.weight) + '</strong></div>' +
-    '<div class="stat-item"><span class="stat-label">' +
-    statusDurationLabel(pillar.status) + '</span><strong>' +
-    formatDuration(statusDurationSeconds(pillar)) + '</strong></div>' +
-    '<div class="stat-item"><span class="stat-label">Momentum / delegate</span><strong>' +
+    favoriteButton(pillar) +
+    '</div>' +
+    '<div class="pc-meta">' +
+    '<span class="pc-status ' + escapeHtml(pillar.status) + '">' +
+    escapeHtml(statusLabel(pillar.status)) +
+    (duration ? '<span class="pc-status-duration">' + escapeHtml(duration) + '</span>' : '') +
+    '</span>' +
+    '<span class="pillar-address">' + escapeHtml(pillar.owner_address) + '</span>' +
+    '</div>' +
+    '<dl class="pc-stats">' +
+    '<div class="pc-stat"><dt>Produced</dt><dd>' +
+    formatNumber(produced) + ' / ' + formatNumber(expected) + '</dd></div>' +
+    '<div class="pc-stat"><dt>Weight</dt><dd title="' + escapeHtml(formatWeight(pillar.weight)) + '">' +
+    formatCompactWeight(pillar.weight) + '</dd></div>' +
+    '<div class="pc-stat"><dt title="Momentum / delegate reward share">Shares</dt><dd>' +
     escapeHtml(pillar.momentum_reward_percentage) + '% / ' +
-    escapeHtml(pillar.delegate_reward_percentage) + '%</strong></div>' +
-    '</div>' +
-    '<div class="stat-item performance-stat">' +
-    '<span class="stat-label">Performance · 30d</span>' +
+    escapeHtml(pillar.delegate_reward_percentage) + '%</dd></div>' +
+    renderAprStat(item, loading) +
+    '</dl>' +
+    '<div class="pc-performance">' +
+    '<div class="pc-performance-head">' +
+    '<span>Performance · 30d</span>' +
     '<strong class="performance-value' +
     (!loading && !performanceAvailable(item) ? ' empty' : '') + '">' +
     (loading
       ? '<span class="skeleton skeleton-performance-value" aria-hidden="true"></span>'
       : formatPerformance(item)) +
     '</strong>' +
+    '</div>' +
     '<div class="performance-chart" role="img" aria-label="' +
     (loading ? 'Loading daily performance' : 'Daily performance for the last 30 days') + '"' +
     (loading ? ' aria-busy="true"' : '') + '>' +
     renderPerformanceChart(item, loading, pillar) +
-    '</div>' +
-    '<div class="performance-chart-axis" aria-hidden="true">' +
-    '<span>30d ago</span><span>Today</span>' +
     '</div>' +
     '</div>' +
     '</article>';
@@ -417,11 +496,39 @@ document.addEventListener("click", (event) => {
     syncFavoriteButtons(ownerAddress, toggleFavorite(ownerAddress));
     return;
   }
+  const aprInfo = event.target.closest(".apr-info-button");
+  // Close any open APR explanation when clicking elsewhere.
+  document.querySelectorAll(".apr-info-button[aria-expanded='true']").forEach((button) => {
+    if (button === aprInfo || event.target.closest(".apr-info")) return;
+    const panel = document.getElementById(button.getAttribute("aria-controls"));
+    if (panel) panel.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+  });
+  if (aprInfo) {
+    event.preventDefault();
+    event.stopPropagation();
+    const panel = document.getElementById(aprInfo.getAttribute("aria-controls"));
+    if (!panel) return;
+    const open = panel.hidden;
+    panel.hidden = !open;
+    aprInfo.setAttribute("aria-expanded", String(open));
+    return;
+  }
   const time = event.target.closest(".rel-time");
   if (time) toggleTime(time);
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    const open = document.querySelector(".apr-info-button[aria-expanded='true']");
+    if (open) {
+      const panel = document.getElementById(open.getAttribute("aria-controls"));
+      if (panel) panel.hidden = true;
+      open.setAttribute("aria-expanded", "false");
+      open.focus();
+    }
+    return;
+  }
   if (event.key !== "Enter" && event.key !== " ") return;
   const time = event.target.closest?.(".rel-time");
   if (!time) return;

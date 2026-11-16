@@ -12,6 +12,7 @@ subscription can deliver to Telegram, Discord, or both.
 - `tools/migrate_legacy_json.py` — imports an old JSON cache into SQLite once.
 - `tools/backfill_epoch_starts.py` — fills fallback epoch start estimates and applies observed on-chain transitions when available.
 - `tools/backfill_epoch_announcements.py` — recovers live Telegram send times from the notification outbox.
+- `tools/telegram/edit_event_message.py` — rewrites a sent Telegram notification from its stored event.
 - `tools/build_favicons.py` — rebuilds all favicon and web app icon sizes from one PNG source.
 - `tools/epoch_schedule.py` — calculates fallback epoch starts for historical tools.
 - `pillar_tracker.py`, `collector.py`, `web_app.py` — small root CLI compatibility entrypoints.
@@ -496,6 +497,33 @@ The current public sources are [Pillar Tracker](https://t.me/pillar_tracker)
 and [ATS Pillar Tracker](https://t.me/ATSocyPT). Telegram preview availability
 and channel history can change independently of this application, so keep the
 import command and its output as part of the audit trail.
+
+### Correct a sent Telegram message
+
+The collector stores the Telegram message ID of every notification it sends.
+`tools/telegram/edit_event_message.py` rebuilds the text of a stored event
+with the current formatting and edits the message the bot sent for it, for
+example after a formatting fix. Find the event ID first:
+
+```
+python tools/telegram/edit_event_message.py --list --event-type reward_shares_changed
+```
+
+Preview the new text, then edit the message:
+
+```
+python tools/telegram/edit_event_message.py --event-id 123
+```
+
+```
+python tools/telegram/edit_event_message.py --event-id 123 --apply
+```
+
+Messages sent before message IDs were stored need the ID passed by hand with
+`--message-id`. It is the last number in the message link (for example
+`https://t.me/c/1234567890/456` is message `456`). The chat defaults to
+`telegram_channel_id`; pass `--chat-id` for a subscription chat. Telegram
+only lets a bot edit its own messages.
 
 ## Development checks
 

@@ -7,7 +7,7 @@ from typing import Any, Iterable, Mapping
 
 import requests
 
-from .http_wrapper import HttpWrapper
+from .http_wrapper import HttpError, HttpWrapper
 
 
 class TelegramWrapper:
@@ -41,16 +41,23 @@ class TelegramWrapper:
     def enabled(self) -> bool:
         return bool(self.bot_api_key)
 
+    def _redacted(self, exc: HttpError) -> HttpError:
+        """Keep the bot token out of logs and the notification outbox."""
+        return HttpError(str(exc).replace(self.bot_api_key, "<token>"))
+
     def _call(self, method: str, data: dict[str, Any]):
         if not self.enabled:
             raise RuntimeError("Telegram bot API key is not configured")
         for attempt in range(self.rate_limit_retries + 1):
-            response = HttpWrapper.post(
-                f"{self.API_BASE_URL}/bot{self.bot_api_key}/{method}",
-                data,
-                timeout=self.timeout,
-                session=self._session(),
-            )
+            try:
+                response = HttpWrapper.post(
+                    f"{self.API_BASE_URL}/bot{self.bot_api_key}/{method}",
+                    data,
+                    timeout=self.timeout,
+                    session=self._session(),
+                )
+            except HttpError as exc:
+                raise self._redacted(exc) from None
             if (
                 response.status_code != 429
                 or attempt >= self.rate_limit_retries
@@ -74,12 +81,15 @@ class TelegramWrapper:
         if not self.enabled:
             raise RuntimeError("Telegram bot API key is not configured")
         for attempt in range(self.rate_limit_retries + 1):
-            response = HttpWrapper.get(
-                f"{self.API_BASE_URL}/bot{self.bot_api_key}/{method}",
-                params=params,
-                timeout=self.timeout,
-                session=self._session(),
-            )
+            try:
+                response = HttpWrapper.get(
+                    f"{self.API_BASE_URL}/bot{self.bot_api_key}/{method}",
+                    params=params,
+                    timeout=self.timeout,
+                    session=self._session(),
+                )
+            except HttpError as exc:
+                raise self._redacted(exc) from None
             if (
                 response.status_code != 429
                 or attempt >= self.rate_limit_retries
