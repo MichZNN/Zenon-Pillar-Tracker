@@ -1666,3 +1666,33 @@ body.modal-open { overflow: hidden; }
 .form-stack label.auth-trust small { font-weight: 500; }
 .trusted-devices-block { margin: 14px 0 6px; }
 .trusted-devices-block .setting-label { display: block; margin-bottom: 2px; }
+
+/* ---------- Header: quiet login link and tracker status ---------- */
+.dashboard-header .header-actions { gap: 20px; }
+.dashboard-header .site-nav .login-link {
+  border: 0;
+  color: var(--muted);
+  font-size: .8rem;
+  font-weight: 500;
+  height: auto;
+  min-height: 28px;
+  padding: 4px 0;
+}
+.dashboard-header .site-nav .login-link i { color: var(--muted); font-size: .75rem; }
+.dashboard-header .site-nav .login-link:hover { background: none; color: var(--text); }
+.dashboard-header .site-nav .login-link:hover i { color: var(--text); }
+.dashboard-header .health-badge {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: .8rem;
+  font-weight: 500;
+  height: auto;
+  padding: 4px 0;
+}
+/* The dot keeps the status colour; the text stays muted. */
+.dashboard-header .health-badge::before { background: var(--muted); height: 6px; width: 6px; }
+.dashboard-header .health-badge.green::before, .dashboard-header .health-badge.healthy::before { background: var(--zenon-green); }
+.dashboard-header .health-badge.orange::before, .dashboard-header .health-badge.stale::before { background: var(--status-orange); }
+.dashboard-header .health-badge.red::before, .dashboard-header .health-badge.error::before,
+.dashboard-header .health-badge.reorg::before { background: var(--status-red); }
