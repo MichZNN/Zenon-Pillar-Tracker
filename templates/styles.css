@@ -1360,7 +1360,7 @@ body.modal-open { overflow: hidden; }
   gap: 6px;
   white-space: nowrap;
 }
-.pc-status::before { background: var(--muted); border-radius: 50%; content: ""; height: 6px; width: 6px; }
+.pc-status::before { background: var(--muted); border-radius: 50%; content: ""; height: 6px; transform: translateY(-.5px); width: 6px; }
 .pc-status.active::before { background: var(--zenon-green); }
 .pc-status.inactive { color: var(--plasma-pink); }
 .pc-status.inactive::before { background: var(--plasma-pink); }
@@ -1691,7 +1691,8 @@ body.modal-open { overflow: hidden; }
   padding: 4px 0;
 }
 /* The dot keeps the status colour; the text stays muted. */
-.dashboard-header .health-badge::before { background: var(--muted); height: 6px; width: 6px; }
+/* Centre the dot on the capital letters rather than on the line box. */
+.dashboard-header .health-badge::before { background: var(--muted); height: 6px; transform: translateY(-1.5px); width: 6px; }
 .dashboard-header .health-badge.green::before, .dashboard-header .health-badge.healthy::before { background: var(--zenon-green); }
 .dashboard-header .health-badge.orange::before, .dashboard-header .health-badge.stale::before { background: var(--status-orange); }
 .dashboard-header .health-badge.red::before, .dashboard-header .health-badge.error::before,
