@@ -1797,9 +1797,28 @@ body.modal-open { overflow: hidden; }
 #account-modal .two-factor-section > [id^="two-factor-"] { margin-top: 18px; }
 #account-modal .modal-close { border: 0; }
 #account-modal .trusted-device { border: 0; border-radius: 0; border-top: 1px solid rgba(255, 255, 255, .08); padding: 10px 0; }
+/* ---------- Dialogs: the same frame for My account and Logs ---------- */
 @media (min-width: 680px) {
-  #account-modal .modal-dialog { background: var(--surface); border-color: rgba(255, 255, 255, .1); border-radius: 14px; padding: 28px; }
+  .modal-backdrop .modal-dialog {
+    background: var(--surface);
+    border: 1px solid rgba(255, 255, 255, .1);
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+    padding: 28px;
+  }
 }
+@media (max-width: 679px) {
+  /* Phones: every dialog fills the visible screen, square corners, no frame. */
+  .modal-backdrop .modal-dialog { background: #1d1d1d; border: 0; border-radius: 0; box-shadow: none; }
+  .modal-backdrop .logs-modal-dialog {
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+}
+/* Close and refresh buttons in a dialog header: icon only, no frame. */
+.modal-heading .modal-close, .modal-heading .modal-actions .icon-button { border: 0; }
 
 /* ---------- Login: calm card ---------- */
 .auth-shell { background: none; }
@@ -1880,3 +1899,16 @@ body.modal-open { overflow: hidden; }
 /* A button with the hidden attribute stays hidden, whatever its class sets. */
 button[hidden] { display: none !important; }
 .admin-shell .form-grid .checkbox-label { color: var(--text); font-weight: 400; }
+/* Logs dialog filters: same calm controls as the rest of the portal. */
+#logs-modal .log-filter > span { color: var(--muted); font-size: .8rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
+#logs-modal .log-filter select, #logs-modal .log-filter input {
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 8px;
+  font-size: .875rem;
+  font-weight: 400;
+  min-height: 42px;
+}
+#logs-modal ::placeholder { color: #8c8c8c; font-weight: 400; opacity: 1; }
+#logs-modal .log-viewer { border-color: rgba(255, 255, 255, .08); color: #d0d0d0; }
+#logs-modal .muted { font-size: .8125rem; }
