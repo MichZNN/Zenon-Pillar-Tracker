@@ -1920,3 +1920,4 @@ button[hidden] { display: none !important; }
   .overview-grid .label-full { display: none; }
   .overview-grid .label-short { display: inline; }
 }
+.last-update-short .fa-rotate { font-size: .7em; margin-right: 6px; opacity: .8; vertical-align: .05em; }
