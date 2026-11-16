@@ -804,6 +804,37 @@ class DatabaseTestCase(unittest.TestCase):
         self.assertEqual(epochs[3]["last_seen_at"], "2026-08-23T13:01:00+00:00")
         self.assertEqual(epochs[3]["last_observed_momentum_height"], 200)
 
+    def test_reward_share_events_store_pillar_name(self):
+        self.record({"z1alpha": make_pillar("Alpha", produced=1, expected=1)})
+        changed = make_pillar("Alpha", produced=2, expected=2)
+        changed["giveMomentumRewardPercentage"] = 100
+        self.record({"z1alpha": changed}, epoch=2)
+
+        events = self.database.get_events(event_type="reward_shares_changed")
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["details"]["name"], "Alpha")
+        self.assertEqual(events[0]["details"]["momentum"], {"old": 10, "new": 100})
+        self.assertNotIn("delegate", events[0]["details"])
+
+    def test_reward_share_events_without_name_are_backfilled(self):
+        self.record({"z1alpha": make_pillar("Alpha", produced=1, expected=1)})
+        with self.database._connect() as connection:
+            connection.execute(
+                "INSERT INTO events(event_type, owner_address, observed_at, "
+                "details_json) VALUES ('reward_shares_changed', 'z1alpha', ?, ?)",
+                (utc_now(), '{"momentum": {"old": 0, "new": 100}}'),
+            )
+            connection.execute(
+                "UPDATE schema_meta SET value = '9' "
+                "WHERE key = 'schema_version'"
+            )
+
+        events = Database(self.database.path).get_events(
+            event_type="reward_shares_changed"
+        )
+        self.assertEqual(events[0]["details"]["name"], "Alpha")
+        self.assertEqual(events[0]["details"]["momentum"], {"old": 0, "new": 100})
+
     def test_epoch_observation_repair_is_not_repeated_at_current_schema(self):
         with patch("models.database._repair_epoch_observation_metadata") as repair:
             Database(self.database.path)

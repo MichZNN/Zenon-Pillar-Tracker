@@ -305,6 +305,26 @@ class NotificationDispatcherTestCase(unittest.TestCase):
             "New pillar spawned: Alpha\nMomentum rewards: 10%\nDelegate rewards: 90%",
         )
 
+    def test_reward_share_notification_uses_pillar_name(self):
+        message = format_event(
+            {
+                "event_type": "reward_shares_changed",
+                "owner_address": "z1alpha",
+                "details": {
+                    "name": "Alpha",
+                    "momentum": {"old": 0, "new": 100},
+                    "delegate": {"old": 0, "new": 100},
+                },
+            }
+        )
+
+        self.assertEqual(
+            message,
+            "Pillar: Alpha\n"
+            "Momentum rewards: 0% ➡️ 100%\n"
+            "Delegate rewards: 0% ➡️ 100%",
+        )
+
     def test_epoch_notification_uses_rotating_emoji_without_raw_reward_units(self):
         first = format_event({"event_type": "epoch_available", "epoch": 42})
         second = format_event({"event_type": "epoch_available", "epoch": 43})

@@ -9,7 +9,7 @@ from threading import Lock
 from typing import Any, Iterable, Mapping
 
 
-SCHEMA_VERSION = "9"
+SCHEMA_VERSION = "10"
 # Bump when the daily performance calculation changes so stored days are
 # rebuilt from the raw snapshots.
 PERFORMANCE_ROLLUP_VERSION = "1"
@@ -370,6 +370,33 @@ def _string_values(value: Any) -> list[str]:
     ))
 
 
+def _backfill_reward_share_event_names(connection: sqlite3.Connection) -> int:
+    """Add the pillar name to reward share events stored without one."""
+    rows = connection.execute(
+        """
+        SELECT event.id, event.details_json, pillar.name
+        FROM events AS event
+        JOIN pillars AS pillar ON pillar.owner_address = event.owner_address
+        WHERE event.event_type = 'reward_shares_changed'
+        """
+    ).fetchall()
+    updated = 0
+    for event_id, details_json, name in rows:
+        try:
+            details = json.loads(details_json or "{}")
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(details, dict) or details.get("name") or not name:
+            continue
+        details["name"] = name
+        connection.execute(
+            "UPDATE events SET details_json = ? WHERE id = ?",
+            (json.dumps(details, sort_keys=True), event_id),
+        )
+        updated += 1
+    return updated
+
+
 def _repair_epoch_observation_metadata(
     connection: sqlite3.Connection,
 ) -> None:
@@ -491,6 +518,7 @@ def initialize_database(database_path: str | Path) -> Path:
             )
         if previous_schema_version != SCHEMA_VERSION:
             _repair_epoch_observation_metadata(connection)
+            _backfill_reward_share_event_names(connection)
         rollup_version_row = connection.execute(
             "SELECT value FROM schema_meta "
             "WHERE key = 'performance_rollup_version'"
@@ -1713,7 +1741,7 @@ class Database:
                     )
 
                 if previous and previous_present:
-                    share_changes: dict[str, Any] = {}
+                    share_changes: dict[str, Any] = {"name": name}
                     if previous.get("momentum_reward_percentage") != momentum_share:
                         share_changes["momentum"] = {
                             "old": previous.get("momentum_reward_percentage"),
@@ -1724,7 +1752,7 @@ class Database:
                             "old": previous.get("delegate_reward_percentage"),
                             "new": delegate_share,
                         }
-                    if share_changes:
+                    if len(share_changes) > 1:
                         event_count += 1
                         self._insert_event(
                             connection,
