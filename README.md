@@ -419,6 +419,12 @@ Back up the database before the first start with the key, and do not roll
 back to a version without encryption afterwards: older versions cannot read
 encrypted secrets or the new recovery-code hashes.
 
+If the key is truly lost, set a new one, reset two-factor authentication for
+the users listed in the startup error (*Users*, "Reset two-factor
+authentication"; afterwards they log in with their password and can set up
+two-factor authentication again), and redeploy so the web app starts with no
+unreadable secrets.
+
 To rotate the key, put the new key first and the old one after it,
 comma-separated (`TOTP_ENCRYPTION_KEY=new,old`), and redeploy; the web app
 re-encrypts the stored secrets with the new key at startup. Then remove the

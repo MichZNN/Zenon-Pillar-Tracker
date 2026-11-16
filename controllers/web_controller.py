@@ -1613,7 +1613,7 @@ def seal_stored_totp_secrets(database: Database) -> int:
             return 0
         rotate = key_count() > 1
         updates: list[tuple[int, str, str, str]] = []
-        unreadable = 0
+        unreadable: list[int] = []
         for user_id, column, stored in values:
             try:
                 if not is_encrypted(stored):
@@ -1623,7 +1623,7 @@ def seal_stored_totp_secrets(database: Database) -> int:
                 else:
                     open_secret(stored)
             except SecretKeyError:
-                unreadable += 1
+                unreadable.append(user_id)
         if unreadable:
             # The key does not match what is stored: write nothing with it,
             # and refuse new setups until the right key is back.
@@ -1632,8 +1632,9 @@ def seal_stored_totp_secrets(database: Database) -> int:
                 "%s two-factor secret(s) cannot be decrypted with TOTP_ENCRYPTION_KEY "
                 "(key changed?): nothing is re-encrypted and new two-factor setups "
                 "are refused until the right key is set; those users need a "
-                "recovery code meanwhile",
-                unreadable,
+                "recovery code meanwhile. User ids: %s",
+                len(unreadable),
+                ", ".join(str(user_id) for user_id in sorted(set(unreadable))),
             )
             return 0
         KEY_STATE["mismatch"] = False

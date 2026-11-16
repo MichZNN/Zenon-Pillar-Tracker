@@ -471,7 +471,7 @@ class TwoFactorWebTestCase(unittest.TestCase):
         self.assertFalse(self.database.consume_recovery_code(self.user["id"], matches))
 
 
-    def tearDown_key_state(self):
+    def reset_key_state(self):
         KEY_STATE["mismatch"] = False
 
     def test_all_digit_recovery_code_is_accepted(self):
@@ -484,7 +484,7 @@ class TwoFactorWebTestCase(unittest.TestCase):
         self.assertEqual(status, 200)
 
     def test_wrong_key_writes_nothing_and_refuses_setup(self):
-        self.addCleanup(self.tearDown_key_state)
+        self.addCleanup(self.reset_key_state)
         with with_key(TEST_KEY):
             self.database.enable_totp(
                 self.admin["id"], secret=seal_secret("ABCDEFGH"), step=0, recovery_code_hashes=[]
@@ -505,7 +505,7 @@ class TwoFactorWebTestCase(unittest.TestCase):
         self.database.enable_totp(
             self.user["id"], secret="enc:v1:\u00e9\u00e9", step=0, recovery_code_hashes=[]
         )
-        self.addCleanup(self.tearDown_key_state)
+        self.addCleanup(self.reset_key_state)
         with with_key(TEST_KEY):
             self.assertEqual(seal_stored_totp_secrets(self.database), 0)
 
