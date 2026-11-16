@@ -107,7 +107,7 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn("formatEpoch", app)
         self.assertIn("epoch.epoch_start_at", app)
         self.assertIn("epoch.epoch_start_inferred", app)
-        self.assertIn("(estimated)", app)
+        self.assertIn("epoch-estimated", app)
         self.assertNotIn("epoch.announcement_at || epoch.last_seen_at", app)
         self.assertIn("renderPerformanceChart", app)
         self.assertIn("performanceLoading", app)

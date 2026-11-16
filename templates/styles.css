@@ -395,15 +395,13 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
   padding: 10px 0;
 }
 .epoch-row:last-child, .event-row:last-child { border-bottom: 0; }
-.epoch-number { color: var(--text); font-size: .75rem; font-variant-numeric: tabular-nums; font-weight: 700; }
+.epoch-number { color: var(--text); font-size: .84rem; font-variant-numeric: tabular-nums; font-weight: 500; }
 .epoch-estimated {
   color: var(--plasma-pink);
   display: block;
-  font-size: .6rem;
-  font-weight: 800;
-  letter-spacing: .08em;
+  font-size: .75rem;
+  font-weight: 600;
   margin-top: 2px;
-  text-transform: uppercase;
 }
 .event-type { color: var(--quasar-blue); font-size: .75rem; font-weight: 700; }
 .event-detail { font-size: .84rem; margin-top: 4px; }
