@@ -400,14 +400,16 @@ python tools/generate_totp_key.py
 ```
 
 On a Docker deployment: `docker compose run --rm web python tools/generate_totp_key.py`.
-After a restart the web app encrypts the secrets that are already stored.
+At its next start the web app encrypts the secrets that are already stored.
 Without the key the secrets are stored unencrypted and the web app logs a
 warning at startup. Keep a copy of the key: if it is lost or changed,
 authenticator codes stop working and users with two-factor authentication can
 only log in with a recovery code (an administrator can then reset their
 two-factor authentication). The web app logs an error at startup when stored
 secrets cannot be decrypted, and it keeps running with an invalid key so the
-dashboard stays up; new two-factor setups are refused until the key is fixed.
+dashboard stays up. New two-factor setups are refused while the key is
+missing, invalid, or does not open the stored secrets, and nothing is
+re-encrypted with a key that does not match.
 
 In Docker the key reaches the container through `env_file`, which is only
 read when the container is created: run the deployment again (or

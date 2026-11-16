@@ -12,7 +12,9 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from controllers.web_controller import (
+    KEY_STATE,
     TWO_FACTOR_THROTTLE,
+    TwoFactorThrottle,
     seal_stored_totp_secrets,
     ApiRateLimiter,
     DashboardHandler,
@@ -467,6 +469,86 @@ class TwoFactorWebTestCase(unittest.TestCase):
         self.assertTrue(self.database.consume_recovery_code(self.user["id"], matches))
         self.assertEqual(writable, [True])
         self.assertFalse(self.database.consume_recovery_code(self.user["id"], matches))
+
+
+    def tearDown_key_state(self):
+        KEY_STATE["mismatch"] = False
+
+    def test_all_digit_recovery_code_is_accepted(self):
+        secret = base64.b32encode(b"12345678901234567890").decode()
+        self.database.enable_totp(
+            self.user["id"], secret=secret, step=0,
+            recovery_code_hashes=[hash_recovery_code("23456-78923")],
+        )
+        status, _, _, _ = self.login("operator", "another correct password", "23456-78923")
+        self.assertEqual(status, 200)
+
+    def test_wrong_key_writes_nothing_and_refuses_setup(self):
+        self.addCleanup(self.tearDown_key_state)
+        with with_key(TEST_KEY):
+            self.database.enable_totp(
+                self.admin["id"], secret=seal_secret("ABCDEFGH"), step=0, recovery_code_hashes=[]
+            )
+        plain = base64.b32encode(b"12345678901234567890").decode()
+        self.database.enable_totp(self.user["id"], secret=plain, step=0, recovery_code_hashes=[])
+        with with_key(generate_key()):
+            self.assertEqual(seal_stored_totp_secrets(self.database), 0)
+            self.assertEqual(self.stored_secret(self.user["id"]), plain)
+            self.assertTrue(KEY_STATE["mismatch"])
+        # With the right key back, everything opens and is encrypted.
+        with with_key(TEST_KEY):
+            self.assertEqual(seal_stored_totp_secrets(self.database), 1)
+            self.assertFalse(KEY_STATE["mismatch"])
+            self.assertEqual(open_secret(self.stored_secret(self.user["id"])), plain)
+
+    def test_corrupted_value_does_not_stop_startup(self):
+        self.database.enable_totp(
+            self.user["id"], secret="enc:v1:\u00e9\u00e9", step=0, recovery_code_hashes=[]
+        )
+        self.addCleanup(self.tearDown_key_state)
+        with with_key(TEST_KEY):
+            self.assertEqual(seal_stored_totp_secrets(self.database), 0)
+
+    def test_two_keys_reencrypt_once(self):
+        old_key, new_key = generate_key(), generate_key()
+        with with_key(old_key):
+            self.database.enable_totp(
+                self.user["id"], secret=seal_secret("ABCDEFGH"), step=0, recovery_code_hashes=[]
+            )
+        with with_key(f"{new_key},{old_key}"):
+            self.assertEqual(seal_stored_totp_secrets(self.database), 1)
+            self.assertEqual(seal_stored_totp_secrets(self.database), 0)
+        with with_key(new_key):
+            self.assertEqual(open_secret(self.stored_secret(self.user["id"])), "ABCDEFGH")
+
+    def test_concurrent_use_of_one_recovery_code_succeeds_once(self):
+        self.database.set_recovery_codes(self.user["id"], [hash_recovery_code("k3m9q-2xw7p")])
+        results = []
+        threads = [
+            Thread(target=lambda: results.append(self.database.consume_recovery_code(
+                self.user["id"], lambda stored: verify_recovery_code("k3m9q-2xw7p", stored)
+            )))
+            for _ in range(6)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(results.count(True), 1)
+
+
+class TwoFactorThrottleTestCase(unittest.TestCase):
+    def test_parallel_attempts_cannot_exceed_the_limit(self):
+        throttle = TwoFactorThrottle(max_failures=5, window_seconds=600)
+        allowed = []
+        threads = [Thread(target=lambda: allowed.append(throttle.try_attempt(7))) for _ in range(40)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(allowed.count(True), 5)
+        throttle.reset(7)
+        self.assertTrue(throttle.try_attempt(7))
 
 
 if __name__ == "__main__":

@@ -105,12 +105,24 @@ def open_secret(stored: str | None) -> str:
             f"Two-factor secrets are encrypted but {TOTP_KEY_ENV} is not set"
         )
     try:
-        return fernet.decrypt(stored[len(ENCRYPTED_PREFIX):].encode("ascii")).decode("utf-8")
-    except InvalidToken as exc:
+        return fernet.decrypt(stored[len(ENCRYPTED_PREFIX):]).decode("utf-8")
+    except (InvalidToken, UnicodeError, TypeError, ValueError) as exc:
         raise SecretKeyError(
             f"A two-factor secret cannot be decrypted with {TOTP_KEY_ENV}; "
             "was the key changed?"
         ) from exc
+
+
+def opens_with_primary_key(stored: str) -> bool:
+    """Whether an encrypted value already uses the first configured key."""
+    keys = _configured_keys()
+    if not keys or not is_encrypted(stored):
+        return False
+    try:
+        Fernet(keys[0].encode("ascii")).decrypt(stored[len(ENCRYPTED_PREFIX):])
+        return True
+    except (InvalidToken, UnicodeError, TypeError, ValueError):
+        return False
 
 
 def reseal_secret(stored: str) -> str:
@@ -121,8 +133,8 @@ def reseal_secret(stored: str) -> str:
     if not is_encrypted(stored):
         return seal_secret(stored) or stored
     try:
-        token = fernet.rotate(stored[len(ENCRYPTED_PREFIX):].encode("ascii"))
-    except InvalidToken as exc:
+        token = fernet.rotate(stored[len(ENCRYPTED_PREFIX):])
+    except (InvalidToken, UnicodeError, TypeError, ValueError) as exc:
         raise SecretKeyError(
             f"A two-factor secret cannot be decrypted with {TOTP_KEY_ENV}; "
             "was the key changed?"

@@ -1106,6 +1106,14 @@ class Database:
             if row[column]
         ]
 
+    def has_encrypted_totp_secrets(self) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM users WHERE totp_secret LIKE 'enc:v1:%' "
+                "OR totp_pending_secret LIKE 'enc:v1:%' LIMIT 1"
+            ).fetchone()
+        return row is not None
+
     def replace_totp_values(self, updates: list[tuple[int, str, str, str]]) -> int:
         """Store new secret values: (user id, column, old value, new value).
 

@@ -36,6 +36,7 @@ from services.secret_box import (
     is_encrypted,
     key_count,
     open_secret,
+    opens_with_primary_key,
     reseal_secret,
     seal_secret,
 )
@@ -713,7 +714,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 401 if login else 400,
             )
             return False
-        if TWO_FACTOR_THROTTLE.blocked(user_id):
+        if not TWO_FACTOR_THROTTLE.try_attempt(user_id):
             logger.warning("Two-factor attempts blocked for user %s", user_id)
             self._send_json(
                 {
@@ -739,16 +740,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.database.record_totp_step(user_id, step)
             TWO_FACTOR_THROTTLE.reset(user_id)
             return True
-        # Only something shaped like a recovery code (10 characters, not all
-        # digits) is checked against the slow recovery hashes.
-        looks_like_recovery = len(value) == 10 and not value.isdigit()
+        # Only something shaped like a recovery code (10 characters; TOTP
+        # codes have 6) is checked against the slow recovery hashes.
+        looks_like_recovery = len(value) == 10
         if looks_like_recovery and self.database.consume_recovery_code(
             user_id, lambda stored: verify_recovery_code(value, stored)
         ):
             TWO_FACTOR_THROTTLE.reset(user_id)
             logger.info("Recovery code used by user %s", user_id)
             return True
-        TWO_FACTOR_THROTTLE.failed(user_id)
         logger.warning("Wrong two-factor code for user %s", user_id)
         self._send_json(
             {"error": "Invalid two-factor code", "two_factor_required": True},
@@ -781,9 +781,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         so no plain secrets are mixed in until the key is back.
         """
         try:
-            if not encryption_enabled() and any(
-                is_encrypted(value) for _, _, value in self.database.totp_secret_values()
-            ):
+            if KEY_STATE["mismatch"]:
+                raise SecretKeyError("TOTP_ENCRYPTION_KEY does not match the stored secrets")
+            if not encryption_enabled() and self.database.has_encrypted_totp_secrets():
                 raise SecretKeyError("TOTP_ENCRYPTION_KEY is missing")
             return seal_secret(secret) or secret
         except SecretKeyError as exc:
@@ -1479,6 +1479,20 @@ class TwoFactorThrottle:
         with self._lock:
             return len(self._recent(user_id)) >= self.max_failures
 
+    def try_attempt(self, user_id: int) -> bool:
+        """Reserve one attempt; False when the user is blocked.
+
+        Checking and counting happen under one lock, so parallel requests
+        cannot get more than ``max_failures`` guesses through. Every attempt
+        counts until a correct code calls ``reset``.
+        """
+        with self._lock:
+            recent = self._recent(user_id)
+            if len(recent) >= self.max_failures:
+                return False
+            recent.append(monotonic())
+            return True
+
     def failed(self, user_id: int) -> None:
         with self._lock:
             self._recent(user_id).append(monotonic())
@@ -1564,6 +1578,10 @@ class DashboardServer(ThreadingHTTPServer):
         )
 
 
+# Set at startup when the configured key cannot open the stored secrets.
+KEY_STATE = {"mismatch": False}
+
+
 def seal_stored_totp_secrets(database: Database) -> int:
     """Check and encrypt the stored two-factor secrets at startup.
 
@@ -1600,21 +1618,28 @@ def seal_stored_totp_secrets(database: Database) -> int:
             try:
                 if not is_encrypted(stored):
                     updates.append((user_id, column, stored, seal_secret(stored)))
-                elif rotate:
+                elif rotate and not opens_with_primary_key(stored):
                     updates.append((user_id, column, stored, reseal_secret(stored)))
                 else:
                     open_secret(stored)
             except SecretKeyError:
                 unreadable += 1
         if unreadable:
+            # The key does not match what is stored: write nothing with it,
+            # and refuse new setups until the right key is back.
+            KEY_STATE["mismatch"] = True
             logger.error(
                 "%s two-factor secret(s) cannot be decrypted with TOTP_ENCRYPTION_KEY "
-                "(key missing or changed?): those users need a recovery code",
+                "(key changed?): nothing is re-encrypted and new two-factor setups "
+                "are refused until the right key is set; those users need a "
+                "recovery code meanwhile",
                 unreadable,
             )
+            return 0
+        KEY_STATE["mismatch"] = False
         replaced = database.replace_totp_values(updates) if updates else 0
         if replaced:
-            logger.info("Encrypted %s stored two-factor secret(s)", replaced)
+            logger.info("Encrypted or re-encrypted %s stored two-factor secret(s)", replaced)
         return replaced
     except SecretKeyError as exc:
         logger.error("Two-factor encryption is not available: %s", exc)
