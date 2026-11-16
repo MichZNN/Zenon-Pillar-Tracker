@@ -128,18 +128,6 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
   box-shadow: var(--shadow);
 }
 .hero-card { min-height: 150px; padding: 22px; position: relative; overflow: hidden; }
-.hero-card::after {
-  content: "";
-  position: absolute;
-  width: 140px;
-  height: 140px;
-  border-radius: 50%;
-  right: -54px;
-  bottom: -70px;
-  background: rgba(111, 243, 77, .12);
-}
-.epoch-card::after { background: rgba(0, 97, 235, .22); }
-.momentum-card { border-color: rgba(0, 97, 235, .32); }
 .card-label, .metric-label {
   color: var(--muted);
   font-size: .72rem;
@@ -180,8 +168,13 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 .skeleton-count { height: 13px; width: 72px; }
 .metric-grid { grid-template-columns: repeat(3, 1fr); margin: 18px 0; }
 .metric-card { padding: 16px; }
+.metric-label { display: block; line-height: 1.5; }
+.card-label { line-height: 1.5; }
+@media (max-width: 679px) {
+  /* Three narrow cards: "Total", "Active", "Inactive" fit on one line. */
+  .metric-label-suffix { display: none; }
+}
 .metric-card strong { display: block; font-size: 1.75rem; margin-top: 5px; }
-.metric-card:first-child strong { color: var(--quasar-blue); }
 .metric-card.positive strong { color: var(--accent); }
 .metric-card.warning strong { color: var(--warning); }
 
@@ -1240,7 +1233,6 @@ body.modal-open { overflow: hidden; }
   .mobile-only { display: inline; }
   .hero-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hero-card { min-height: 0; padding: 16px; }
-  .hero-card::after { bottom: -60px; height: 100px; right: -44px; width: 100px; }
   .hero-value { font-size: clamp(1.5rem, 6.4vw, 2.1rem); letter-spacing: -.04em; margin: 10px 0 6px; white-space: nowrap; }
   .skeleton-hero-value { height: clamp(1.5rem, 6.4vw, 2.1rem); margin: 10px 0 6px; }
   .hero-card .muted { font-size: .75rem; }
@@ -1248,17 +1240,17 @@ body.modal-open { overflow: hidden; }
 
 /* ---------- Desktop: one compact overview row ---------- */
 @media (min-width: 960px) {
+  /* All five cards share one grid: equal widths and one gap. */
   .overview-grid {
     align-items: stretch;
     display: grid;
     gap: 12px;
-    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     margin-bottom: 18px;
   }
-  .overview-grid .metric-grid { margin: 0; }
-  .overview-grid .hero-card { min-height: 0; padding: 22px 16px 14px; }
-  .overview-grid .hero-card::after { bottom: -60px; height: 100px; right: -44px; width: 100px; }
-  .overview-grid .hero-value { font-size: 1.75rem; letter-spacing: -.04em; line-height: 1.45; margin: 5px 0 0; white-space: nowrap; }
+  .overview-grid .hero-grid, .overview-grid .metric-grid { display: contents; }
+  .overview-grid .hero-card { min-height: 0; padding: 16px; }
+  .overview-grid .hero-value { font-size: 1.75rem; letter-spacing: -.04em; line-height: 1.2; margin: 5px 0 0; white-space: nowrap; }
   .overview-grid .skeleton-hero-value { height: 1.75rem; margin: 5px 0 4px; }
   .overview-grid .hero-card .muted { font-size: .72rem; }
   /* The card is narrow now: use the short relative update time here too. */
@@ -1285,23 +1277,70 @@ body.modal-open { overflow: hidden; }
 
 /* ---------- Delegator APR ---------- */
 .pillar-title-row .pillar-name { flex: 1 1 auto; min-width: 0; }
-.apr-chip {
-  background: rgba(111, 243, 77, .09);
-  border: 1px solid rgba(111, 243, 77, .3);
-  border-radius: 999px;
-  color: var(--zenon-green);
-  flex: 0 0 auto;
-  font-size: .72rem;
+.pillar-card .pillar-title-row { align-items: flex-start; gap: 12px; justify-content: space-between; margin: 10px 0 2px; }
+.pillar-title-text { flex: 1 1 auto; min-width: 0; }
+.pillar-title-text .pillar-name { display: block; }
+.pillar-title-text .pillar-address { margin-top: 3px; }
+.pillar-card-meta { align-items: center; display: flex; gap: 10px; min-width: 0; }
+.pillar-card .status-badge { padding: 5px 9px; }
+.status-duration { color: var(--muted); font-weight: 700; }
+.status-duration::before { content: "·"; margin: 0 6px 0 0; }
+.pillar-card-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.apr-block { flex: 0 0 auto; text-align: right; }
+.apr-block-label {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: .6rem;
   font-weight: 800;
-  padding: 4px 9px;
+  gap: 4px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
-.apr-chip.is-zero { background: transparent; border-color: var(--line); color: var(--muted); }
-.apr-chip.is-loading { border-color: transparent; height: 24px; width: 72px; }
-.apr-chip.is-loading { animation: skeleton-shimmer 1.5s ease-in-out infinite; background: linear-gradient(90deg, rgba(255, 255, 255, .06) 25%, rgba(111, 243, 77, .16) 50%, rgba(255, 255, 255, .06) 75%); background-size: 220% 100%; }
-@media (hover: hover) {
-  .pillar-card .apr-chip { position: relative; z-index: 1; }
+.apr-info-button {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: .72rem;
+  line-height: 1;
+  padding: 2px;
+  position: relative;
+  z-index: 1;
 }
+.apr-info-button:hover, .apr-info-button:focus-visible, .apr-info-button[aria-expanded="true"] { color: var(--text); }
+.apr-info-button:focus-visible { outline: 2px solid var(--quasar-blue); outline-offset: 1px; border-radius: 4px; }
+.apr-block-value {
+  color: var(--zenon-green);
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 850;
+  letter-spacing: -.02em;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.apr-block.is-zero .apr-block-value { color: var(--muted); }
+.apr-block.is-caution .apr-block-value { color: var(--status-orange); }
+.apr-block-value .fa-triangle-exclamation { font-size: .8rem; margin-right: 5px; vertical-align: 2px; }
+.apr-info {
+  background: #141414;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  color: var(--muted);
+  font-size: .72rem;
+  line-height: 1.45;
+  margin: 8px 0 0;
+  max-width: 280px;
+  padding: 9px 11px;
+  position: absolute;
+  right: 14px;
+  text-align: left;
+  z-index: 3;
+}
+.apr-info-caution { color: var(--status-orange); display: block; font-weight: 700; margin-bottom: 4px; }
+.skeleton-apr { height: 22px; margin: 3px 0 0 auto; width: 64px; }
 .apr-value { color: var(--zenon-green); font-size: 1rem; }
 .apr-value.empty { color: var(--muted); }
 .stat-note { color: var(--muted); font-size: .7rem; margin: 12px 0 0; }

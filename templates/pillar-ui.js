@@ -274,18 +274,68 @@ function aprValue(performance) {
   return Number.isFinite(value) ? value : null;
 }
 
+// Above this the estimate is dominated by a small weight or a recent
+// reward share change and usually drops quickly.
+const APR_CAUTION_THRESHOLD = 100;
+
 function formatApr(performance) {
   const value = aprValue(performance);
   if (value === null) return "—";
-  return (value >= 10 || value === 0 ? value.toFixed(value === 0 ? 0 : 1) : value.toFixed(2)) + "%";
+  if (value === 0) return "0%";
+  if (value >= APR_CAUTION_THRESHOLD) return "~" + Math.round(value) + "%";
+  return (value >= 10 ? value.toFixed(1) : value.toFixed(2)) + "%";
 }
 
-function renderAprChip(performance, loading = false) {
-  if (loading) return '<span class="apr-chip is-loading" aria-hidden="true"></span>';
+// Why an APR estimate should not be taken at face value, or "".
+function aprCaution(performance) {
   const value = aprValue(performance);
   if (value === null) return "";
-  return '<span class="apr-chip' + (value === 0 ? ' is-zero' : '') + '" title="' +
-    escapeHtml(APR_HELP) + '">' + formatApr(performance) + ' APR</span>';
+  const days = Number(performance?.delegator_apr?.sample_days);
+  if (Number.isFinite(days) && days < 7) {
+    return "Based on only " + days + (days === 1 ? " day" : " days") + " of data.";
+  }
+  if (value >= APR_CAUTION_THRESHOLD) {
+    return "Unusually high. This happens with a small weight or a recent " +
+      "reward share change, and drops as delegations grow.";
+  }
+  return "";
+}
+
+let aprInfoCounter = 0;
+
+function renderAprBlock(performance, loading = false) {
+  if (loading) {
+    return '<div class="apr-block"><span class="apr-block-label">Delegator APR</span>' +
+      '<span class="skeleton skeleton-apr" aria-hidden="true"></span></div>';
+  }
+  const value = aprValue(performance);
+  if (value === null) return "";
+  const caution = aprCaution(performance);
+  const infoId = "apr-info-" + (++aprInfoCounter);
+  const tone = value === 0 ? " is-zero" : caution ? " is-caution" : "";
+  return '<div class="apr-block' + tone + '">' +
+    '<span class="apr-block-label">Delegator APR' +
+    '<button class="apr-info-button" type="button" aria-expanded="false" ' +
+    'aria-controls="' + infoId + '" aria-label="How is the delegator APR estimated?" ' +
+    'title="' + escapeHtml(APR_HELP) + '">' +
+    '<i class="fa-solid fa-circle-info" aria-hidden="true"></i></button></span>' +
+    '<strong class="apr-block-value">' +
+    (caution ? '<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>' : '') +
+    formatApr(performance) + '</strong>' +
+    '<p class="apr-info" id="' + infoId + '" hidden>' +
+    (caution ? '<span class="apr-info-caution">' + escapeHtml(caution) + '</span> ' : '') +
+    escapeHtml(APR_HELP) + ' Reward shares can change at any time.</p>' +
+    '</div>';
+}
+
+function statusBadge(pillar) {
+  const seconds = statusDurationSeconds(pillar);
+  const duration = seconds === null || seconds === undefined ? "" : formatDuration(seconds);
+  return '<span class="status-badge ' + escapeHtml(pillar.status) + '"' +
+    (duration ? ' title="' + escapeHtml(statusDurationLabel(pillar.status) + " " + duration) + '"' : '') +
+    '>' + escapeHtml(statusLabel(pillar.status)) +
+    (duration ? '<span class="status-duration">' + escapeHtml(duration) + '</span>' : '') +
+    '</span>';
 }
 
 /* ---------- Favorites ---------- */
@@ -358,27 +408,27 @@ function renderPillarCard(pillar, performance, options = {}) {
   const favorite = isFavorite(pillar.owner_address);
   return '<article class="pillar-card' + (favorite ? ' is-favorite' : '') + '">' +
     '<div class="pillar-card-top">' +
+    '<div class="pillar-card-meta">' +
     '<span class="pillar-rank">#' + escapeHtml(formatRank(pillar.rank)) + '</span>' +
+    statusBadge(pillar) +
+    '</div>' +
     '<div class="pillar-card-actions">' +
     favoriteButton(pillar) +
-    '<span class="status-badge ' + escapeHtml(pillar.status) + '">' +
-    escapeHtml(statusLabel(pillar.status)) + '</span>' +
     '</div>' +
     '</div>' +
     '<div class="pillar-title-row">' +
+    '<div class="pillar-title-text">' +
     '<a class="pillar-name pillar-card-link" href="' + pillarUrl(pillar.owner_address) + '">' +
     escapeHtml(pillar.name) + '</a>' +
-    renderAprChip(item, loading) +
-    '</div>' +
     '<div class="pillar-address">' + escapeHtml(pillar.owner_address) + '</div>' +
-    '<div class="pillar-stats">' +
+    '</div>' +
+    renderAprBlock(item, loading) +
+    '</div>' +
+    '<div class="pillar-stats pillar-card-stats">' +
     '<div class="stat-item"><span class="stat-label">Produced / expected</span><strong>' +
     formatNumber(produced) + " / " + formatNumber(expected) + '</strong></div>' +
     '<div class="stat-item"><span class="stat-label">Weight</span><strong>' +
     formatWeight(pillar.weight) + '</strong></div>' +
-    '<div class="stat-item"><span class="stat-label">' +
-    statusDurationLabel(pillar.status) + '</span><strong>' +
-    formatDuration(statusDurationSeconds(pillar)) + '</strong></div>' +
     '<div class="stat-item"><span class="stat-label">Momentum / delegate</span><strong>' +
     escapeHtml(pillar.momentum_reward_percentage) + '% / ' +
     escapeHtml(pillar.delegate_reward_percentage) + '%</strong></div>' +
@@ -424,6 +474,24 @@ document.addEventListener("click", (event) => {
     event.stopPropagation();
     const ownerAddress = favorite.dataset.favorite;
     syncFavoriteButtons(ownerAddress, toggleFavorite(ownerAddress));
+    return;
+  }
+  const aprInfo = event.target.closest(".apr-info-button");
+  // Close any open APR explanation when clicking elsewhere.
+  document.querySelectorAll(".apr-info-button[aria-expanded='true']").forEach((button) => {
+    if (button === aprInfo || event.target.closest(".apr-info")) return;
+    const panel = document.getElementById(button.getAttribute("aria-controls"));
+    if (panel) panel.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+  });
+  if (aprInfo) {
+    event.preventDefault();
+    event.stopPropagation();
+    const panel = document.getElementById(aprInfo.getAttribute("aria-controls"));
+    if (!panel) return;
+    const open = panel.hidden;
+    panel.hidden = !open;
+    aprInfo.setAttribute("aria-expanded", String(open));
     return;
   }
   const time = event.target.closest(".rel-time");
