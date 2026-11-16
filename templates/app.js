@@ -23,10 +23,11 @@ function renderOverview(payload) {
   const epoch = payload.epoch;
   const node = payload.node;
   const counts = payload.pillar_counts || {};
-  $("#current-epoch").textContent = epoch ? formatEpoch(epoch.epoch) : "—";
-  $("#momentum-height").textContent = node?.last_momentum_height
-    ? formatNumber(node.last_momentum_height)
-    : "—";
+  const notAvailable = '<span class="hero-empty">No data</span>';
+  $("#current-epoch").innerHTML = epoch ? escapeHtml(formatEpoch(epoch.epoch)) : notAvailable;
+  $("#momentum-height").innerHTML = node?.last_momentum_height
+    ? escapeHtml(formatNumber(node.last_momentum_height))
+    : notAvailable;
   // Full text on desktop; a short relative time on mobile.
   $("#last-update").innerHTML = node?.last_success_at
     ? '<span class="desktop-only">Last successful update ' +

@@ -99,7 +99,7 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn("/api/overview", app)
         self.assertIn("Inactive for", app)
         self.assertIn("missed checks", app)
-        self.assertIn("Performance (30 days)", app)
+        self.assertIn("Performance · 30d", app)
         self.assertIn("class=\"stat-item\"", app)
         self.assertIn("class=\"stat-item performance-stat\"", app)
         self.assertIn("Produced / expected", app)

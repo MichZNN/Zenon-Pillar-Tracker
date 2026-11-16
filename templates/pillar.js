@@ -24,36 +24,40 @@ function renderSummary(pillar) {
     escapeHtml(pillar.owner_address) + '" aria-label="Copy address" title="Copy address">' +
     '<i class="fa-regular fa-copy" aria-hidden="true"></i></button>';
   $("#pillar-actions").innerHTML =
-    '<span class="status-badge ' + escapeHtml(pillar.status) + '">' +
-    escapeHtml(statusLabel(pillar.status)) + '</span>' +
     favoriteButton(pillar) +
     '<button class="icon-button share-button" type="button" aria-label="Share this pillar" title="Share this pillar">' +
     '<i class="fa-solid fa-share-nodes" aria-hidden="true"></i></button>';
   $("#pillar-summary").innerHTML =
     '<div class="pillar-stats pillar-page-stats">' +
-    '<div class="stat-item"><span class="stat-label">Performance (30 days)</span><strong class="performance-value' +
+    renderStatusTile(pillar) +
+    '<div class="stat-item"><span class="stat-label">Performance · 30d</span><strong class="performance-value' +
     (performanceAvailable(performance) ? '' : ' empty') + '">' +
-    formatPerformance(performance) + '</strong></div>' +
-    '<div class="stat-item"><span class="stat-label">Delegator APR</span><strong class="apr-value' +
-    (aprValue(performance) ? '' : ' empty') + '" title="' + escapeHtml(APR_HELP) + '">' +
-    formatApr(performance) + '</strong></div>' +
-    '<div class="stat-item"><span class="stat-label">Produced / expected · this epoch</span><strong>' +
+    formatPerformance(performance) + '</strong>' +
+    '<span class="stat-sub">Share of expected momentums</span></div>' +
+    renderAprTile(pillar, performance) +
+    '<div class="stat-item"><span class="stat-label">This epoch</span><strong>' +
     formatNumber(pillar.produced_momentums ?? 0) + ' / ' +
-    formatNumber(pillar.expected_momentums ?? 0) + '</strong></div>' +
-    '<div class="stat-item"><span class="stat-label">Momentums per day · 7d</span><strong>' +
-    (performance.delegator_apr ? formatNumber(performance.delegator_apr.momentums_per_day) : '—') +
-    '</strong></div>' +
+    formatNumber(pillar.expected_momentums ?? 0) + '</strong>' +
+    '<span class="stat-sub">Produced / expected momentums</span></div>' +
+    '<div class="stat-item"><span class="stat-label">Momentums / day · 7d</span><strong>' +
+    (performance.delegator_apr ? formatNumber(performance.delegator_apr.momentums_per_day) : 'Not available') +
+    '</strong><span class="stat-sub">Average of completed days</span></div>' +
     '<div class="stat-item"><span class="stat-label">Weight</span><strong>' +
-    formatWeight(pillar.weight) + '</strong></div>' +
-    '<div class="stat-item"><span class="stat-label">' +
-    statusDurationLabel(pillar.status) + '</span><strong>' +
-    formatDuration(statusDurationSeconds(pillar)) + '</strong></div>' +
-    '<div class="stat-item"><span class="stat-label">Momentum share</span><strong>' +
-    escapeHtml(pillar.momentum_reward_percentage) + '%</strong></div>' +
-    '<div class="stat-item"><span class="stat-label">Delegate share</span><strong>' +
-    escapeHtml(pillar.delegate_reward_percentage) + '%</strong></div>' +
-    '</div>' +
-    '<p class="stat-note">' + escapeHtml(APR_HELP) + ' Reward shares can change at any time.</p>';
+    formatWeight(pillar.weight) + '</strong>' +
+    '<span class="stat-sub">Delegated to this pillar</span></div>' +
+    '</div>';
+}
+
+function renderStatusTile(pillar) {
+  const seconds = statusDurationSeconds(pillar);
+  const duration = seconds === null || seconds === undefined ? "" : formatDuration(seconds);
+  return '<div class="stat-item stat-status ' + escapeHtml(pillar.status) + '">' +
+    '<span class="stat-label">Status</span>' +
+    '<strong><i class="status-dot" aria-hidden="true"></i>' +
+    escapeHtml(statusLabel(pillar.status)) + '</strong>' +
+    '<span class="stat-sub">' +
+    (duration ? escapeHtml(statusDurationLabel(pillar.status) + " " + duration) : "&nbsp;") +
+    '</span></div>';
 }
 
 function renderChart(pillar) {

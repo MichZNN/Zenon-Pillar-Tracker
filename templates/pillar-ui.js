@@ -149,7 +149,7 @@ function eventDescription(event) {
   }
   if (event.event_type === "reward_shares_changed") {
     const name = details.name || event.owner_address || "Unknown pillar";
-    const percent = (value) => (value === null || value === undefined ? "—" : value + "%");
+    const percent = (value) => (value === null || value === undefined ? "unknown" : value + "%");
     const changes = [];
     if (details.momentum) {
       changes.push("Momentum " + percent(details.momentum.old) + " → " + percent(details.momentum.new));
@@ -303,6 +303,23 @@ function aprCaution(performance) {
 
 let aprInfoCounter = 0;
 
+function aprInfoParts(performance) {
+  const caution = aprCaution(performance);
+  const infoId = "apr-info-" + (++aprInfoCounter);
+  return {
+    caution,
+    button: '<button class="apr-info-button" type="button" aria-expanded="false" ' +
+      'aria-controls="' + infoId + '" aria-label="How is the delegator APR estimated?" ' +
+      'title="' + escapeHtml(APR_HELP) + '">' +
+      '<i class="fa-solid fa-circle-info" aria-hidden="true"></i></button>',
+    value: (caution ? '<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>' : '') +
+      formatApr(performance),
+    panel: '<p class="apr-info" id="' + infoId + '" hidden>' +
+      (caution ? '<span class="apr-info-caution">' + escapeHtml(caution) + '</span> ' : '') +
+      escapeHtml(APR_HELP) + ' Reward shares can change at any time.</p>',
+  };
+}
+
 function renderAprBlock(performance, loading = false) {
   if (loading) {
     return '<div class="apr-block"><span class="apr-block-label">Delegator APR</span>' +
@@ -310,21 +327,26 @@ function renderAprBlock(performance, loading = false) {
   }
   const value = aprValue(performance);
   if (value === null) return "";
-  const caution = aprCaution(performance);
-  const infoId = "apr-info-" + (++aprInfoCounter);
-  const tone = value === 0 ? " is-zero" : caution ? " is-caution" : "";
+  const info = aprInfoParts(performance);
+  const tone = value === 0 ? " is-zero" : info.caution ? " is-caution" : "";
   return '<div class="apr-block' + tone + '">' +
-    '<span class="apr-block-label">Delegator APR' +
-    '<button class="apr-info-button" type="button" aria-expanded="false" ' +
-    'aria-controls="' + infoId + '" aria-label="How is the delegator APR estimated?" ' +
-    'title="' + escapeHtml(APR_HELP) + '">' +
-    '<i class="fa-solid fa-circle-info" aria-hidden="true"></i></button></span>' +
-    '<strong class="apr-block-value">' +
-    (caution ? '<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>' : '') +
-    formatApr(performance) + '</strong>' +
-    '<p class="apr-info" id="' + infoId + '" hidden>' +
-    (caution ? '<span class="apr-info-caution">' + escapeHtml(caution) + '</span> ' : '') +
-    escapeHtml(APR_HELP) + ' Reward shares can change at any time.</p>' +
+    '<span class="apr-block-label">Delegator APR' + info.button + '</span>' +
+    '<strong class="apr-block-value">' + info.value + '</strong>' +
+    info.panel +
+    '</div>';
+}
+
+// The APR as a stat tile on the pillar page, with the reward shares below.
+function renderAprTile(pillar, performance) {
+  const value = aprValue(performance);
+  const info = aprInfoParts(performance);
+  const tone = value === null || value === 0 ? " is-zero" : info.caution ? " is-caution" : "";
+  return '<div class="stat-item stat-apr' + tone + '">' +
+    '<span class="stat-label">Delegator APR' + (value === null ? '' : info.button) + '</span>' +
+    '<strong class="apr-tile-value">' + (value === null ? 'Not available' : info.value) + '</strong>' +
+    '<span class="stat-sub">Momentum ' + escapeHtml(pillar.momentum_reward_percentage) +
+    '% · Delegate ' + escapeHtml(pillar.delegate_reward_percentage) + '%</span>' +
+    (value === null ? '' : info.panel) +
     '</div>';
 }
 
