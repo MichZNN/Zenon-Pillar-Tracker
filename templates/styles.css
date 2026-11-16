@@ -395,7 +395,7 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
   padding: 10px 0;
 }
 .epoch-row:last-child, .event-row:last-child { border-bottom: 0; }
-.epoch-number { font-size: 1rem; font-weight: 850; }
+.epoch-number { color: var(--text); font-size: .75rem; font-variant-numeric: tabular-nums; font-weight: 700; }
 .epoch-estimated {
   color: var(--plasma-pink);
   display: block;
@@ -405,9 +405,9 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
   margin-top: 2px;
   text-transform: uppercase;
 }
-.event-type { color: var(--quasar-blue); font-size: .74rem; font-weight: 800; }
+.event-type { color: var(--quasar-blue); font-size: .75rem; font-weight: 700; }
 .event-detail { font-size: .84rem; margin-top: 4px; }
-.event-time { color: var(--muted); font-size: .72rem; }
+.event-time { color: var(--muted); font-size: .75rem; }
 .history-intro { margin: -6px 0 18px; max-width: 680px; }
 .history-toolbar { display: flex; justify-content: flex-end; margin: -2px 0 14px; }
 .history-toolbar .select-box { min-width: min(260px, 100%); }
@@ -1135,10 +1135,14 @@ body.modal-open { overflow: hidden; }
 .favorite-button:hover, .icon-button:hover { border-color: rgba(111, 243, 77, .5); color: var(--text); }
 .favorite-button.is-favorite { background: rgba(111, 243, 77, .1); border-color: rgba(111, 243, 77, .45); color: var(--zenon-green); }
 .favorite-button:focus-visible, .icon-button:focus-visible { outline: 2px solid var(--quasar-blue); outline-offset: 2px; }
-@media (hover: hover) {
-  /* Keep the per-day tooltips on desktop. */
-  .pillar-card .performance-chart { position: relative; z-index: 1; }
-}
+/* The card chart sits above the card link: hovering or clicking a day
+   shows it in the chart heading instead of opening the pillar. */
+.pillar-card .performance-chart { cursor: pointer; position: relative; z-index: 1; }
+.performance-col { align-items: flex-end; display: flex; height: 100%; min-width: 0; }
+.performance-col .performance-bar { width: 100%; }
+.pillar-card .performance-chart:has(.is-active) .performance-col .performance-bar { opacity: .55; }
+.pillar-card .performance-chart .performance-col.is-active .performance-bar { opacity: 1; }
+.pc-performance-label.is-day { color: var(--text); }
 
 /* ---------- Mobile: compact pillar cards ---------- */
 @media (max-width: 679px) {
@@ -1385,7 +1389,7 @@ body.modal-open { overflow: hidden; }
 }
 .pc-performance-head .performance-value { color: var(--text); font-size: .875rem; font-variant-numeric: tabular-nums; font-weight: 600; }
 .pc-performance-head .performance-value.empty { color: var(--muted); }
-.pillar-card .performance-chart { gap: 3px; height: 26px; margin-top: 8px; }
+.pillar-card .performance-chart { gap: 3px; height: 34px; margin-top: 8px; }
 .pillar-card .performance-bar { border-radius: 1.5px; }
 @media (max-width: 679px) {
   .pillar-list .pillar-card, .pillar-card { padding: 16px; }
@@ -1489,41 +1493,44 @@ body.modal-open { overflow: hidden; }
 /* ---------- Overview: one panel with five values ---------- */
 .overview-grid {
   background: rgba(255, 255, 255, .07);
-  border: 1px solid rgba(255, 255, 255, .07);
-  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 18px;
   display: grid;
   gap: 1px;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  margin-bottom: 18px;
+  margin-bottom: 20px;
   overflow: hidden;
 }
 .overview-grid .hero-grid, .overview-grid .metric-grid { display: contents; }
 .overview-grid .hero-card, .overview-grid .metric-card {
-  background: #1c1c1c;
+  background: linear-gradient(180deg, #222 0%, #1b1b1b 100%);
   border: 0;
   border-radius: 0;
   box-shadow: none;
   min-height: 0;
-  padding: 16px 18px;
+  padding: 22px 24px 24px;
 }
+/* One accent: the current epoch leads the page. */
+.overview-grid .epoch-card { box-shadow: inset 0 2px 0 var(--zenon-green); }
 .overview-grid .hero-card { grid-column: span 3; }
 .overview-grid .metric-card { grid-column: span 2; }
 .overview-grid .card-label, .overview-grid .metric-label {
-  color: rgba(168, 168, 168, .85);
-  font-size: .75rem;
-  font-weight: 400;
+  color: var(--muted);
+  font-size: .8125rem;
+  font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
 }
 .overview-grid .hero-value, .overview-grid .metric-card strong {
   color: var(--text);
-  font-size: 1.45rem;
+  font-size: clamp(2rem, 2.6vw, 2.5rem);
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  letter-spacing: -.02em;
-  line-height: 1.2;
-  margin: 6px 0 0;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  line-height: 1.1;
+  margin: 10px 0 0;
 }
+.overview-grid .hero-empty { font-size: 1.25rem; font-weight: 500; line-height: 2.5rem; }
 /* White numbers; a small coloured dot carries the meaning. */
 .overview-grid .metric-card.positive .metric-label::before,
 .overview-grid .metric-card.warning .metric-label::before {
@@ -1531,22 +1538,23 @@ body.modal-open { overflow: hidden; }
   border-radius: 50%;
   content: "";
   display: inline-block;
-  height: 6px;
+  height: 8px;
   margin-right: 7px;
   vertical-align: 1px;
-  width: 6px;
+  width: 8px;
 }
 .overview-grid .metric-card.warning .metric-label::before { background: var(--plasma-pink); }
 .overview-grid .metric-card.warning.is-zero .metric-label::before { background: rgba(168, 168, 168, .5); }
 .overview-grid .metric-card.positive strong, .overview-grid .metric-card.warning strong { color: var(--text); }
-.overview-grid .hero-card .muted { color: var(--muted); font-size: .75rem; margin-top: 2px; }
+.overview-grid .hero-card .muted { color: var(--muted); font-size: .75rem; margin-top: 6px; }
 @media (min-width: 960px) {
-  .overview-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  /* The two chain values lead, the three counts follow. */
+  .overview-grid { grid-template-columns: 1.3fr 1.3fr 1fr 1fr 1fr; }
   .overview-grid .hero-card, .overview-grid .metric-card { grid-column: auto; }
 }
 @media (max-width: 679px) {
-  .overview-grid .hero-card, .overview-grid .metric-card { padding: 13px 14px; }
-  .overview-grid .hero-value, .overview-grid .metric-card strong { font-size: 1.2rem; }
+  .overview-grid .hero-card, .overview-grid .metric-card { padding: 16px; }
+  .overview-grid .hero-value, .overview-grid .metric-card strong { font-size: 1.75rem; }
 }
 
 /* ---------- Portal: one menu in the header ---------- */

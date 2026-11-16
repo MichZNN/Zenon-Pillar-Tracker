@@ -101,16 +101,18 @@ function renderEpochs(epochs) {
     target.innerHTML = '<div class="empty-state">No epoch data yet.</div>';
     return;
   }
+  // Same two-line rhythm as the Recent events list next to it.
   target.innerHTML = epochs.map((epoch) => {
-    const timeLabel = renderTime(epoch.epoch_start_at);
-    const estimateLabel = epoch.epoch_start_inferred
-      ? '<span class="epoch-estimated">Estimated</span>'
-      : '';
+    const started = epoch.epoch_start_at
+      ? 'Started ' + escapeHtml(formatDate(epoch.epoch_start_at)) +
+        (epoch.epoch_start_inferred ? ' (estimated)' : '')
+      : 'Start time not recorded';
     return '<div class="epoch-row">' +
     '<div class="event-top">' +
     '<span class="epoch-number">Epoch ' + formatEpoch(epoch.epoch) + '</span>' +
-    '<span class="event-time-group">' + timeLabel + estimateLabel + '</span>' +
+    '<span class="event-time-group">' + renderTime(epoch.epoch_start_at) + '</span>' +
     '</div>' +
+    '<div class="event-detail">' + started + '</div>' +
     '</div>';
   }).join("");
 }

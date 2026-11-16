@@ -23,7 +23,7 @@ async function getJson(url) {
 }
 
 function formatDate(value) {
-  if (!value) return "—";
+  if (!value) return "n/a";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return new Intl.DateTimeFormat("en-US", {
@@ -38,7 +38,7 @@ function formatDate(value) {
 }
 
 function formatRelativeTime(value) {
-  if (!value) return "—";
+  if (!value) return "n/a";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   const seconds = Math.round((Date.now() - date.getTime()) / 1000);
@@ -56,7 +56,7 @@ function formatRelativeTime(value) {
 // A relative time ("3h ago") that shows the exact UTC time on hover, and
 // switches to it when tapped (see the click handler at the bottom).
 function renderTime(value, className = "event-time") {
-  if (!value) return '<span class="' + className + '">—</span>';
+  if (!value) return "";
   const absolute = formatDate(value);
   const relative = formatRelativeTime(value);
   return '<time class="' + className + ' rel-time" datetime="' +
@@ -67,12 +67,12 @@ function renderTime(value, className = "event-time") {
 }
 
 function formatNumber(value) {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "n/a";
   return new Intl.NumberFormat("en-US").format(value);
 }
 
 function formatEpoch(value) {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "n/a";
   return String(value);
 }
 
@@ -81,7 +81,7 @@ function formatWeight(weight) {
 }
 
 function formatDuration(seconds) {
-  if (seconds === null || seconds === undefined) return "—";
+  if (seconds === null || seconds === undefined) return "n/a";
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -91,7 +91,7 @@ function formatDuration(seconds) {
 }
 
 function formatRank(rank) {
-  return rank === null || rank === undefined ? "—" : String(rank + 1);
+  return rank === null || rank === undefined ? "" : String(rank + 1);
 }
 
 function statusLabel(status) {
@@ -145,7 +145,7 @@ function eventDescription(event) {
     return "Rewards for epoch " + event.epoch + " are available to collect";
   }
   if (event.event_type === "pillar_name_changed") {
-    return (details.old_name || "—") + " → " + (details.new_name || "—");
+    return (details.old_name || "unknown") + " → " + (details.new_name || "unknown");
   }
   if (event.event_type === "reward_shares_changed") {
     const name = details.name || event.owner_address || "Unknown pillar";
@@ -187,7 +187,7 @@ function performanceAvailable(item) {
 function formatPerformance(item) {
   return performanceAvailable(item)
     ? Number(item.percentage).toFixed(1) + "%"
-    : "—";
+    : "n/a";
 }
 
 function formatPerformanceDay(value) {
@@ -256,12 +256,45 @@ function renderPerformanceChart(performance, loading = false, pillar = null) {
   if (!points.length) {
     return '<span class="performance-chart-empty">Daily data is not available yet.</span>';
   }
+  // Each day is a full-height column, so a short bar is as easy to hit as
+  // a tall one. The day label is shown in the card on hover or click.
   return points.map((point) =>
+    '<span class="performance-col" data-day-label="' +
+    escapeHtml(performanceDayLabel(point, pillar)) + '" aria-hidden="true">' +
     '<span class="performance-bar ' + performanceBarClasses(point, pillar) +
-    '" style="height:' + performanceBarHeight(point) + '%" ' +
-    'title="' + escapeHtml(performanceDayLabel(point, pillar)) + '" aria-hidden="true"></span>'
+    '" style="height:' + performanceBarHeight(point) + '%"></span></span>'
   ).join("");
 }
+
+// Dashboard cards: show the day under the pointer in the chart heading.
+function showCardDay(column) {
+  const card = column.closest(".pillar-card");
+  const label = card?.querySelector(".pc-performance-label");
+  if (!card || !label) return;
+  card.querySelectorAll(".performance-col.is-active").forEach((item) => item.classList.remove("is-active"));
+  column.classList.add("is-active");
+  label.textContent = column.dataset.dayLabel;
+  label.classList.add("is-day");
+}
+
+function resetCardDay(chart) {
+  const card = chart.closest(".pillar-card");
+  const label = card?.querySelector(".pc-performance-label");
+  if (!label) return;
+  card.querySelectorAll(".performance-col.is-active").forEach((item) => item.classList.remove("is-active"));
+  label.textContent = "Performance · 30d";
+  label.classList.remove("is-day");
+}
+
+document.addEventListener("pointerover", (event) => {
+  const column = event.target.closest?.(".pillar-card .performance-col");
+  if (column) showCardDay(column);
+});
+
+document.addEventListener("pointerout", (event) => {
+  const chart = event.target.closest?.(".pillar-card .performance-chart");
+  if (chart && !chart.contains(event.relatedTarget)) resetCardDay(chart);
+});
 
 /* ---------- Delegator APR ---------- */
 
@@ -280,7 +313,7 @@ const APR_CAUTION_THRESHOLD = 100;
 
 function formatApr(performance) {
   const value = aprValue(performance);
-  if (value === null) return "—";
+  if (value === null) return "n/a";
   if (value === 0) return "0%";
   if (value >= APR_CAUTION_THRESHOLD) return "~" + Math.round(value) + "%";
   return (value >= 10 ? value.toFixed(1) : value.toFixed(2)) + "%";
@@ -456,7 +489,7 @@ function renderPillarCard(pillar, performance, options = {}) {
     '</dl>' +
     '<div class="pc-performance">' +
     '<div class="pc-performance-head">' +
-    '<span>Performance · 30d</span>' +
+    '<span class="pc-performance-label">Performance · 30d</span>' +
     '<strong class="performance-value' +
     (!loading && !performanceAvailable(item) ? ' empty' : '') + '">' +
     (loading
@@ -488,6 +521,14 @@ const PILLAR_SORTS = ["rank", "performance", "apr", "weight", "name"];
 /* ---------- Shared interactions ---------- */
 
 document.addEventListener("click", (event) => {
+  // A click on a card chart shows that day instead of opening the pillar.
+  const cardColumn = event.target.closest(".pillar-card .performance-col");
+  if (cardColumn || event.target.closest(".pillar-card .performance-chart")) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (cardColumn) showCardDay(cardColumn);
+    return;
+  }
   const favorite = event.target.closest(".favorite-button");
   if (favorite) {
     event.preventDefault();

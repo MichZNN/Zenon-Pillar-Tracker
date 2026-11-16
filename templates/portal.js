@@ -695,7 +695,7 @@ function renderUsers() {
     `<tr><td><strong>${escapeHtml(item.username)}</strong>${item.display_name ? `<small>${escapeHtml(item.display_name)}</small>` : ""}</td>` +
     `<td>${escapeHtml(item.role)}</td><td><span class="status-badge ${item.active ? "active" : "inactive"}">${item.active ? "Active" : "Inactive"}</span>` +
     `${item.two_factor_enabled ? ' <span class="status-badge active" title="Two-factor authentication is on">2FA</span>' : ""}</td>` +
-    `<td>${item.subscription_count || 0}</td><td>${escapeHtml(item.last_login_at || "—")}</td>` +
+    `<td>${item.subscription_count || 0}</td><td>${escapeHtml(item.last_login_at || "Never")}</td>` +
     `<td><button class="ghost-button small-button" data-edit-user="${item.id}" type="button">Edit</button></td></tr>`
   ).join("") : '<tr><td colspan="6" class="empty-state">No users.</td></tr>';
   $("#owner-user").innerHTML = '<option value="">Unassigned</option>' + adminUsers.map((item) =>
@@ -769,7 +769,7 @@ async function loadSettings() {
 }
 
 function formatDiagnosticDate(value) {
-  if (!value) return "—";
+  if (!value) return "n/a";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
 }
