@@ -889,6 +889,17 @@ class DatabaseTestCase(unittest.TestCase):
         connection.close()
         self.assertIn("external_message_id", columns)
 
+    def test_epoch_observation_repair_is_not_repeated_after_schema_9(self):
+        with self.database._connect() as connection:
+            connection.execute(
+                "UPDATE schema_meta SET value = '9' "
+                "WHERE key = 'schema_version'"
+            )
+        with patch("models.database._repair_epoch_observation_metadata") as repair:
+            Database(self.database.path)
+
+        repair.assert_not_called()
+
     def test_epoch_observation_repair_is_not_repeated_at_current_schema(self):
         with patch("models.database._repair_epoch_observation_metadata") as repair:
             Database(self.database.path)

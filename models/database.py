@@ -371,6 +371,14 @@ def _string_values(value: Any) -> list[str]:
     ))
 
 
+def _schema_version_number(value: str | None) -> int:
+    """Return a stored schema version as a number; 0 when missing or invalid."""
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _backfill_reward_share_event_names(connection: sqlite3.Connection) -> int:
     """Add the pillar name to reward share events stored without one.
 
@@ -531,8 +539,15 @@ def initialize_database(database_path: str | Path) -> Path:
                 "ALTER TABLE pillar_subscriptions ADD COLUMN "
                 "discord_webhook TEXT NOT NULL DEFAULT ''"
             )
-        if previous_schema_version != SCHEMA_VERSION:
+        previous_version_number = _schema_version_number(
+            previous_schema_version
+        )
+        # The epoch repair fixes data written before schema 9. It scans
+        # pillar_snapshots once per epoch and holds the write lock meanwhile,
+        # so never run it again on databases that already had it.
+        if previous_version_number < 9:
             _repair_epoch_observation_metadata(connection)
+        if previous_version_number < 10:
             _backfill_reward_share_event_names(connection)
         rollup_version_row = connection.execute(
             "SELECT value FROM schema_meta "
