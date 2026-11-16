@@ -1536,8 +1536,6 @@ body.modal-open { overflow: hidden; }
   min-height: 0;
   padding: 22px 24px 24px;
 }
-/* One accent: the current epoch leads the page. */
-.overview-grid .epoch-card { box-shadow: inset 0 2px 0 var(--zenon-green); }
 .overview-grid .hero-card { grid-column: span 3; }
 .overview-grid .metric-card { grid-column: span 2; }
 .overview-grid .card-label, .overview-grid .metric-label {
