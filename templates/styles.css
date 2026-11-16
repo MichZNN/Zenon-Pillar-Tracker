@@ -395,19 +395,17 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
   padding: 10px 0;
 }
 .epoch-row:last-child, .event-row:last-child { border-bottom: 0; }
-.epoch-number { font-size: 1rem; font-weight: 850; }
+.epoch-number { color: var(--text); font-size: .84rem; font-variant-numeric: tabular-nums; font-weight: 500; }
 .epoch-estimated {
   color: var(--plasma-pink);
   display: block;
-  font-size: .6rem;
-  font-weight: 800;
-  letter-spacing: .08em;
+  font-size: .75rem;
+  font-weight: 600;
   margin-top: 2px;
-  text-transform: uppercase;
 }
-.event-type { color: var(--quasar-blue); font-size: .74rem; font-weight: 800; }
+.event-type { color: var(--quasar-blue); font-size: .75rem; font-weight: 700; }
 .event-detail { font-size: .84rem; margin-top: 4px; }
-.event-time { color: var(--muted); font-size: .72rem; }
+.event-time { color: var(--muted); font-size: .75rem; }
 .history-intro { margin: -6px 0 18px; max-width: 680px; }
 .history-toolbar { display: flex; justify-content: flex-end; margin: -2px 0 14px; }
 .history-toolbar .select-box { min-width: min(260px, 100%); }
@@ -610,9 +608,35 @@ td { font-size: .78rem; }
 .modal-dialog {
   margin: 0;
   max-height: min(calc(100vh - 40px), 760px);
+  max-height: min(calc(100dvh - 40px), 760px);
   max-width: 760px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   width: 100%;
+}
+@media (max-width: 679px) {
+  /* Phones: the dialog fills the visible screen (dvh leaves out the
+     browser toolbars) and scrolls inside, so nothing falls off-screen. */
+  .modal-backdrop { align-items: stretch; padding: 0; }
+  .modal-dialog:not(.logs-modal-dialog) {
+    background: #1d1d1d;
+    border-radius: 0;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+  /* Keep the title and close button in reach while scrolling. */
+  .modal-dialog:not(.logs-modal-dialog) .modal-heading {
+    background: #1d1d1d;
+    margin: -20px -20px 14px;
+    padding: 16px 20px 12px;
+    position: sticky;
+    top: -20px;
+    z-index: 2;
+  }
+  .two-factor-qr { height: 168px; width: 168px; }
+  .two-factor-setup { scroll-margin-top: 12px; }
 }
 .modal-heading { margin-bottom: 14px; }
 .modal-actions { align-items: center; display: flex; flex: 0 0 auto; gap: 8px; }
@@ -1013,13 +1037,11 @@ body.modal-open { overflow: hidden; }
   }
   .dashboard-header .site-nav { justify-self: start; }
   .dashboard-header .health-badge { justify-self: end; }
-  .portal-header .header-actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .portal-header .user-menu { justify-self: start; min-width: 0; width: min(240px, 100%); }
-  .portal-header .user-menu-toggle { justify-content: flex-start; max-width: none; width: 100%; }
-  .portal-header .header-action-link { min-width: 0; }
+  /* Portal: title and the single menu button on one row, so the sticky
+     header stays small and the menu is always within reach. */
+  .portal-header .header-inner { align-items: center; flex-direction: row; padding: 10px 0; }
+  .portal-header .header-actions { flex-wrap: nowrap; width: auto; }
+  .portal-header .user-menu-toggle { max-width: 170px; }
   .auth-shell {
     min-height: 100svh;
     padding: 20px 20px 60px;
@@ -1137,10 +1159,14 @@ body.modal-open { overflow: hidden; }
 .favorite-button:hover, .icon-button:hover { border-color: rgba(111, 243, 77, .5); color: var(--text); }
 .favorite-button.is-favorite { background: rgba(111, 243, 77, .1); border-color: rgba(111, 243, 77, .45); color: var(--zenon-green); }
 .favorite-button:focus-visible, .icon-button:focus-visible { outline: 2px solid var(--quasar-blue); outline-offset: 2px; }
-@media (hover: hover) {
-  /* Keep the per-day tooltips on desktop. */
-  .pillar-card .performance-chart { position: relative; z-index: 1; }
-}
+/* The card chart sits above the card link: hovering or clicking a day
+   shows it in the chart heading instead of opening the pillar. */
+.pillar-card .performance-chart { cursor: pointer; position: relative; z-index: 1; }
+.performance-col { align-items: flex-end; display: flex; height: 100%; min-width: 0; }
+.performance-col .performance-bar { width: 100%; }
+.pillar-card .performance-chart:has(.is-active) .performance-col .performance-bar { opacity: .55; }
+.pillar-card .performance-chart .performance-col.is-active .performance-bar { opacity: 1; }
+.pc-performance-label.is-day { color: var(--text); }
 
 /* ---------- Mobile: compact pillar cards ---------- */
 @media (max-width: 679px) {
@@ -1334,7 +1360,7 @@ body.modal-open { overflow: hidden; }
   gap: 6px;
   white-space: nowrap;
 }
-.pc-status::before { background: var(--muted); border-radius: 50%; content: ""; height: 6px; width: 6px; }
+.pc-status::before { background: var(--muted); border-radius: 50%; content: ""; height: 6px; transform: translateY(-.5px); width: 6px; }
 .pc-status.active::before { background: var(--zenon-green); }
 .pc-status.inactive { color: var(--plasma-pink); }
 .pc-status.inactive::before { background: var(--plasma-pink); }
@@ -1387,7 +1413,7 @@ body.modal-open { overflow: hidden; }
 }
 .pc-performance-head .performance-value { color: var(--text); font-size: .875rem; font-variant-numeric: tabular-nums; font-weight: 600; }
 .pc-performance-head .performance-value.empty { color: var(--muted); }
-.pillar-card .performance-chart { gap: 3px; height: 26px; margin-top: 8px; }
+.pillar-card .performance-chart { gap: 3px; height: 34px; margin-top: 8px; }
 .pillar-card .performance-bar { border-radius: 1.5px; }
 @media (max-width: 679px) {
   .pillar-list .pillar-card, .pillar-card { padding: 16px; }
@@ -1491,41 +1517,42 @@ body.modal-open { overflow: hidden; }
 /* ---------- Overview: one panel with five values ---------- */
 .overview-grid {
   background: rgba(255, 255, 255, .07);
-  border: 1px solid rgba(255, 255, 255, .07);
-  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 18px;
   display: grid;
   gap: 1px;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  margin-bottom: 18px;
+  margin-bottom: 20px;
   overflow: hidden;
 }
 .overview-grid .hero-grid, .overview-grid .metric-grid { display: contents; }
 .overview-grid .hero-card, .overview-grid .metric-card {
-  background: #1c1c1c;
+  background: linear-gradient(180deg, #222 0%, #1b1b1b 100%);
   border: 0;
   border-radius: 0;
   box-shadow: none;
   min-height: 0;
-  padding: 16px 18px;
+  padding: 22px 24px 24px;
 }
 .overview-grid .hero-card { grid-column: span 3; }
 .overview-grid .metric-card { grid-column: span 2; }
 .overview-grid .card-label, .overview-grid .metric-label {
-  color: rgba(168, 168, 168, .85);
-  font-size: .75rem;
-  font-weight: 400;
+  color: var(--muted);
+  font-size: .8125rem;
+  font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
 }
 .overview-grid .hero-value, .overview-grid .metric-card strong {
   color: var(--text);
-  font-size: 1.45rem;
+  font-size: clamp(2rem, 2.6vw, 2.5rem);
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  letter-spacing: -.02em;
-  line-height: 1.2;
-  margin: 6px 0 0;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  line-height: 1.1;
+  margin: 10px 0 0;
 }
+.overview-grid .hero-empty { font-size: 1.25rem; font-weight: 500; line-height: 2.5rem; }
 /* White numbers; a small coloured dot carries the meaning. */
 .overview-grid .metric-card.positive .metric-label::before,
 .overview-grid .metric-card.warning .metric-label::before {
@@ -1533,20 +1560,355 @@ body.modal-open { overflow: hidden; }
   border-radius: 50%;
   content: "";
   display: inline-block;
-  height: 6px;
+  height: 8px;
   margin-right: 7px;
   vertical-align: 1px;
-  width: 6px;
+  width: 8px;
 }
 .overview-grid .metric-card.warning .metric-label::before { background: var(--plasma-pink); }
 .overview-grid .metric-card.warning.is-zero .metric-label::before { background: rgba(168, 168, 168, .5); }
 .overview-grid .metric-card.positive strong, .overview-grid .metric-card.warning strong { color: var(--text); }
-.overview-grid .hero-card .muted { color: var(--muted); font-size: .75rem; margin-top: 2px; }
+.overview-grid .hero-card .muted { color: var(--muted); font-size: .75rem; margin-top: 6px; }
 @media (min-width: 960px) {
-  .overview-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  /* The two chain values lead, the three counts follow. */
+  .overview-grid { grid-template-columns: 1.3fr 1.3fr 1fr 1fr 1fr; }
   .overview-grid .hero-card, .overview-grid .metric-card { grid-column: auto; }
 }
 @media (max-width: 679px) {
-  .overview-grid .hero-card, .overview-grid .metric-card { padding: 13px 14px; }
-  .overview-grid .hero-value, .overview-grid .metric-card strong { font-size: 1.2rem; }
+  .overview-grid .hero-card, .overview-grid .metric-card { padding: 16px; }
+  .overview-grid .hero-value, .overview-grid .metric-card strong { font-size: 1.75rem; }
 }
+
+/* ---------- Portal: one menu in the header ---------- */
+.portal-header .user-menu-dropdown {
+  background: #111c22;
+  left: auto;
+  max-height: calc(100svh - 96px);
+  max-width: calc(100vw - 32px);
+  overflow-y: auto;
+  right: 0;
+  width: 260px;
+}
+.user-menu-group { border-bottom: 1px solid var(--line); display: grid; gap: 3px; margin-bottom: 3px; padding-bottom: 6px; }
+.user-menu-group[hidden] { display: none; }
+.user-menu-group-label { color: var(--accent); font-size: .62rem; font-weight: 800; letter-spacing: .12em; margin: 6px 10px 2px; text-transform: uppercase; }
+.user-menu-link.is-active, .user-menu-link.is-active i { color: var(--accent); }
+.user-menu-link.is-active { background: rgba(111, 243, 77, .08); }
+@media (max-width: 959px) {
+  /* The sections live in the header menu on smaller screens. */
+  .admin-menu { display: none; }
+  .admin-content > .section-block { scroll-margin-top: 84px; }
+}
+@media (min-width: 960px) {
+  /* The sidebar shows the sections on desktop. */
+  .user-menu-group { display: none !important; }
+}
+
+/* ---------- Two-factor authentication ---------- */
+.two-factor-section { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 18px; }
+.two-factor-heading { align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 6px; }
+.two-factor-heading h3 { margin: 2px 0 0; }
+.two-factor-section [hidden] { display: none !important; }
+.two-factor-steps { color: var(--muted); font-size: .85rem; margin: 6px 0 12px; padding-left: 20px; }
+.two-factor-qr { background: #fff; border-radius: 12px; height: 200px; margin: 0 0 12px; padding: 8px; width: 200px; }
+.two-factor-qr svg { display: block; height: 100%; width: 100%; }
+.two-factor-secret-help code { color: var(--text); font-size: .85rem; letter-spacing: .04em; word-break: break-all; }
+.two-factor-inline-form { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.two-factor-inline-form input {
+  background: rgba(21, 21, 21, .82);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--text);
+  flex: 1 1 140px;
+  font-size: 1.1rem;
+  height: var(--control-height);
+  letter-spacing: .2em;
+  max-width: 220px;
+  padding: 0 12px;
+}
+.two-factor-inline-form .primary-button { height: var(--control-height); }
+.recovery-codes {
+  background: rgba(10, 10, 10, .4);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  column-gap: 24px;
+  columns: 2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .9rem;
+  line-height: 1.9;
+  margin: 10px 0 12px;
+  padding: 12px 16px;
+}
+.danger-button { border-color: rgba(249, 22, 144, .35); color: var(--plasma-pink); }
+.danger-button:hover { border-color: var(--plasma-pink); color: var(--text); }
+#login-step[hidden], #two-factor-step[hidden] { display: none; }
+.auth-trust { align-items: flex-start; color: var(--text); cursor: pointer; display: flex; gap: 10px; margin: 2px 2px 4px; }
+.auth-trust input { accent-color: var(--accent); flex: 0 0 auto; height: 18px; margin-top: 2px; width: 18px; }
+.auth-trust span { display: grid; gap: 2px; }
+.auth-trust strong { font-size: .86rem; }
+.auth-trust small { color: var(--muted); font-size: .74rem; line-height: 1.4; }
+.auth-step-links { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: space-between; margin: 10px 0 4px; }
+.link-button { background: none; border: 0; color: var(--muted); cursor: pointer; font: inherit; font-size: .82rem; padding: 4px 0; text-decoration: underline; text-underline-offset: 3px; }
+.link-button:hover { color: var(--accent); }
+.trusted-devices { display: grid; gap: 6px; margin: 10px 0 14px; }
+.trusted-device { border: 1px solid var(--line); border-radius: 10px; font-size: .8rem; padding: 8px 10px; }
+.trusted-device small { color: var(--muted); display: block; margin-top: 2px; }
+
+/* Five log filters on one row on wide screens. */
+@media (min-width: 960px) {
+  .logs-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)); }
+}
+#two-factor-codes-left { margin-top: 10px; }
+
+/* The trust checkbox sits in front of its text, also inside .form-stack. */
+.form-stack label.auth-trust { align-items: flex-start; column-gap: 10px; display: flex; font-weight: 400; grid-template-columns: none; }
+.form-stack label.auth-trust strong { font-weight: 800; }
+.form-stack label.auth-trust small { font-weight: 500; }
+.trusted-devices-block { margin: 14px 0 6px; }
+.trusted-devices-block .setting-label { display: block; margin-bottom: 2px; }
+
+/* ---------- Header: quiet login link and tracker status ---------- */
+.dashboard-header .header-actions { gap: 20px; }
+.dashboard-header .site-nav .login-link {
+  border: 0;
+  color: var(--muted);
+  font-size: .8rem;
+  font-weight: 500;
+  height: auto;
+  min-height: 28px;
+  padding: 4px 0;
+}
+.dashboard-header .site-nav .login-link i { color: var(--muted); font-size: .75rem; }
+.dashboard-header .site-nav .login-link:hover { background: none; color: var(--text); }
+.dashboard-header .site-nav .login-link:hover i { color: var(--text); }
+.dashboard-header .health-badge {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: .8rem;
+  font-weight: 500;
+  height: auto;
+  padding: 4px 0;
+}
+/* The dot keeps the status colour; the text stays muted. */
+/* Centre the dot on the capital letters rather than on the line box. */
+.dashboard-header .health-badge::before { background: var(--muted); height: 6px; transform: translateY(-1.5px); width: 6px; }
+.dashboard-header .health-badge.green::before, .dashboard-header .health-badge.healthy::before { background: var(--zenon-green); }
+.dashboard-header .health-badge.orange::before, .dashboard-header .health-badge.stale::before { background: var(--status-orange); }
+.dashboard-header .health-badge.red::before, .dashboard-header .health-badge.error::before,
+.dashboard-header .health-badge.reorg::before { background: var(--status-red); }
+
+/* ======================================================================
+   Portal, My account and login: calm sections, same language as the
+   dashboard (hairlines, muted labels, colour only where it means something)
+   ====================================================================== */
+
+/* ---------- Portal: one surface per section ---------- */
+.admin-shell .section-block:not(.modal-dialog) {
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 14px;
+  box-shadow: none;
+  padding: 28px;
+}
+.admin-shell h2 { font-size: 1.125rem; font-weight: 650; }
+.admin-shell h3, #account-modal h3 { font-size: .9375rem; font-weight: 600; margin: 0; }
+.admin-shell .section-heading { margin-bottom: 20px; min-height: 42px; }
+.admin-shell .section-heading > div:first-child { min-width: 0; }
+.admin-shell .settings-category { border-top-color: rgba(255, 255, 255, .08); padding-top: 24px; }
+.admin-shell .settings-category-heading { margin-bottom: 16px; }
+.admin-shell .collector-status-card,
+.admin-shell .logs-preview-card,
+.admin-shell .event-options { background: none; border: 0; border-radius: 0; padding: 0; }
+.admin-shell .logs-preview-card,
+.admin-shell .maintenance-card { border-top: 1px solid rgba(255, 255, 255, .08); margin-top: 24px; padding-top: 20px; }
+.admin-shell .collector-status-card { margin-bottom: 0; }
+.admin-shell .collector-diagnostics { border-top: 0; margin-top: 8px; padding-top: 0; }
+.admin-shell .event-options legend { margin-bottom: 4px; padding: 0; }
+.admin-shell .log-viewer { border-color: rgba(255, 255, 255, .08); color: #d0d0d0; }
+
+/* Desktop sidebar: a plain list instead of a box. */
+.admin-menu { background: none; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+.admin-menu-heading { padding: 0 10px 10px; }
+.admin-menu-heading h2 { color: var(--muted); font-size: .8rem; font-weight: 500; margin: 0; }
+.admin-menu-link { font-size: .8125rem; font-weight: 500; min-height: 36px; }
+.admin-menu-link.is-active { color: var(--text); }
+
+/* Buttons keep their label on one line. */
+.admin-shell .primary-button, .admin-shell .ghost-button,
+#account-modal .primary-button, #account-modal .ghost-button { flex: 0 0 auto; white-space: nowrap; }
+
+@media (max-width: 679px) {
+  /* Phones: full-width sections separated by a hairline, no cards. */
+  .admin-shell { padding-top: 0; width: 100%; }
+  .admin-shell .section-block:not(.modal-dialog) {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    border-top: 1px solid rgba(255, 255, 255, .08);
+    margin-top: 0;
+    padding: 24px 16px 28px;
+  }
+  .admin-shell > .section-block:first-child,
+  .admin-content > .section-block:first-child { border-top: 0; }
+  .admin-shell .subscription-table tr {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    border-top: 1px solid rgba(255, 255, 255, .08);
+    padding: 12px 0;
+  }
+  .admin-shell .subscription-table tbody { gap: 0; }
+  .admin-shell .label-long { display: none; }
+  .admin-shell .settings-form-actions { margin-top: 20px; }
+  .admin-shell .settings-form-actions .primary-button { width: 100%; }
+}
+
+/* ---------- Portal header: quiet user menu ---------- */
+.portal-header .user-menu-toggle {
+  border: 0;
+  color: var(--muted);
+  font-size: .8rem;
+  font-weight: 500;
+  height: auto;
+  min-height: 36px;
+  padding: 4px 0;
+}
+.portal-header .user-menu-toggle > i:first-child { color: var(--muted); font-size: .85rem; }
+.portal-header .user-menu-toggle:hover,
+.portal-header .user-menu-toggle[aria-expanded="true"] { color: var(--text); }
+.portal-header .user-menu-toggle:hover > i:first-child { color: var(--text); }
+.portal-header .user-menu-toggle:focus-visible { border-radius: 6px; outline: 2px solid var(--quasar-blue); outline-offset: 4px; }
+.portal-header .user-menu-dropdown { background: #1e1e1e; border-color: rgba(255, 255, 255, .1); border-radius: 10px; }
+.portal-header .user-menu-group { border-bottom-color: rgba(255, 255, 255, .08); }
+.portal-header .user-menu-group-label { color: var(--muted); font-size: .75rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.portal-header .user-menu-link { font-size: .8125rem; font-weight: 500; }
+.portal-header .user-menu-link:hover { background: rgba(255, 255, 255, .06); }
+.portal-header .user-menu-link:hover i { color: var(--text); }
+.portal-header .user-menu-link.is-active { background: rgba(255, 255, 255, .06); color: var(--text); }
+.portal-header .user-menu-link.is-active i { color: var(--accent); }
+
+/* ---------- My account: rhythm ---------- */
+#account-modal .modal-heading { margin-bottom: 8px; }
+#account-modal .account-form { gap: 16px; margin-top: 20px; }
+#account-modal .form-actions { margin-top: 4px; }
+#account-modal .two-factor-section { border-top-color: rgba(255, 255, 255, .08); margin-top: 28px; padding-top: 24px; }
+#account-modal .two-factor-heading { margin-bottom: 8px; }
+#account-modal .two-factor-section > [id^="two-factor-"] { margin-top: 18px; }
+#account-modal .modal-close { border: 0; }
+#account-modal .trusted-device { border: 0; border-radius: 0; border-top: 1px solid rgba(255, 255, 255, .08); padding: 10px 0; }
+/* ---------- Dialogs: the same frame for My account and Logs ---------- */
+@media (min-width: 680px) {
+  .modal-backdrop .modal-dialog {
+    background: var(--surface);
+    border: 1px solid rgba(255, 255, 255, .1);
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+    padding: 28px;
+  }
+}
+@media (max-width: 679px) {
+  /* Phones: every dialog fills the visible screen, square corners, no frame. */
+  .modal-backdrop .modal-dialog { background: #1d1d1d; border: 0; border-radius: 0; box-shadow: none; }
+  .modal-backdrop .logs-modal-dialog {
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+}
+/* Close and refresh buttons in a dialog header: icon only, no frame. */
+.modal-heading .modal-close, .modal-heading .modal-actions .icon-button { border: 0; }
+
+/* ---------- Login: calm card ---------- */
+.auth-shell { background: none; }
+.auth-card.section-block { background: var(--surface); border: 1px solid rgba(255, 255, 255, .08); border-radius: 14px; box-shadow: none; }
+.auth-card::before { display: none; }
+.auth-brand { font-size: .8125rem; font-weight: 600; letter-spacing: 0; margin-bottom: 28px; }
+.auth-brand-icon { background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px; height: 32px; width: 32px; }
+.auth-card .eyebrow { color: var(--muted); font-size: .75rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.auth-card h1 { font-size: 1.5rem; font-weight: 650; letter-spacing: -.02em; margin: 4px 0 8px; }
+.auth-card .form-stack { gap: 12px; margin-top: 24px; }
+.auth-card .form-stack .primary-button { height: 44px; margin-top: 4px; }
+/* Room above the status line, and space reserved so the card does not jump. */
+.auth-card .form-message { color: var(--muted); font-size: .8125rem; margin-top: 14px; min-height: 1.4em; }
+.auth-card .form-message.error { color: var(--status-red); }
+.auth-card > a { margin-top: 10px; min-height: 24px; }
+@media (max-width: 679px) {
+  .auth-shell { padding: 16px 16px 60px; }
+  .auth-card { padding: 24px 20px; }
+}
+
+/* ---------- Portal and account: calm controls ---------- */
+.admin-shell .form-grid label, .admin-shell .form-stack label,
+#account-modal .form-grid label { color: var(--muted); font-size: .8rem; font-weight: 500; gap: 6px; }
+.admin-shell .setting-label, #account-modal .setting-label,
+.admin-shell .event-options legend { color: var(--text); font-size: .8125rem; font-weight: 600; }
+.admin-shell .setting-help { font-size: .75rem; line-height: 1.5; }
+.admin-shell .muted, #account-modal .muted { font-size: .8125rem; }
+.admin-shell .form-grid input:not([type="checkbox"]), .admin-shell .form-grid select,
+.admin-shell .settings-form input:not([type="checkbox"]), .admin-shell .settings-form select,
+.admin-shell .settings-form textarea,
+#account-modal .form-grid input:not([type="checkbox"]),
+#account-modal .two-factor-inline-form input,
+.auth-card .form-stack input:not([type="checkbox"]) {
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 8px;
+  font-size: .875rem;
+  font-weight: 400;
+  min-height: 42px;
+  padding: 9px 12px;
+}
+.auth-card .form-stack .auth-input-wrap input { padding-left: 40px; padding-right: 44px; }
+.admin-shell ::placeholder, #account-modal ::placeholder, .auth-card ::placeholder { color: #8c8c8c; font-weight: 400; opacity: 1; }
+.admin-shell .settings-form textarea { min-height: 88px; }
+/* Checkbox rows: no box, full width. */
+.admin-shell .setting-toggle { background: none; border: 0; border-radius: 0; cursor: pointer; grid-column: 1 / -1; min-height: 44px; padding: 6px 0; }
+.admin-shell .setting-toggle input, .admin-shell .checkbox-grid input,
+.admin-shell .checkbox-label input { height: 18px; width: 18px; }
+.admin-shell .checkbox-grid { gap: 0 16px; }
+.admin-shell .checkbox-grid label, .admin-shell .checkbox-label {
+  color: var(--text); cursor: pointer; font-size: .8125rem; font-weight: 400; min-height: 36px; padding: 0;
+}
+.admin-shell .primary-button, .admin-shell .ghost-button,
+#account-modal .primary-button, #account-modal .ghost-button,
+.auth-card .primary-button { font-size: .8125rem; font-weight: 600; padding: 0 14px; }
+.admin-shell .ghost-button, #account-modal .ghost-button { border-color: rgba(255, 255, 255, .2); color: var(--text); }
+.admin-shell .ghost-button:hover, #account-modal .ghost-button:hover { border-color: rgba(255, 255, 255, .4); }
+.admin-shell .icon-button { padding: 0; }
+#account-modal .danger-button { border-color: rgba(255, 90, 95, .4); color: var(--status-red); }
+.admin-shell .form-message, #account-modal .form-message { color: var(--muted); font-size: .8125rem; margin-top: 12px; }
+.admin-shell .form-message.error, #account-modal .form-message.error { color: var(--status-red); }
+/* Status: muted text with a coloured dot, like the header. */
+.admin-shell .status-badge, #account-modal .status-badge {
+  background: none; border: 0; color: var(--muted); font-size: .8rem; font-weight: 500; padding: 0;
+}
+.admin-shell .status-badge::before, #account-modal .status-badge::before { background: var(--muted); height: 6px; transform: translateY(-1px); width: 6px; }
+.admin-shell .status-badge.active::before, #account-modal .status-badge.active::before { background: var(--zenon-green); }
+.admin-shell .status-badge.warning::before { background: var(--status-orange); }
+.admin-shell .status-badge.error::before, .admin-shell .status-badge.dismantled::before { background: var(--status-red); }
+.admin-shell td .status-badge + .status-badge { margin-left: 10px; }
+.admin-shell th { font-size: .75rem; font-weight: 500; text-transform: none; }
+.admin-shell th, .admin-shell td { border-bottom-color: rgba(255, 255, 255, .08); }
+.admin-shell .subscription-table td::before { font-size: .75rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.admin-shell .table-wrap small { font-size: .75rem; }
+.admin-shell .settings-category:first-child { border-top: 0; padding-top: 0; }
+.admin-shell .checkbox-label input, .admin-shell .checkbox-grid input { margin: 0; }
+#account-modal .two-factor-heading { align-items: baseline; }
+/* A button with the hidden attribute stays hidden, whatever its class sets. */
+button[hidden] { display: none !important; }
+.admin-shell .form-grid .checkbox-label { color: var(--text); font-weight: 400; }
+/* Logs dialog filters: same calm controls as the rest of the portal. */
+#logs-modal .log-filter > span { color: var(--muted); font-size: .8rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
+#logs-modal .log-filter select, #logs-modal .log-filter input {
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 8px;
+  font-size: .875rem;
+  font-weight: 400;
+  min-height: 42px;
+}
+#logs-modal ::placeholder { color: #8c8c8c; font-weight: 400; opacity: 1; }
+#logs-modal .log-viewer { border-color: rgba(255, 255, 255, .08); color: #d0d0d0; }
+#logs-modal .muted { font-size: .8125rem; }

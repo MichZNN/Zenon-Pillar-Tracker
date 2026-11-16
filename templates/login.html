@@ -9,7 +9,8 @@
         <span class="auth-brand-icon"><i class="fa-solid fa-shield-halved"></i></span>
         <span>Zenon Pillar Tracker</span>
       </div>
-      <p class="eyebrow">Secure access</p>
+      <div id="login-step">
+      
       <h1>Welcome back</h1>
       <p class="muted">Login to manage your pillar subscriptions.</p>
       <form id="login-form" class="form-stack auth-form">
@@ -26,6 +27,28 @@
         </div>
         <button class="primary-button" type="submit"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i> Login</button>
       </form>
+      </div>
+
+      <div id="two-factor-step" hidden>
+        <p class="eyebrow">Step 2 of 2</p>
+        <h1>Two-factor verification</h1>
+        <p id="two-factor-intro" class="muted">Open your authenticator app and enter the 6-digit code for Zenon Pillar Tracker.</p>
+        <form id="two-factor-form" class="form-stack auth-form">
+          <div class="auth-input-wrap">
+            <i class="fa-solid fa-shield-halved auth-input-icon" aria-hidden="true"></i>
+            <input id="login-code" name="code" aria-label="Authentication code" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code" maxlength="16" required>
+          </div>
+          <label class="auth-trust">
+            <input name="trust_device" type="checkbox">
+            <span><strong>Trust this device for 30 days</strong><small>Only on a device that only you use. You can forget trusted devices under My account.</small></span>
+          </label>
+          <button class="primary-button" type="submit"><i class="fa-solid fa-check" aria-hidden="true"></i> Verify</button>
+        </form>
+        <div class="auth-step-links">
+          <button id="use-recovery-code" class="link-button" type="button">Use a recovery code instead</button>
+          <button id="two-factor-back" class="link-button" type="button"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Back</button>
+        </div>
+      </div>
       <p id="login-message" class="form-message" role="status"></p>
       <a class="muted" href="/">Back to dashboard</a>
     </section>

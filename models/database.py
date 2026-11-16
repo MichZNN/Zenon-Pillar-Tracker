@@ -215,6 +215,31 @@ CREATE TABLE IF NOT EXISTS performance_finalized_days (
     computed_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS maintenance_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    duration_seconds REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL CHECK (status IN ('success', 'failed')),
+    performance_days_stored INTEGER NOT NULL DEFAULT 0,
+    payloads_cleared INTEGER NOT NULL DEFAULT 0,
+    snapshots_deleted INTEGER NOT NULL DEFAULT 0,
+    error TEXT
+);
+
+CREATE TABLE IF NOT EXISTS trusted_devices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    last_used_at TEXT,
+    user_agent TEXT NOT NULL DEFAULT '',
+    ip_address TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_trusted_devices_user
+    ON trusted_devices(user_id, expires_at);
+
 CREATE INDEX IF NOT EXISTS idx_poll_runs_started_at
     ON poll_runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_snapshots_owner_time
@@ -303,6 +328,12 @@ def _duration_text(seconds: int | None) -> str | None:
     if hours:
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
+
+
+def _token_hash(token: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
 
 
 def _pillar_rewards_per_day(epoch: int) -> tuple[float, float]:
@@ -518,6 +549,21 @@ def initialize_database(database_path: str | Path) -> Path:
                 "ALTER TABLE epochs ADD COLUMN epoch_start_inferred "
                 "INTEGER NOT NULL DEFAULT 1"
             )
+        user_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(users)").fetchall()
+        }
+        for column, definition in (
+            ("totp_secret", "TEXT"),
+            ("totp_pending_secret", "TEXT"),
+            ("totp_enabled", "INTEGER NOT NULL DEFAULT 0"),
+            ("totp_last_step", "INTEGER"),
+            ("recovery_codes_json", "TEXT NOT NULL DEFAULT '[]'"),
+        ):
+            if column not in user_columns:
+                connection.execute(
+                    f"ALTER TABLE users ADD COLUMN {column} {definition}"
+                )
         subscription_columns = {
             row[1]
             for row in connection.execute(
@@ -743,6 +789,10 @@ class Database:
             if key in available
         }
         result["active"] = bool(result.get("active"))
+        # Only whether two-factor is on; secrets and codes never leave here.
+        result["two_factor_enabled"] = bool(
+            row["totp_enabled"] if "totp_enabled" in available else False
+        )
         if "subscription_count" in available:
             result["subscription_count"] = int(row["subscription_count"] or 0)
         return result
@@ -928,7 +978,171 @@ class Database:
                 "WHERE id = ?",
                 values,
             )
+            if "password_hash" in changes:
+                # A new password also ends "trust this device".
+                connection.execute(
+                    "DELETE FROM trusted_devices WHERE user_id = ?",
+                    (int(user_id),),
+                )
         return self.get_user(int(user_id))  # type: ignore[return-value]
+
+    def set_pending_totp_secret(self, user_id: int, secret: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE users SET totp_pending_secret = ?, updated_at = ? WHERE id = ?",
+                (secret, utc_now(), int(user_id)),
+            )
+
+    def enable_totp(
+        self,
+        user_id: int,
+        *,
+        secret: str,
+        step: int,
+        recovery_code_hashes: list[str],
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE users
+                SET totp_secret = ?, totp_pending_secret = NULL,
+                    totp_enabled = 1, totp_last_step = ?,
+                    recovery_codes_json = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (secret, int(step), _json(recovery_code_hashes), utc_now(), int(user_id)),
+            )
+
+    def disable_totp(self, user_id: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE users
+                SET totp_secret = NULL, totp_pending_secret = NULL,
+                    totp_enabled = 0, totp_last_step = NULL,
+                    recovery_codes_json = '[]', updated_at = ?
+                WHERE id = ?
+                """,
+                (utc_now(), int(user_id)),
+            )
+            connection.execute(
+                "DELETE FROM trusted_devices WHERE user_id = ?",
+                (int(user_id),),
+            )
+
+    def record_totp_step(self, user_id: int, step: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE users SET totp_last_step = ? WHERE id = ?",
+                (int(step), int(user_id)),
+            )
+
+    def set_recovery_codes(self, user_id: int, code_hashes: list[str]) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE users SET recovery_codes_json = ?, updated_at = ? WHERE id = ?",
+                (_json(code_hashes), utc_now(), int(user_id)),
+            )
+
+    def consume_recovery_code(self, user_id: int, code_hash: str) -> bool:
+        """Remove a recovery code after use; return whether it was valid."""
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT recovery_codes_json FROM users WHERE id = ?",
+                (int(user_id),),
+            ).fetchone()
+            codes = _load_json(row["recovery_codes_json"] if row else None, []) or []
+            if code_hash not in codes:
+                return False
+            codes.remove(code_hash)
+            connection.execute(
+                "UPDATE users SET recovery_codes_json = ? WHERE id = ?",
+                (_json(codes), int(user_id)),
+            )
+            return True
+
+    def recovery_codes_left(self, user_id: int) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT recovery_codes_json FROM users WHERE id = ?",
+                (int(user_id),),
+            ).fetchone()
+        return len(_load_json(row["recovery_codes_json"] if row else None, []) or [])
+
+    def create_trusted_device(
+        self,
+        user_id: int,
+        *,
+        days: int = 30,
+        user_agent: str = "",
+        ip_address: str = "",
+    ) -> dict[str, str]:
+        """Remember a device so its next logins skip the two-factor step."""
+        token = token_urlsafe(32)
+        now = datetime.now(timezone.utc)
+        expires_at = (now + timedelta(days=days)).isoformat(timespec="seconds")
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM trusted_devices WHERE expires_at <= ?",
+                (now.isoformat(timespec="seconds"),),
+            )
+            connection.execute(
+                """
+                INSERT INTO trusted_devices(
+                    user_id, token_hash, created_at, expires_at, user_agent, ip_address
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(user_id),
+                    _token_hash(token),
+                    now.isoformat(timespec="seconds"),
+                    expires_at,
+                    str(user_agent or "")[:300],
+                    str(ip_address or "")[:64],
+                ),
+            )
+        return {"token": token, "expires_at": expires_at}
+
+    def use_trusted_device(self, user_id: int, token: str | None) -> bool:
+        if not token:
+            return False
+        now = utc_now()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id FROM trusted_devices
+                WHERE user_id = ? AND token_hash = ? AND expires_at > ?
+                """,
+                (int(user_id), _token_hash(token), now),
+            ).fetchone()
+            if row is None:
+                return False
+            connection.execute(
+                "UPDATE trusted_devices SET last_used_at = ? WHERE id = ?",
+                (now, int(row["id"])),
+            )
+        return True
+
+    def list_trusted_devices(self, user_id: int) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, created_at, expires_at, last_used_at, user_agent
+                FROM trusted_devices
+                WHERE user_id = ? AND expires_at > ?
+                ORDER BY created_at DESC
+                """,
+                (int(user_id), utc_now()),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def forget_trusted_devices(self, user_id: int) -> int:
+        with self._connect() as connection:
+            return connection.execute(
+                "DELETE FROM trusted_devices WHERE user_id = ?",
+                (int(user_id),),
+            ).rowcount
 
     def mark_user_login(self, user_id: int) -> None:
         with self._connect() as connection:
@@ -1286,17 +1500,81 @@ class Database:
                 ),
             )
 
-    def get_audit_log(self, limit: int = 100) -> list[dict[str, Any]]:
+    def record_maintenance_run(
+        self,
+        *,
+        started_at: str,
+        duration_seconds: float,
+        status: str,
+        performance_days_stored: int = 0,
+        payloads_cleared: int = 0,
+        snapshots_deleted: int = 0,
+        error: str | None = None,
+        keep_days: int = 400,
+    ) -> None:
+        """Keep a small history of daily maintenance, independent of log rotation."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=keep_days)).isoformat(
+            timespec="seconds"
+        )
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO maintenance_runs(
+                    started_at, duration_seconds, status,
+                    performance_days_stored, payloads_cleared,
+                    snapshots_deleted, error
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    started_at,
+                    round(float(duration_seconds), 2),
+                    status,
+                    int(performance_days_stored),
+                    int(payloads_cleared),
+                    int(snapshots_deleted),
+                    (error or None) and str(error)[:500],
+                ),
+            )
+            connection.execute(
+                "DELETE FROM maintenance_runs WHERE started_at < ?",
+                (cutoff,),
+            )
+
+    def get_maintenance_runs(self, limit: int = 30) -> list[dict[str, Any]]:
         with self._connect() as connection:
             rows = connection.execute(
-                """
+                "SELECT * FROM maintenance_runs ORDER BY id DESC LIMIT ?",
+                (max(1, min(int(limit), 400)),),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_audit_log(
+        self,
+        limit: int = 100,
+        *,
+        since: str | None = None,
+        until: str | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses = []
+        params: list[Any] = []
+        if since:
+            clauses.append("a.created_at >= ?")
+            params.append(since)
+        if until:
+            clauses.append("a.created_at < ?")
+            params.append(until)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
                 SELECT a.*, u.username
                 FROM audit_log a
                 LEFT JOIN users u ON u.id = a.user_id
+                {where}
                 ORDER BY a.created_at DESC, a.id DESC
                 LIMIT ?
                 """,
-                (max(1, min(int(limit), 500)),),
+                (*params, max(1, min(int(limit), 1000))),
             ).fetchall()
         result = []
         for row in rows:

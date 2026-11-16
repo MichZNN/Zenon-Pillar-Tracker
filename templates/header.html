@@ -25,7 +25,17 @@
             <i class="fa-solid fa-chevron-down user-menu-chevron" aria-hidden="true"></i>
           </button>
           <div id="user-menu-dropdown" class="user-menu-dropdown" role="menu" hidden>
-            <a id="account-menu-link" class="user-menu-link" href="#account-modal" role="menuitem" hidden>
+            <div id="menu-admin-group" class="user-menu-group" role="group" aria-label="Manage" hidden>
+              <p class="user-menu-group-label">Manage</p>
+              <a class="user-menu-link" data-admin-nav href="#runtime-settings" role="menuitem"><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Runtime</span></a>
+              <a class="user-menu-link" data-admin-nav href="#subscription-settings" role="menuitem"><i class="fa-solid fa-bell" aria-hidden="true"></i><span>Subscriptions</span></a>
+              <a class="user-menu-link" data-admin-nav href="#user-settings" role="menuitem"><i class="fa-solid fa-users" aria-hidden="true"></i><span>Users</span></a>
+              <a class="user-menu-link" data-admin-nav href="#session-settings-card" role="menuitem"><i class="fa-solid fa-clock" aria-hidden="true"></i><span>Sessions</span></a>
+              <a class="user-menu-link" data-admin-nav href="#log-settings-card" role="menuitem"><i class="fa-solid fa-file-lines" aria-hidden="true"></i><span>Application logs</span></a>
+              <a class="user-menu-link" data-admin-nav href="#operations-settings" role="menuitem"><i class="fa-solid fa-chart-line" aria-hidden="true"></i><span>Operations</span></a>
+            </div>
+            <a class="user-menu-link" href="/" role="menuitem"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Dashboard</span></a>
+            <a id="account-menu-link" class="user-menu-link" href="#account-modal" role="menuitem">
               <i class="fa-solid fa-user-gear" aria-hidden="true"></i>
               <span>My account</span>
             </a>
@@ -35,7 +45,6 @@
             </button>
           </div>
         </div>
-        <a class="ghost-button header-action-link" href="/"><i class="fa-solid fa-house" aria-hidden="true"></i><span>Dashboard</span></a>
       </div>
     </div>
   </header>

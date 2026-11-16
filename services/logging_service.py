@@ -167,3 +167,104 @@ def read_log_tail(
         "lines": list(reversed(recent_lines)),
     }
     return result
+
+
+_LOG_TIMESTAMP = __import__("re").compile(
+    r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})([+-]\d{4}|Z)?"
+)
+MAX_ROTATED_LOG_FILES = 20
+
+
+def _parse_log_timestamp(line: str):
+    from datetime import datetime, timezone
+
+    match = _LOG_TIMESTAMP.match(line)
+    if not match:
+        return None
+    zone = match.group(2) or "+0000"
+    if zone == "Z":
+        zone = "+0000"
+    try:
+        return datetime.strptime(match.group(1) + zone, "%Y-%m-%dT%H:%M:%S%z").astimezone(
+            timezone.utc
+        )
+    except ValueError:
+        return None
+
+
+def _log_files(path: Path) -> list[Path]:
+    """The active log and its rotated backups, newest first."""
+    files = [path] if path.exists() else []
+    for index in range(1, MAX_ROTATED_LOG_FILES + 1):
+        candidate = path.with_name(f"{path.name}.{index}")
+        if candidate.exists():
+            files.append(candidate)
+    return files
+
+
+def read_log_range(
+    since=None,
+    until=None,
+    *,
+    lines: int = 1000,
+    path: Path | None = None,
+) -> dict[str, Any]:
+    """Return log lines between ``since`` and ``until`` (UTC datetimes), newest first.
+
+    Reads the active log and the rotated backups, so a period can go back as
+    far as the retained files. Lines without a timestamp (tracebacks) belong
+    to the entry before them.
+    """
+    path = path or resolve_log_path()
+    limit = max(1, min(int(lines), 5000))
+    files = _log_files(path)
+    oldest_available = None
+    if files:
+        try:
+            with files[-1].open("r", encoding="utf-8", errors="replace") as handle:
+                for line in handle:
+                    oldest_available = _parse_log_timestamp(line)
+                    if oldest_available:
+                        break
+        except OSError:
+            oldest_available = None
+
+    collected: list[str] = []
+    truncated = False
+    done = False
+    for log_file in files:
+        try:
+            text = log_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        # Group continuation lines with the timestamped line they follow.
+        entries: list[tuple[Any, str]] = []
+        for line in text.splitlines():
+            stamp = _parse_log_timestamp(line)
+            if stamp is None and entries:
+                entries[-1] = (entries[-1][0], entries[-1][1] + "\n" + line)
+            elif line.strip():
+                entries.append((stamp, line))
+        for stamp, entry in reversed(entries):
+            if stamp is not None and until is not None and stamp >= until:
+                continue
+            if stamp is not None and since is not None and stamp < since:
+                done = True
+                break
+            if len(collected) >= limit:
+                truncated = True
+                done = True
+                break
+            collected.append(entry)
+        if done:
+            break
+    return {
+        "path": str(path),
+        "exists": bool(files),
+        "files": len(files),
+        "lines": collected,
+        "truncated": truncated,
+        "oldest_available_at": (
+            oldest_available.isoformat(timespec="seconds") if oldest_available else None
+        ),
+    }

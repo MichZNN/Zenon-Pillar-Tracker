@@ -102,14 +102,13 @@ function renderEpochs(epochs) {
     return;
   }
   target.innerHTML = epochs.map((epoch) => {
-    const timeLabel = renderTime(epoch.epoch_start_at);
     const estimateLabel = epoch.epoch_start_inferred
       ? '<span class="epoch-estimated">Estimated</span>'
       : '';
     return '<div class="epoch-row">' +
     '<div class="event-top">' +
     '<span class="epoch-number">Epoch ' + formatEpoch(epoch.epoch) + '</span>' +
-    '<span class="event-time-group">' + timeLabel + estimateLabel + '</span>' +
+    '<span class="event-time-group">' + renderTime(epoch.epoch_start_at) + estimateLabel + '</span>' +
     '</div>' +
     '</div>';
   }).join("");

@@ -918,6 +918,7 @@ class Collector:
             return None
         self._maintenance_day = due_day
         started = time.monotonic()
+        started_at = utc_now()
         try:
             stored_days = self.database.store_completed_performance_days(
                 now=now,
@@ -931,10 +932,21 @@ class Collector:
                 ),
                 now=now,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("Daily maintenance failed")
+            self._record_maintenance(
+                started_at, time.monotonic() - started, "failed", error=str(exc)
+            )
             return None
         result = {"performance_days_stored": stored_days, **pruned}
+        self._record_maintenance(
+            started_at,
+            time.monotonic() - started,
+            "success",
+            performance_days_stored=stored_days,
+            payloads_cleared=pruned["payloads_cleared"],
+            snapshots_deleted=pruned["snapshots_deleted"],
+        )
         logger.info(
             "Daily maintenance done in %.1fs: %s performance days stored, "
             "%s snapshot payloads cleared, %s snapshots deleted",
@@ -944,6 +956,18 @@ class Collector:
             pruned["snapshots_deleted"],
         )
         return result
+
+    def _record_maintenance(self, started_at: str, duration: float, status: str, **counts) -> None:
+        try:
+            self.database.record_maintenance_run(
+                started_at=started_at,
+                duration_seconds=duration,
+                status=status,
+                **counts,
+            )
+        except Exception:
+            # The history is informational; never let it break the collector.
+            logger.exception("Could not record the maintenance run")
 
     def run_forever(self, interval_seconds: int | None = None) -> None:
         interval_override = interval_seconds is not None

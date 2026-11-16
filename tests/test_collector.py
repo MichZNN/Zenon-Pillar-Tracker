@@ -120,6 +120,9 @@ class CollectorTestCase(unittest.TestCase):
         first = self.collector.run_maintenance_if_due(morning)
         self.assertIsNotNone(first)
         self.assertIn("snapshots_deleted", first)
+        runs = self.collector.database.get_maintenance_runs()
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0]["status"], "success")
         self.assertIsNone(self.collector.run_maintenance_if_due(morning))
         # Just after midnight the previous day is not closed yet.
         just_after_midnight = datetime(2026, 10, 31, 0, 5, tzinfo=timezone.utc)

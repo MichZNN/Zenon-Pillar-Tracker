@@ -70,3 +70,95 @@ def password_is_acceptable(password: str) -> bool:
 
 def username_is_acceptable(username: str) -> bool:
     return isinstance(username, str) and bool(USERNAME_PATTERN.fullmatch(username))
+
+
+# ---------------------------------------------------------------------------
+# Two-factor authentication (TOTP, RFC 6238) without extra dependencies.
+# Compatible with common authenticator apps: SHA-1, 6 digits, 30 seconds.
+# ---------------------------------------------------------------------------
+
+TOTP_ISSUER = "Zenon Pillar Tracker"
+TOTP_PERIOD_SECONDS = 30
+TOTP_DIGITS = 6
+# Accept the previous and next 30-second step to allow for clock drift.
+TOTP_WINDOW_STEPS = 1
+RECOVERY_CODE_COUNT = 10
+
+
+def generate_totp_secret() -> str:
+    """Return a new base32 secret (160 bits) without padding."""
+    return base64.b32encode(secrets.token_bytes(20)).decode("ascii").rstrip("=")
+
+
+def _totp_key(secret: str) -> bytes:
+    cleaned = re.sub(r"\s+", "", str(secret)).upper()
+    padding = "=" * (-len(cleaned) % 8)
+    return base64.b32decode(cleaned + padding)
+
+
+def totp_code(secret: str, step: int) -> str:
+    """Return the code for one 30-second time step."""
+    digest = hmac.new(
+        _totp_key(secret),
+        int(step).to_bytes(8, "big"),
+        hashlib.sha1,
+    ).digest()
+    offset = digest[-1] & 0x0F
+    value = int.from_bytes(digest[offset:offset + 4], "big") & 0x7FFFFFFF
+    return str(value % (10 ** TOTP_DIGITS)).zfill(TOTP_DIGITS)
+
+
+def normalise_two_factor_code(code: object) -> str:
+    """Strip spaces and dashes users may type or paste."""
+    return re.sub(r"[\s-]+", "", str(code or "")).lower()
+
+
+def verify_totp(
+    secret: str,
+    code: object,
+    *,
+    now: float | None = None,
+    last_step: int | None = None,
+) -> int | None:
+    """Return the matching time step, or None.
+
+    A step that was already used (``last_step``) or an older one is rejected,
+    so a code cannot be replayed.
+    """
+    import time
+
+    value = normalise_two_factor_code(code)
+    if not secret or len(value) != TOTP_DIGITS or not value.isdigit():
+        return None
+    current = int((time.time() if now is None else now) // TOTP_PERIOD_SECONDS)
+    for step in range(current - TOTP_WINDOW_STEPS, current + TOTP_WINDOW_STEPS + 1):
+        if last_step is not None and step <= int(last_step):
+            continue
+        if hmac.compare_digest(totp_code(secret, step), value):
+            return step
+    return None
+
+
+def totp_uri(secret: str, username: str, issuer: str = TOTP_ISSUER) -> str:
+    """Return the otpauth:// URI shown as a QR code."""
+    from urllib.parse import quote
+
+    label = quote(f"{issuer}:{username}")
+    return (
+        f"otpauth://totp/{label}?secret={secret}&issuer={quote(issuer)}"
+        f"&algorithm=SHA1&digits={TOTP_DIGITS}&period={TOTP_PERIOD_SECONDS}"
+    )
+
+
+def generate_recovery_codes(count: int = RECOVERY_CODE_COUNT) -> list[str]:
+    """Return one-time recovery codes like ``k3m9q-2xw7p`` (50 bits each)."""
+    alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
+    codes = []
+    for _ in range(count):
+        raw = "".join(secrets.choice(alphabet) for _ in range(10))
+        codes.append(f"{raw[:5]}-{raw[5:]}")
+    return codes
+
+
+def hash_recovery_code(code: object) -> str:
+    return hash_token(normalise_two_factor_code(code))

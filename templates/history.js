@@ -56,8 +56,8 @@ function renderEvents(items) {
     '</div>' +
     '<p class="event-detail">' + escapeHtml(eventDescription(event)) + '</p>' +
     '<div class="history-card-meta">' +
-    '<span>Epoch ' + escapeHtml(event.epoch ?? "—") + '</span>' +
-    '<span>Momentum ' + escapeHtml(event.momentum_height ?? "—") + '</span>' +
+    '<span>Epoch ' + escapeHtml(event.epoch ?? "n/a") + '</span>' +
+    '<span>Momentum ' + escapeHtml(event.momentum_height ?? "n/a") + '</span>' +
     '</div>' +
     '</article>'
   ).join("");
