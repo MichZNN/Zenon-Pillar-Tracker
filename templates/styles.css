@@ -610,9 +610,35 @@ td { font-size: .78rem; }
 .modal-dialog {
   margin: 0;
   max-height: min(calc(100vh - 40px), 760px);
+  max-height: min(calc(100dvh - 40px), 760px);
   max-width: 760px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   width: 100%;
+}
+@media (max-width: 679px) {
+  /* Phones: the dialog fills the visible screen (dvh leaves out the
+     browser toolbars) and scrolls inside, so nothing falls off-screen. */
+  .modal-backdrop { align-items: stretch; padding: 0; }
+  .modal-dialog:not(.logs-modal-dialog) {
+    background: #1d1d1d;
+    border-radius: 0;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+  /* Keep the title and close button in reach while scrolling. */
+  .modal-dialog:not(.logs-modal-dialog) .modal-heading {
+    background: #1d1d1d;
+    margin: -20px -20px 14px;
+    padding: 16px 20px 12px;
+    position: sticky;
+    top: -20px;
+    z-index: 2;
+  }
+  .two-factor-qr { height: 168px; width: 168px; }
+  .two-factor-setup { scroll-margin-top: 12px; }
 }
 .modal-heading { margin-bottom: 14px; }
 .modal-actions { align-items: center; display: flex; flex: 0 0 auto; gap: 8px; }

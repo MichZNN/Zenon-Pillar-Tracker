@@ -545,7 +545,10 @@ async function startTwoFactorSetup() {
     $("#two-factor-secret").textContent = (setup.secret.match(/.{1,4}/g) || []).join(" ");
     $("#two-factor-enable-form").reset();
     showTwoFactorPanel("setup");
-    $("#two-factor-enable-form").elements.code.focus();
+    // Start the setup at the top of its section; on a phone the QR code
+    // and the code field would otherwise sit below the visible area.
+    $("#two-factor-setup").scrollIntoView({ block: "start" });
+    $("#two-factor-enable-form").elements.code.focus({ preventScroll: true });
   } catch (error) {
     showMessage(error.message, true);
   }
