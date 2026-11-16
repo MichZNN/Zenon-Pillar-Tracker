@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     sent_at TEXT,
     last_error TEXT,
     created_at TEXT NOT NULL,
+    external_message_id TEXT,
     UNIQUE (event_id, channel)
 );
 
@@ -511,6 +512,16 @@ def initialize_database(database_path: str | Path) -> Path:
                 "PRAGMA table_info(pillar_subscriptions)"
             ).fetchall()
         }
+        notification_columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(notifications)"
+            ).fetchall()
+        }
+        if "external_message_id" not in notification_columns:
+            connection.execute(
+                "ALTER TABLE notifications ADD COLUMN external_message_id TEXT"
+            )
         if "discord_webhook" not in subscription_columns:
             connection.execute(
                 "ALTER TABLE pillar_subscriptions ADD COLUMN "
@@ -1974,7 +1985,11 @@ class Database:
             )
             return cursor.rowcount == 1
 
-    def mark_notification_sent(self, notification_id: int) -> None:
+    def mark_notification_sent(
+        self,
+        notification_id: int,
+        external_message_id: Any = None,
+    ) -> None:
         sent_at = utc_now()
         with self._connect() as connection:
             notification = connection.execute(
@@ -1989,10 +2004,16 @@ class Database:
             connection.execute(
                 """
                 UPDATE notifications
-                SET status = 'sent', sent_at = ?, last_error = NULL
+                SET status = 'sent', sent_at = ?, last_error = NULL,
+                    external_message_id = COALESCE(?, external_message_id)
                 WHERE id = ?
                 """,
-                (sent_at, notification_id),
+                (
+                    sent_at,
+                    None if external_message_id is None
+                    else str(external_message_id),
+                    notification_id,
+                ),
             )
             if (
                 notification
@@ -2916,6 +2937,32 @@ class Database:
                     (row["sent_at"], row["epoch"]),
                 )
         return len(rows)
+
+    def get_event(self, event_id: int) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM events WHERE id = ?",
+                (int(event_id),),
+            ).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        item["details"] = _load_json(item.pop("details_json"), {})
+        return item
+
+    def get_event_notifications(self, event_id: int) -> list[dict[str, Any]]:
+        """Return the outbox rows of one event, including sent message IDs."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, channel, status, sent_at, external_message_id
+                FROM notifications
+                WHERE event_id = ?
+                ORDER BY id ASC
+                """,
+                (int(event_id),),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def get_events(
         self,

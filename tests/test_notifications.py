@@ -305,6 +305,98 @@ class NotificationDispatcherTestCase(unittest.TestCase):
             "New pillar spawned: Alpha\nMomentum rewards: 10%\nDelegate rewards: 90%",
         )
 
+    def _record_alpha(self, channels):
+        run_id = self.database.begin_poll()
+        self.database.record_observation(
+            poll_run_id=run_id,
+            observed_at=utc_now(),
+            momentum={"height": 101},
+            epoch_data={"epoch": 1},
+            pillars={
+                "z1alpha": {
+                    "name": "Alpha",
+                    "ownerAddress": "z1alpha",
+                    "rank": 0,
+                    "weight": 1,
+                    "giveMomentumRewardPercentage": 10,
+                    "giveDelegateRewardPercentage": 90,
+                    "currentStats": {
+                        "producedMomentums": 1,
+                        "expectedMomentums": 1,
+                    },
+                }
+            },
+            pillar_notification_channels={
+                "z1alpha": {"pillar_created": channels},
+            },
+        )
+        return self.database.get_events(event_type="pillar_created")[0]["id"]
+
+    def test_telegram_message_id_is_stored_after_sending(self):
+        with patch("services.notification_service.get_env_value", return_value="token"):
+            dispatcher = NotificationDispatcher(
+                self.database,
+                {"telegram_channel_id": "-100global"},
+            )
+        event_id = self._record_alpha(("telegram_chat:-100pillar",))
+        response = SimpleNamespace(
+            status_code=200,
+            json=lambda: {"ok": True, "result": {"message_id": 4242}},
+        )
+        with patch.object(
+            dispatcher.telegram,
+            "bot_send_message_to_chat",
+            return_value=response,
+        ):
+            result = dispatcher.dispatch_pending()
+
+        self.assertEqual(result, {"sent": 1, "failed": 0})
+        notifications = self.database.get_event_notifications(event_id)
+        self.assertEqual(notifications[0]["channel"], "telegram_chat:-100pillar")
+        self.assertEqual(notifications[0]["external_message_id"], "4242")
+
+    def test_edit_tool_rewrites_stored_and_manual_messages(self):
+        from tools.telegram import edit_event_message
+
+        event_id = self._record_alpha(("telegram_chat:-100pillar",))
+        notification_id = self.database.get_event_notifications(event_id)[0]["id"]
+        self.database.mark_notification_sent(notification_id, 77)
+        edited = []
+        client = SimpleNamespace(
+            bot_edit_message=lambda chat, message_id, text: edited.append(
+                (chat, message_id, text)
+            ) or SimpleNamespace(status_code=200, json=lambda: {"ok": True}),
+            response_ok=lambda response: True,
+        )
+        config = {"telegram_channel_id": "-100global"}
+        database_path = str(self.database.path)
+        with patch.object(
+            edit_event_message, "load_runtime_settings", return_value=config
+        ), patch.object(
+            edit_event_message, "create_telegram_client", return_value=client
+        ):
+            dry_run = edit_event_message.main(
+                ["--database", database_path, "--event-id", str(event_id)]
+            )
+            stored = edit_event_message.main(
+                ["--database", database_path, "--event-id", str(event_id), "--apply"]
+            )
+            manual = edit_event_message.main(
+                [
+                    "--database", database_path,
+                    "--event-id", str(event_id),
+                    "--message-id", "12",
+                    "--apply",
+                ]
+            )
+
+        self.assertEqual((dry_run, stored, manual), (0, 0, 0))
+        text = "New pillar spawned: Alpha\nMomentum rewards: 10%\nDelegate rewards: 90%"
+        self.assertEqual(
+            edited,
+            [("-100pillar", 77, text), ("-100global", 12, text)],
+        )
+
     def test_reward_share_notification_uses_pillar_name(self):
         message = format_event(
             {

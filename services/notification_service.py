@@ -67,6 +67,35 @@ def _epoch_notification_emoji(epoch: Any) -> str:
     return EPOCH_NOTIFICATION_EMOJIS[index]
 
 
+def telegram_message_id(response: Any) -> int | None:
+    """Return the message ID from a Telegram sendMessage response."""
+    try:
+        payload = response.json()
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    result = payload.get("result")
+    if not isinstance(result, Mapping):
+        return None
+    try:
+        return int(result["message_id"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def telegram_chat_id_for_channel(
+    channel: str,
+    global_channel_id: str,
+) -> str | None:
+    """Map an outbox channel to the Telegram chat it was sent to."""
+    if channel == "telegram":
+        return global_channel_id or None
+    if channel.startswith("telegram_chat:"):
+        return channel.split(":", 1)[1] or None
+    return None
+
+
 def format_event(event: Mapping[str, Any]) -> str:
     event_type = event.get("event_type")
     details = event.get("details") or {}
@@ -285,6 +314,7 @@ class NotificationDispatcher:
             if not self.database.claim_notification(notification_id):
                 continue
             try:
+                external_message_id = None
                 message = format_event(notification)
                 channel = notification["channel"]
                 if channel == "telegram" or channel.startswith("telegram_chat:"):
@@ -305,6 +335,7 @@ class NotificationDispatcher:
                         raise RuntimeError(
                             f"Telegram returned HTTP {response.status_code}"
                         )
+                    external_message_id = telegram_message_id(response)
                 elif channel == "discord":
                     response = self.discord.webhook_send_message_to_channel(
                         self.discord_webhook,
@@ -344,7 +375,10 @@ class NotificationDispatcher:
                         )
                 else:
                     raise RuntimeError(f"Unsupported notification channel: {channel}")
-                self.database.mark_notification_sent(notification_id)
+                self.database.mark_notification_sent(
+                    notification_id,
+                    external_message_id,
+                )
                 sent += 1
             except Exception as exc:
                 self.database.mark_notification_failed(notification_id, str(exc))
