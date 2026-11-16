@@ -417,7 +417,7 @@ function renderAprStat(performance, loading = false) {
   const info = aprInfoParts(performance);
   const tone = value === 0 ? " is-muted" : info.caution ? " is-caution" : "";
   return '<div class="pc-stat pc-apr"><dt>APR' + info.button + '</dt>' +
-    '<dd class="' + tone.trim() + '">' + info.value + '</dd>' + info.panel + '</div>';
+    '<dd class="' + tone.trim() + '">' + info.value + info.panel + '</dd></div>';
 }
 
 function renderPillarCard(pillar, performance, options = {}) {
@@ -519,6 +519,16 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    const open = document.querySelector(".apr-info-button[aria-expanded='true']");
+    if (open) {
+      const panel = document.getElementById(open.getAttribute("aria-controls"));
+      if (panel) panel.hidden = true;
+      open.setAttribute("aria-expanded", "false");
+      open.focus();
+    }
+    return;
+  }
   if (event.key !== "Enter" && event.key !== " ") return;
   const time = event.target.closest?.(".rel-time");
   if (!time) return;

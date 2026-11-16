@@ -88,19 +88,51 @@ function renderChart(pillar) {
   const selected = points.find((point) => point.date === pageState.selectedDay);
   $("#performance-readout").textContent = selected
     ? performanceDayLabel(selected, pillar)
-    : "Tap a bar to see that day.";
-  chart.querySelectorAll(".performance-bar-button").forEach((button) => {
-    const point = points[Number(button.dataset.index)];
-    const select = () => {
-      pageState.selectedDay = point.date;
-      chart.querySelectorAll(".is-selected").forEach((item) => item.classList.remove("is-selected"));
-      button.classList.add("is-selected");
-      $("#performance-readout").textContent = performanceDayLabel(point, pillar);
-    };
-    button.addEventListener("click", select);
-    button.addEventListener("mouseenter", select);
-    button.addEventListener("focus", select);
+    : "Tap a bar or use the arrows to see a day.";
+  const buttons = [...chart.querySelectorAll(".performance-bar-button")];
+  const selectedIndex = () => points.findIndex((point) => point.date === pageState.selectedDay);
+  const select = (index, focus = false) => {
+    const bounded = Math.max(0, Math.min(points.length - 1, index));
+    const point = points[bounded];
+    pageState.selectedDay = point.date;
+    buttons.forEach((item, itemIndex) => {
+      item.classList.toggle("is-selected", itemIndex === bounded);
+      // One tab stop for the chart; arrow keys move between days.
+      item.tabIndex = itemIndex === bounded ? 0 : -1;
+    });
+    $("#performance-readout").textContent = performanceDayLabel(point, pillar);
+    if (focus) buttons[bounded].focus();
+    $("#performance-prev").disabled = bounded === 0;
+    $("#performance-next").disabled = bounded === points.length - 1;
+  };
+  buttons.forEach((button, index) => {
+    button.tabIndex = index === (selectedIndex() >= 0 ? selectedIndex() : points.length - 1) ? 0 : -1;
+    button.addEventListener("click", () => select(index));
+    button.addEventListener("mouseenter", () => select(index));
+    button.addEventListener("focus", () => select(index));
+    button.addEventListener("keydown", (event) => {
+      const moves = { ArrowLeft: -1, ArrowRight: 1 };
+      if (event.key in moves) {
+        event.preventDefault();
+        select(index + moves[event.key], true);
+      } else if (event.key === "Home" || event.key === "End") {
+        event.preventDefault();
+        select(event.key === "Home" ? 0 : points.length - 1, true);
+      }
+    });
   });
+  // Larger targets than the bars for touch screens (WCAG 2.5.8).
+  $("#performance-prev").onclick = () => {
+    const current = selectedIndex();
+    select(current < 0 ? points.length - 1 : current - 1);
+  };
+  $("#performance-next").onclick = () => {
+    const current = selectedIndex();
+    select(current < 0 ? points.length - 1 : current + 1);
+  };
+  const current = selectedIndex();
+  $("#performance-prev").disabled = current === 0;
+  $("#performance-next").disabled = current === points.length - 1;
 }
 
 function renderEvents(events) {
