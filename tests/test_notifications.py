@@ -397,6 +397,47 @@ class NotificationDispatcherTestCase(unittest.TestCase):
             [("-100pillar", 77, text), ("-100global", 12, text)],
         )
 
+    def test_edit_tool_reports_chat_mismatch_and_api_failure(self):
+        from tools.telegram import edit_event_message
+
+        event_id = self._record_alpha(("telegram_chat:-100pillar",))
+        notification_id = self.database.get_event_notifications(event_id)[0]["id"]
+        self.database.mark_notification_sent(notification_id, 77)
+        failure = SimpleNamespace(
+            status_code=400,
+            json=lambda: {"ok": False, "description": "message can't be edited"},
+        )
+        client = SimpleNamespace(
+            bot_edit_message=lambda *args: failure,
+            response_ok=lambda response: False,
+        )
+        database_path = str(self.database.path)
+        with patch.object(
+            edit_event_message, "load_runtime_settings", return_value={}
+        ), patch.object(
+            edit_event_message, "create_telegram_client", return_value=client
+        ), patch("sys.stderr") as stderr:
+            mismatch = edit_event_message.main(
+                [
+                    "--database", database_path,
+                    "--event-id", str(event_id),
+                    "--chat-id", "-1009999",
+                ]
+            )
+            same_chat = edit_event_message.main(
+                [
+                    "--database", database_path,
+                    "--event-id", str(event_id),
+                    "--chat-id=-100pillar",
+                    "--apply",
+                ]
+            )
+
+        self.assertEqual((mismatch, same_chat), (1, 1))
+        written = "".join(call.args[0] for call in stderr.write.call_args_list)
+        self.assertIn("none in chat -1009999", written)
+        self.assertIn("message can't be edited", written)
+
     def test_reward_share_notification_uses_pillar_name(self):
         message = format_event(
             {

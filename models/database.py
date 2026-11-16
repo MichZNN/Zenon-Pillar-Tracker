@@ -372,7 +372,11 @@ def _string_values(value: Any) -> list[str]:
 
 
 def _backfill_reward_share_event_names(connection: sqlite3.Connection) -> int:
-    """Add the pillar name to reward share events stored without one."""
+    """Add the pillar name to reward share events stored without one.
+
+    The name at event time was never stored, so the current name is used.
+    Events of pillars missing from the pillars table are left as they are.
+    """
     rows = connection.execute(
         """
         SELECT event.id, event.details_json, pillar.name
@@ -392,7 +396,7 @@ def _backfill_reward_share_event_names(connection: sqlite3.Connection) -> int:
         details["name"] = name
         connection.execute(
             "UPDATE events SET details_json = ? WHERE id = ?",
-            (json.dumps(details, sort_keys=True), event_id),
+            (_json(details), event_id),
         )
         updated += 1
     return updated
@@ -1752,7 +1756,7 @@ class Database:
                     )
 
                 if previous and previous_present:
-                    share_changes: dict[str, Any] = {"name": name}
+                    share_changes: dict[str, Any] = {}
                     if previous.get("momentum_reward_percentage") != momentum_share:
                         share_changes["momentum"] = {
                             "old": previous.get("momentum_reward_percentage"),
@@ -1763,7 +1767,7 @@ class Database:
                             "old": previous.get("delegate_reward_percentage"),
                             "new": delegate_share,
                         }
-                    if len(share_changes) > 1:
+                    if share_changes:
                         event_count += 1
                         self._insert_event(
                             connection,
@@ -1772,7 +1776,7 @@ class Database:
                             epoch=epoch,
                             observed_at=observed_at,
                             momentum_height=momentum_height,
-                            details=share_changes,
+                            details={"name": name, **share_changes},
                             notification_channels=channels_for_event(
                                 owner_address,
                                 "reward_shares_changed",

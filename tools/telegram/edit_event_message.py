@@ -44,6 +44,7 @@ def _targets(
         return [(target_chat, message_id)]
 
     targets = []
+    filtered_out = 0
     for notification in database.get_event_notifications(event_id):
         stored_id = notification.get("external_message_id")
         target_chat = telegram_chat_id_for_channel(
@@ -52,9 +53,14 @@ def _targets(
         )
         if not stored_id or not target_chat:
             continue
-        if chat_id and target_chat != chat_id:
+        if chat_id and target_chat.casefold() != chat_id.casefold():
+            filtered_out += 1
             continue
         targets.append((target_chat, int(stored_id)))
+    if not targets and filtered_out:
+        raise ValueError(
+            f"This event has stored Telegram messages, but none in chat {chat_id}"
+        )
     return targets
 
 
@@ -93,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--limit",
-        type=int,
+        type=lambda value: max(1, min(int(value), 100)),
         default=10,
         help="With --list: number of events to show (default 10)",
     )
@@ -120,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         database = Database(args.database)
         if args.list:
-            _print_recent(database, args.event_type, max(1, args.limit))
+            _print_recent(database, args.event_type, args.limit)
             return 0
         if args.event_id is None:
             parser.error("--event-id is required unless --list is used")
@@ -164,6 +170,8 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 payload = response.json()
             except ValueError:
+                payload = {}
+            if not isinstance(payload, dict):
                 payload = {}
             description = str(payload.get("description") or "")
             if telegram.response_ok(response):

@@ -149,12 +149,13 @@ function eventDescription(event) {
   }
   if (event.event_type === "reward_shares_changed") {
     const name = details.name || event.owner_address || "Unknown pillar";
+    const percent = (value) => (value === null || value === undefined ? "—" : value + "%");
     const changes = [];
     if (details.momentum) {
-      changes.push("Momentum " + details.momentum.old + "% → " + details.momentum.new + "%");
+      changes.push("Momentum " + percent(details.momentum.old) + " → " + percent(details.momentum.new));
     }
     if (details.delegate) {
-      changes.push("Delegate " + details.delegate.old + "% → " + details.delegate.new + "%");
+      changes.push("Delegate " + percent(details.delegate.old) + " → " + percent(details.delegate.new));
     }
     return changes.length ? name + " · " + changes.join(" · ") : name;
   }

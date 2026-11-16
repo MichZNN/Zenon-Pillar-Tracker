@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from utils.http_wrapper import HttpWrapper
+from utils.http_wrapper import HttpError, HttpWrapper
 from utils.telegram_wrapper import TelegramWrapper
 from controllers.web_controller import ApiRateLimiter
 
@@ -64,6 +64,19 @@ class RateLimitTestCase(unittest.TestCase):
             get.call_args.kwargs["params"]["allowed_updates"],
             '["callback_query"]',
         )
+
+    def test_telegram_network_errors_do_not_contain_bot_token(self):
+        with patch(
+            "utils.telegram_wrapper.HttpWrapper.post",
+            side_effect=HttpError(
+                "POST https://api.telegram.org/bot123:SECRET/sendMessage failed"
+            ),
+        ):
+            with self.assertRaises(HttpError) as raised:
+                TelegramWrapper("123:SECRET").bot_send_message_to_chat("-1", "Hi")
+
+        self.assertNotIn("SECRET", str(raised.exception))
+        self.assertIn("bot<token>/sendMessage", str(raised.exception))
 
     def test_telegram_edit_message_can_include_inline_keyboard(self):
         response = FakeResponse(200, payload={"ok": True, "result": {}})
