@@ -6,7 +6,7 @@
   <div id="account-modal" class="modal-backdrop" hidden>
     <section id="account-settings-section" class="section-block modal-dialog" role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
       <div class="section-heading modal-heading">
-        <div><p class="eyebrow">Personal access</p><h2 id="account-modal-title">My account</h2></div>
+        <div><h2 id="account-modal-title">My account</h2></div>
         <button id="close-account-modal" class="ghost-button modal-close" type="button" aria-label="Close My account"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
       </div>
       <p class="muted">Update your display name or change your password. Your current password is required when changing the password.</p>
@@ -20,7 +20,7 @@
 
       <section class="two-factor-section" aria-labelledby="two-factor-title">
         <div class="two-factor-heading">
-          <div><p class="eyebrow">Extra security</p><h3 id="two-factor-title">Two-factor authentication</h3></div>
+          <div><h3 id="two-factor-title">Two-factor authentication</h3></div>
           <span id="two-factor-status" class="status-badge inactive">Off</span>
         </div>
         <p class="muted">When this is on, logging in also asks for a code from an authenticator app such as Google Authenticator, Microsoft Authenticator, 1Password or Aegis.</p>
@@ -75,7 +75,7 @@
     <div id="portal-message" class="sr-only" role="status"></div>
 
     <section id="user-subscriptions-section" class="section-block" hidden>
-      <div class="section-heading"><div><p class="eyebrow">Personal access</p><h2>My subscriptions</h2></div></div>
+      <div class="section-heading"><div><h2>My subscriptions</h2></div></div>
       <p class="muted">Enter a Telegram channel, a Discord webhook, or both. Notifications are sent to every destination you fill in.</p>
       <form id="subscription-form" class="form-grid subscription-form">
         <input name="id" type="hidden">
@@ -107,7 +107,7 @@
         <aside class="admin-menu" aria-label="Administration navigation">
           <div class="admin-menu-heading">
             <div class="admin-menu-title">
-              <p class="eyebrow">Administration</p>
+              
               <h2>Manage</h2>
             </div>
           </div>
@@ -123,10 +123,10 @@
 
         <div class="admin-content">
       <section id="runtime-settings" class="section-block">
-        <div class="section-heading"><div><p class="eyebrow">Administrator access</p><h2>Runtime settings</h2></div><button id="save-settings" class="primary-button" type="submit" form="settings-form"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save runtime settings</button></div>
+        <div class="section-heading"><div><h2>Runtime settings</h2></div><button id="save-settings" class="primary-button" type="submit" form="settings-form" aria-label="Save runtime settings"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save<span class="label-long"> runtime settings</span></button></div>
         <form id="settings-form" class="settings-form" data-settings-form data-settings-label="Runtime settings">
           <section class="settings-category">
-            <div class="settings-category-heading"><p class="eyebrow">Node and collector</p><h3>Collection</h3></div>
+            <div class="settings-category-heading"><h3>Collection</h3></div>
             <div class="settings-grid">
               <label class="setting-field setting-field-wide">
                 <span class="setting-label">Node RPC URLs</span>
@@ -175,7 +175,7 @@
           </section>
 
           <section class="settings-category">
-            <div class="settings-category-heading"><p class="eyebrow">Storage</p><h3>Data retention</h3></div>
+            <div class="settings-category-heading"><h3>Data retention</h3></div>
             <div class="settings-grid">
               <label class="setting-field">
                 <span class="setting-label">Keep raw node data (days)</span>
@@ -191,7 +191,7 @@
           </section>
 
           <section class="settings-category">
-            <div class="settings-category-heading"><p class="eyebrow">Node health</p><h3>Failover and retries</h3></div>
+            <div class="settings-category-heading"><h3>Failover and retries</h3></div>
             <div class="settings-grid">
               <label class="setting-field">
                 <span class="setting-label">Maximum frontier age (seconds)</span>
@@ -217,7 +217,7 @@
           </section>
 
           <section class="settings-category">
-            <div class="settings-category-heading"><p class="eyebrow">Network requests</p><h3>Timeouts and rate limits</h3></div>
+            <div class="settings-category-heading"><h3>Timeouts and rate limits</h3></div>
             <div class="settings-grid">
               <label class="setting-field">
                 <span class="setting-label">HTTP timeout (seconds)</span>
@@ -243,7 +243,7 @@
           </section>
 
           <section class="settings-category">
-            <div class="settings-category-heading"><p class="eyebrow">Notifications</p><h3>Delivery channels</h3></div>
+            <div class="settings-category-heading"><h3>Delivery channels</h3></div>
             <div class="settings-grid">
               <label class="setting-field">
                 <span class="setting-label">Telegram channel ID</span>
@@ -281,7 +281,7 @@
       </section>
 
       <section id="subscription-settings" class="section-block">
-        <div class="section-heading"><div><p class="eyebrow">Notification routing</p><h2>All pillar subscriptions</h2></div></div>
+        <div class="section-heading"><div><h2>All pillar subscriptions</h2></div></div>
         <p class="muted">Subscriptions are never deleted. Assign them to a user, edit them, or deactivate them.</p>
         <form id="admin-subscription-form" class="form-grid subscription-form">
           <input name="id" type="hidden">
@@ -310,7 +310,7 @@
       </section>
 
       <section id="user-settings" class="section-block">
-        <div class="section-heading"><div><p class="eyebrow">Access control</p><h2>Users</h2></div></div>
+        <div class="section-heading"><div><h2>Users</h2></div></div>
         <form id="user-form" class="form-grid compact-form">
           <input name="id" type="hidden">
           <label>Username<input name="username" required maxlength="80" autocomplete="off"></label>
@@ -325,7 +325,7 @@
       </section>
 
       <section id="session-settings-card" class="section-block">
-        <div class="section-heading"><div><p class="eyebrow">Access</p><h2>Sessions</h2></div></div>
+        <div class="section-heading"><div><h2>Sessions</h2></div></div>
         <form id="session-settings-form" class="settings-form" data-settings-form data-settings-label="Session settings">
           <div class="settings-grid">
             <label class="setting-field">
@@ -341,7 +341,7 @@
       </section>
 
       <section id="log-settings-card" class="section-block">
-        <div class="section-heading"><div><p class="eyebrow">Application logs</p><h2>Log rotation</h2></div></div>
+        <div class="section-heading"><div><h2>Log rotation</h2></div></div>
         <form id="logging-settings-form" class="settings-form" data-settings-form data-settings-label="Log settings">
           <div class="settings-grid">
             <div class="setting-field setting-field-wide">
@@ -378,7 +378,7 @@
 
       <section id="operations-settings" class="section-block">
         <div class="section-heading">
-          <div><p class="eyebrow">Operations</p><h2>Logs and audit trail</h2></div>
+          <div><h2>Logs and audit trail</h2></div>
           <div class="section-heading-actions log-actions">
             <span id="logs-auto-refresh" class="muted">Auto-refresh: 10s</span>
             <button id="refresh-logs" class="ghost-button icon-button" type="button" aria-label="Refresh logs" title="Refresh logs"><i class="fa-solid fa-rotate" aria-hidden="true"></i><span class="sr-only">Refresh logs</span></button>
@@ -387,7 +387,7 @@
         </div>
         <div class="collector-status-card">
           <div class="section-heading">
-            <div><p class="eyebrow">Data collection</p><h3>Collector status</h3></div>
+            <div><h3>Collector status</h3></div>
             <span id="collector-data-status" class="status-badge">Checking…</span>
           </div>
           <p id="collector-data-message" class="muted">Checking the latest collector poll.</p>
@@ -404,7 +404,7 @@
               <p class="muted">Stored statistics and snapshot cleanup, kept for a year independent of log rotation.</p>
             </div>
           </div>
-          <div class="table-wrap"><table class="maintenance-table"><thead><tr><th>Started</th><th>Status</th><th>Duration</th><th>Days stored</th><th>Payloads cleared</th><th>Snapshots deleted</th></tr></thead><tbody id="maintenance-list"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody></table></div>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Daily maintenance runs"><table class="maintenance-table"><thead><tr><th>Started</th><th>Status</th><th>Duration</th><th>Days stored</th><th>Payloads cleared</th><th>Snapshots deleted</th></tr></thead><tbody id="maintenance-list"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody></table></div>
         </div>
         <div class="logs-preview-card">
           <div class="logs-preview-heading">
@@ -414,7 +414,7 @@
             </div>
             <span id="logs-preview-count" class="muted"></span>
           </div>
-          <pre id="logs-preview-viewer" class="log-viewer logs-preview-viewer" aria-live="polite">Loading recent logs…</pre>
+          <pre id="logs-preview-viewer" class="log-viewer logs-preview-viewer" aria-live="polite" tabindex="0" aria-label="Recent log lines">Loading recent logs…</pre>
           <p class="muted logs-preview-help">Showing recent application activity. Open the full log for source, level, and text filters.</p>
         </div>
       </section>
@@ -426,7 +426,7 @@
     <section class="section-block modal-dialog logs-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="logs-modal-title">
       <div class="section-heading modal-heading">
         <div>
-          <p class="eyebrow">Operations</p>
+          
           <h2 id="logs-modal-title">Logs and audit trail</h2>
           <p id="logs-modal-status" class="muted">Loading logs…</p>
         </div>

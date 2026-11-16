@@ -1697,3 +1697,186 @@ body.modal-open { overflow: hidden; }
 .dashboard-header .health-badge.orange::before, .dashboard-header .health-badge.stale::before { background: var(--status-orange); }
 .dashboard-header .health-badge.red::before, .dashboard-header .health-badge.error::before,
 .dashboard-header .health-badge.reorg::before { background: var(--status-red); }
+
+/* ======================================================================
+   Portal, My account and login: calm sections, same language as the
+   dashboard (hairlines, muted labels, colour only where it means something)
+   ====================================================================== */
+
+/* ---------- Portal: one surface per section ---------- */
+.admin-shell .section-block:not(.modal-dialog) {
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 14px;
+  box-shadow: none;
+  padding: 28px;
+}
+.admin-shell h2 { font-size: 1.125rem; font-weight: 650; }
+.admin-shell h3, #account-modal h3 { font-size: .9375rem; font-weight: 600; margin: 0; }
+.admin-shell .section-heading { margin-bottom: 20px; min-height: 42px; }
+.admin-shell .section-heading > div:first-child { min-width: 0; }
+.admin-shell .settings-category { border-top-color: rgba(255, 255, 255, .08); padding-top: 24px; }
+.admin-shell .settings-category-heading { margin-bottom: 16px; }
+.admin-shell .collector-status-card,
+.admin-shell .logs-preview-card,
+.admin-shell .event-options { background: none; border: 0; border-radius: 0; padding: 0; }
+.admin-shell .logs-preview-card,
+.admin-shell .maintenance-card { border-top: 1px solid rgba(255, 255, 255, .08); margin-top: 24px; padding-top: 20px; }
+.admin-shell .collector-status-card { margin-bottom: 0; }
+.admin-shell .collector-diagnostics { border-top: 0; margin-top: 8px; padding-top: 0; }
+.admin-shell .event-options legend { margin-bottom: 4px; padding: 0; }
+.admin-shell .log-viewer { border-color: rgba(255, 255, 255, .08); color: #d0d0d0; }
+
+/* Desktop sidebar: a plain list instead of a box. */
+.admin-menu { background: none; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+.admin-menu-heading { padding: 0 10px 10px; }
+.admin-menu-heading h2 { color: var(--muted); font-size: .8rem; font-weight: 500; margin: 0; }
+.admin-menu-link { font-size: .8125rem; font-weight: 500; min-height: 36px; }
+.admin-menu-link.is-active { color: var(--text); }
+
+/* Buttons keep their label on one line. */
+.admin-shell .primary-button, .admin-shell .ghost-button,
+#account-modal .primary-button, #account-modal .ghost-button { flex: 0 0 auto; white-space: nowrap; }
+
+@media (max-width: 679px) {
+  /* Phones: full-width sections separated by a hairline, no cards. */
+  .admin-shell { padding-top: 0; width: 100%; }
+  .admin-shell .section-block:not(.modal-dialog) {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    border-top: 1px solid rgba(255, 255, 255, .08);
+    margin-top: 0;
+    padding: 24px 16px 28px;
+  }
+  .admin-shell > .section-block:first-child,
+  .admin-content > .section-block:first-child { border-top: 0; }
+  .admin-shell .subscription-table tr {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    border-top: 1px solid rgba(255, 255, 255, .08);
+    padding: 12px 0;
+  }
+  .admin-shell .subscription-table tbody { gap: 0; }
+  .admin-shell .label-long { display: none; }
+  .admin-shell .settings-form-actions { margin-top: 20px; }
+  .admin-shell .settings-form-actions .primary-button { width: 100%; }
+}
+
+/* ---------- Portal header: quiet user menu ---------- */
+.portal-header .user-menu-toggle {
+  border: 0;
+  color: var(--muted);
+  font-size: .8rem;
+  font-weight: 500;
+  height: auto;
+  min-height: 36px;
+  padding: 4px 0;
+}
+.portal-header .user-menu-toggle > i:first-child { color: var(--muted); font-size: .85rem; }
+.portal-header .user-menu-toggle:hover,
+.portal-header .user-menu-toggle[aria-expanded="true"] { color: var(--text); }
+.portal-header .user-menu-toggle:hover > i:first-child { color: var(--text); }
+.portal-header .user-menu-toggle:focus-visible { border-radius: 6px; outline: 2px solid var(--quasar-blue); outline-offset: 4px; }
+.portal-header .user-menu-dropdown { background: #1e1e1e; border-color: rgba(255, 255, 255, .1); border-radius: 10px; }
+.portal-header .user-menu-group { border-bottom-color: rgba(255, 255, 255, .08); }
+.portal-header .user-menu-group-label { color: var(--muted); font-size: .75rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.portal-header .user-menu-link { font-size: .8125rem; font-weight: 500; }
+.portal-header .user-menu-link:hover { background: rgba(255, 255, 255, .06); }
+.portal-header .user-menu-link:hover i { color: var(--text); }
+.portal-header .user-menu-link.is-active { background: rgba(255, 255, 255, .06); color: var(--text); }
+.portal-header .user-menu-link.is-active i { color: var(--accent); }
+
+/* ---------- My account: rhythm ---------- */
+#account-modal .modal-heading { margin-bottom: 8px; }
+#account-modal .account-form { gap: 16px; margin-top: 20px; }
+#account-modal .form-actions { margin-top: 4px; }
+#account-modal .two-factor-section { border-top-color: rgba(255, 255, 255, .08); margin-top: 28px; padding-top: 24px; }
+#account-modal .two-factor-heading { margin-bottom: 8px; }
+#account-modal .two-factor-section > [id^="two-factor-"] { margin-top: 18px; }
+#account-modal .modal-close { border: 0; }
+#account-modal .trusted-device { border: 0; border-radius: 0; border-top: 1px solid rgba(255, 255, 255, .08); padding: 10px 0; }
+@media (min-width: 680px) {
+  #account-modal .modal-dialog { background: var(--surface); border-color: rgba(255, 255, 255, .1); border-radius: 14px; padding: 28px; }
+}
+
+/* ---------- Login: calm card ---------- */
+.auth-shell { background: none; }
+.auth-card.section-block { background: var(--surface); border: 1px solid rgba(255, 255, 255, .08); border-radius: 14px; box-shadow: none; }
+.auth-card::before { display: none; }
+.auth-brand { font-size: .8125rem; font-weight: 600; letter-spacing: 0; margin-bottom: 28px; }
+.auth-brand-icon { background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px; height: 32px; width: 32px; }
+.auth-card .eyebrow { color: var(--muted); font-size: .75rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.auth-card h1 { font-size: 1.5rem; font-weight: 650; letter-spacing: -.02em; margin: 4px 0 8px; }
+.auth-card .form-stack { gap: 12px; margin-top: 24px; }
+.auth-card .form-stack .primary-button { height: 44px; margin-top: 4px; }
+/* Room above the status line, and space reserved so the card does not jump. */
+.auth-card .form-message { color: var(--muted); font-size: .8125rem; margin-top: 14px; min-height: 1.4em; }
+.auth-card .form-message.error { color: var(--status-red); }
+.auth-card > a { margin-top: 10px; min-height: 24px; }
+@media (max-width: 679px) {
+  .auth-shell { padding: 16px 16px 60px; }
+  .auth-card { padding: 24px 20px; }
+}
+
+/* ---------- Portal and account: calm controls ---------- */
+.admin-shell .form-grid label, .admin-shell .form-stack label,
+#account-modal .form-grid label { color: var(--muted); font-size: .8rem; font-weight: 500; gap: 6px; }
+.admin-shell .setting-label, #account-modal .setting-label,
+.admin-shell .event-options legend { color: var(--text); font-size: .8125rem; font-weight: 600; }
+.admin-shell .setting-help { font-size: .75rem; line-height: 1.5; }
+.admin-shell .muted, #account-modal .muted { font-size: .8125rem; }
+.admin-shell .form-grid input:not([type="checkbox"]), .admin-shell .form-grid select,
+.admin-shell .settings-form input:not([type="checkbox"]), .admin-shell .settings-form select,
+.admin-shell .settings-form textarea,
+#account-modal .form-grid input:not([type="checkbox"]),
+#account-modal .two-factor-inline-form input,
+.auth-card .form-stack input:not([type="checkbox"]) {
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 8px;
+  font-size: .875rem;
+  font-weight: 400;
+  min-height: 42px;
+  padding: 9px 12px;
+}
+.auth-card .form-stack .auth-input-wrap input { padding-left: 40px; padding-right: 44px; }
+.admin-shell ::placeholder, #account-modal ::placeholder, .auth-card ::placeholder { color: #8c8c8c; font-weight: 400; opacity: 1; }
+.admin-shell .settings-form textarea { min-height: 88px; }
+/* Checkbox rows: no box, full width. */
+.admin-shell .setting-toggle { background: none; border: 0; border-radius: 0; cursor: pointer; grid-column: 1 / -1; min-height: 44px; padding: 6px 0; }
+.admin-shell .setting-toggle input, .admin-shell .checkbox-grid input,
+.admin-shell .checkbox-label input { height: 18px; width: 18px; }
+.admin-shell .checkbox-grid { gap: 0 16px; }
+.admin-shell .checkbox-grid label, .admin-shell .checkbox-label {
+  color: var(--text); cursor: pointer; font-size: .8125rem; font-weight: 400; min-height: 36px; padding: 0;
+}
+.admin-shell .primary-button, .admin-shell .ghost-button,
+#account-modal .primary-button, #account-modal .ghost-button,
+.auth-card .primary-button { font-size: .8125rem; font-weight: 600; padding: 0 14px; }
+.admin-shell .ghost-button, #account-modal .ghost-button { border-color: rgba(255, 255, 255, .2); color: var(--text); }
+.admin-shell .ghost-button:hover, #account-modal .ghost-button:hover { border-color: rgba(255, 255, 255, .4); }
+.admin-shell .icon-button { padding: 0; }
+#account-modal .danger-button { border-color: rgba(255, 90, 95, .4); color: var(--status-red); }
+.admin-shell .form-message, #account-modal .form-message { color: var(--muted); font-size: .8125rem; margin-top: 12px; }
+.admin-shell .form-message.error, #account-modal .form-message.error { color: var(--status-red); }
+/* Status: muted text with a coloured dot, like the header. */
+.admin-shell .status-badge, #account-modal .status-badge {
+  background: none; border: 0; color: var(--muted); font-size: .8rem; font-weight: 500; padding: 0;
+}
+.admin-shell .status-badge::before, #account-modal .status-badge::before { background: var(--muted); height: 6px; transform: translateY(-1px); width: 6px; }
+.admin-shell .status-badge.active::before, #account-modal .status-badge.active::before { background: var(--zenon-green); }
+.admin-shell .status-badge.warning::before { background: var(--status-orange); }
+.admin-shell .status-badge.error::before, .admin-shell .status-badge.dismantled::before { background: var(--status-red); }
+.admin-shell td .status-badge + .status-badge { margin-left: 10px; }
+.admin-shell th { font-size: .75rem; font-weight: 500; text-transform: none; }
+.admin-shell th, .admin-shell td { border-bottom-color: rgba(255, 255, 255, .08); }
+.admin-shell .subscription-table td::before { font-size: .75rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.admin-shell .table-wrap small { font-size: .75rem; }
+.admin-shell .settings-category:first-child { border-top: 0; padding-top: 0; }
+.admin-shell .checkbox-label input, .admin-shell .checkbox-grid input { margin: 0; }
+#account-modal .two-factor-heading { align-items: baseline; }
+/* A button with the hidden attribute stays hidden, whatever its class sets. */
+button[hidden] { display: none !important; }
+.admin-shell .form-grid .checkbox-label { color: var(--text); font-weight: 400; }
