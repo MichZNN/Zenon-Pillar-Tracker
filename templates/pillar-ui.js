@@ -53,7 +53,7 @@ function formatRelativeTime(value) {
   return formatShortDate(value);
 }
 
-// "Aug 31, 10:35 UTC", with the year only when it is not the current one.
+// "Aug 31, 10:35 AM UTC", with the year only when it is not the current one.
 // Short enough for a phone; the full date stays in the tooltip.
 function formatShortDate(value) {
   const date = new Date(value);
@@ -65,10 +65,9 @@ function formatShortDate(value) {
     ...(sameYear ? {} : { year: "numeric" }),
     timeZone: "UTC",
   }).format(date);
-  const time = new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
+  const time = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
     minute: "2-digit",
-    hour12: false,
     timeZone: "UTC",
   }).format(date);
   return day + ", " + time + " UTC";
