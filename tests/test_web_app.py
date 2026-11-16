@@ -101,7 +101,7 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn("missed checks", app)
         self.assertIn("Performance · 30d", app)
         self.assertIn("class=\"stat-item\"", app)
-        self.assertIn("class=\"stat-item performance-stat\"", app)
+        self.assertIn("class=\"pc-performance\"", app)
         self.assertIn("Produced / expected", app)
         self.assertIn("Momentum / delegate", app)
         self.assertIn("formatEpoch", app)
@@ -424,7 +424,7 @@ class WebAppTestCase(unittest.TestCase):
         self.assertIn('href="/pillars?status=favorites"', pillars)
         self.assertIn('id="sort-filter"', pillars)
         shared = (self.templates_dir / "pillar-ui.js").read_text()
-        for name in ("renderPillarCard", "favoriteButton", "renderTime", "eventTone", "PERFORMANCE_CHART_FLOOR", "renderAprBlock"):
+        for name in ("renderPillarCard", "favoriteButton", "renderTime", "eventTone", "PERFORMANCE_CHART_FLOOR", "renderAprStat"):
             self.assertIn(name, shared)
         for name in ("app.js", "pillars.js", "history.js", "pillar.js"):
             script = (self.templates_dir / name).read_text()

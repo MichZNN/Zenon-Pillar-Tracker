@@ -315,25 +315,9 @@ function aprInfoParts(performance) {
     value: (caution ? '<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>' : '') +
       formatApr(performance),
     panel: '<p class="apr-info" id="' + infoId + '" hidden>' +
-      (caution ? '<span class="apr-info-caution">' + escapeHtml(caution) + '</span> ' : '') +
+      (caution ? '<span class="apr-info-caution"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>' + escapeHtml(caution) + '</span> ' : '') +
       escapeHtml(APR_HELP) + ' Reward shares can change at any time.</p>',
   };
-}
-
-function renderAprBlock(performance, loading = false) {
-  if (loading) {
-    return '<div class="apr-block"><span class="apr-block-label">Delegator APR</span>' +
-      '<span class="skeleton skeleton-apr" aria-hidden="true"></span></div>';
-  }
-  const value = aprValue(performance);
-  if (value === null) return "";
-  const info = aprInfoParts(performance);
-  const tone = value === 0 ? " is-zero" : info.caution ? " is-caution" : "";
-  return '<div class="apr-block' + tone + '">' +
-    '<span class="apr-block-label">Delegator APR' + info.button + '</span>' +
-    '<strong class="apr-block-value">' + info.value + '</strong>' +
-    info.panel +
-    '</div>';
 }
 
 // The APR as a stat tile on the pillar page, with the reward shares below.
@@ -344,21 +328,12 @@ function renderAprTile(pillar, performance) {
   return '<div class="stat-item stat-apr' + tone + '">' +
     '<span class="stat-label">Delegator APR' + (value === null ? '' : info.button) + '</span>' +
     '<strong class="apr-tile-value">' + (value === null ? 'Not available' : info.value) + '</strong>' +
-    '<span class="stat-sub">Momentum ' + escapeHtml(pillar.momentum_reward_percentage) +
-    '% · Delegate ' + escapeHtml(pillar.delegate_reward_percentage) + '%</span>' +
+    '<span class="stat-sub">Shares ' + escapeHtml(pillar.momentum_reward_percentage) +
+    '% / ' + escapeHtml(pillar.delegate_reward_percentage) + '%</span>' +
     (value === null ? '' : info.panel) +
     '</div>';
 }
 
-function statusBadge(pillar) {
-  const seconds = statusDurationSeconds(pillar);
-  const duration = seconds === null || seconds === undefined ? "" : formatDuration(seconds);
-  return '<span class="status-badge ' + escapeHtml(pillar.status) + '"' +
-    (duration ? ' title="' + escapeHtml(statusDurationLabel(pillar.status) + " " + duration) + '"' : '') +
-    '>' + escapeHtml(statusLabel(pillar.status)) +
-    (duration ? '<span class="status-duration">' + escapeHtml(duration) + '</span>' : '') +
-    '</span>';
-}
 
 /* ---------- Favorites ---------- */
 
@@ -422,54 +397,77 @@ function syncFavoriteButtons(ownerAddress, favorite) {
 
 /* ---------- Pillar card ---------- */
 
+function formatCompactWeight(weight) {
+  const znn = (weight || 0) / 100000000;
+  if (znn >= 1000000) return (znn / 1000000).toFixed(znn >= 10000000 ? 1 : 2).replace(/\.?0+$/, "") + "M ZNN";
+  if (znn >= 10000) return Math.round(znn / 1000) + "K ZNN";
+  return formatNumber(Math.round(znn)) + " ZNN";
+}
+
+// The APR as a quiet label/value pair; the info card explains it.
+function renderAprStat(performance, loading = false) {
+  if (loading) {
+    return '<div class="pc-stat"><dt>APR</dt>' +
+      '<dd><span class="skeleton skeleton-apr" aria-hidden="true"></span></dd></div>';
+  }
+  const value = aprValue(performance);
+  if (value === null) {
+    return '<div class="pc-stat"><dt>APR</dt><dd class="is-muted">No data</dd></div>';
+  }
+  const info = aprInfoParts(performance);
+  const tone = value === 0 ? " is-muted" : info.caution ? " is-caution" : "";
+  return '<div class="pc-stat pc-apr"><dt>APR' + info.button + '</dt>' +
+    '<dd class="' + tone.trim() + '">' + info.value + '</dd>' + info.panel + '</div>';
+}
+
 function renderPillarCard(pillar, performance, options = {}) {
   const loading = Boolean(options.loading);
   const produced = pillar.produced_momentums ?? 0;
   const expected = pillar.expected_momentums ?? 0;
   const item = performance || pillar.performance_last_30_days || {};
   const favorite = isFavorite(pillar.owner_address);
+  const seconds = statusDurationSeconds(pillar);
+  const duration = seconds === null || seconds === undefined ? "" : formatDuration(seconds);
   return '<article class="pillar-card' + (favorite ? ' is-favorite' : '') + '">' +
-    '<div class="pillar-card-top">' +
-    '<div class="pillar-card-meta">' +
-    '<span class="pillar-rank">#' + escapeHtml(formatRank(pillar.rank)) + '</span>' +
-    statusBadge(pillar) +
-    '</div>' +
-    '<div class="pillar-card-actions">' +
-    favoriteButton(pillar) +
-    '</div>' +
-    '</div>' +
-    '<div class="pillar-title-row">' +
-    '<div class="pillar-title-text">' +
+    '<div class="pc-head">' +
+    '<div class="pc-title">' +
+    '<span class="pc-rank">' + escapeHtml(formatRank(pillar.rank)) + '</span>' +
     '<a class="pillar-name pillar-card-link" href="' + pillarUrl(pillar.owner_address) + '">' +
     escapeHtml(pillar.name) + '</a>' +
-    '<div class="pillar-address">' + escapeHtml(pillar.owner_address) + '</div>' +
     '</div>' +
-    renderAprBlock(item, loading) +
+    favoriteButton(pillar) +
     '</div>' +
-    '<div class="pillar-stats pillar-card-stats">' +
-    '<div class="stat-item"><span class="stat-label">Produced / expected</span><strong>' +
-    formatNumber(produced) + " / " + formatNumber(expected) + '</strong></div>' +
-    '<div class="stat-item"><span class="stat-label">Weight</span><strong>' +
-    formatWeight(pillar.weight) + '</strong></div>' +
-    '<div class="stat-item"><span class="stat-label">Momentum / delegate</span><strong>' +
+    '<div class="pc-meta">' +
+    '<span class="pc-status ' + escapeHtml(pillar.status) + '">' +
+    escapeHtml(statusLabel(pillar.status)) +
+    (duration ? '<span class="pc-status-duration">' + escapeHtml(duration) + '</span>' : '') +
+    '</span>' +
+    '<span class="pillar-address">' + escapeHtml(pillar.owner_address) + '</span>' +
+    '</div>' +
+    '<dl class="pc-stats">' +
+    '<div class="pc-stat"><dt>Produced</dt><dd>' +
+    formatNumber(produced) + ' / ' + formatNumber(expected) + '</dd></div>' +
+    '<div class="pc-stat"><dt>Weight</dt><dd title="' + escapeHtml(formatWeight(pillar.weight)) + '">' +
+    formatCompactWeight(pillar.weight) + '</dd></div>' +
+    '<div class="pc-stat"><dt title="Momentum / delegate reward share">Shares</dt><dd>' +
     escapeHtml(pillar.momentum_reward_percentage) + '% / ' +
-    escapeHtml(pillar.delegate_reward_percentage) + '%</strong></div>' +
-    '</div>' +
-    '<div class="stat-item performance-stat">' +
-    '<span class="stat-label">Performance · 30d</span>' +
+    escapeHtml(pillar.delegate_reward_percentage) + '%</dd></div>' +
+    renderAprStat(item, loading) +
+    '</dl>' +
+    '<div class="pc-performance">' +
+    '<div class="pc-performance-head">' +
+    '<span>Performance · 30d</span>' +
     '<strong class="performance-value' +
     (!loading && !performanceAvailable(item) ? ' empty' : '') + '">' +
     (loading
       ? '<span class="skeleton skeleton-performance-value" aria-hidden="true"></span>'
       : formatPerformance(item)) +
     '</strong>' +
+    '</div>' +
     '<div class="performance-chart" role="img" aria-label="' +
     (loading ? 'Loading daily performance' : 'Daily performance for the last 30 days') + '"' +
     (loading ? ' aria-busy="true"' : '') + '>' +
     renderPerformanceChart(item, loading, pillar) +
-    '</div>' +
-    '<div class="performance-chart-axis" aria-hidden="true">' +
-    '<span>30d ago</span><span>Today</span>' +
     '</div>' +
     '</div>' +
     '</article>';

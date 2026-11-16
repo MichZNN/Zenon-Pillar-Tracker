@@ -38,6 +38,8 @@ function renderOverview(payload) {
   $("#pillar-total").textContent = formatNumber(counts.total || 0);
   $("#pillar-active").textContent = formatNumber(counts.active || 0);
   $("#pillar-inactive").textContent = formatNumber(counts.inactive || 0);
+  // Pink only when something is actually inactive.
+  $("#pillar-inactive").closest(".metric-card")?.classList.toggle("is-zero", !counts.inactive);
   $("#footer-updated").textContent = payload.last_snapshot_at
     ? "Latest snapshot: " + formatDate(payload.last_snapshot_at)
     : "No snapshot yet";

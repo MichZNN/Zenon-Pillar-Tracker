@@ -33,18 +33,18 @@ function renderSummary(pillar) {
     '<div class="stat-item"><span class="stat-label">Performance · 30d</span><strong class="performance-value' +
     (performanceAvailable(performance) ? '' : ' empty') + '">' +
     formatPerformance(performance) + '</strong>' +
-    '<span class="stat-sub">Share of expected momentums</span></div>' +
+    '<span class="stat-sub">Of expected momentums</span></div>' +
     renderAprTile(pillar, performance) +
     '<div class="stat-item"><span class="stat-label">This epoch</span><strong>' +
     formatNumber(pillar.produced_momentums ?? 0) + ' / ' +
     formatNumber(pillar.expected_momentums ?? 0) + '</strong>' +
-    '<span class="stat-sub">Produced / expected momentums</span></div>' +
+    '<span class="stat-sub">Produced / expected</span></div>' +
     '<div class="stat-item"><span class="stat-label">Momentums / day · 7d</span><strong>' +
     (performance.delegator_apr ? formatNumber(performance.delegator_apr.momentums_per_day) : 'Not available') +
-    '</strong><span class="stat-sub">Average of completed days</span></div>' +
+    '</strong><span class="stat-sub">Completed-day average</span></div>' +
     '<div class="stat-item"><span class="stat-label">Weight</span><strong>' +
     formatWeight(pillar.weight) + '</strong>' +
-    '<span class="stat-sub">Delegated to this pillar</span></div>' +
+    '<span class="stat-sub">Delegated</span></div>' +
     '</div>';
 }
 
