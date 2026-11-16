@@ -9,8 +9,8 @@ const pageState = {
 };
 
 function setHeaderTitle(name) {
-  const heading = document.querySelector(".site-header h1");
-  if (heading) heading.textContent = name;
+  // The site header keeps the tracker name; the pillar name is the
+  // heading of the overview block.
   const title = document.getElementById("pillar-title");
   if (title) title.textContent = name;
   document.title = name + " · Zenon Pillar Tracker";
