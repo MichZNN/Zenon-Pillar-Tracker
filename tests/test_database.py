@@ -804,6 +804,91 @@ class DatabaseTestCase(unittest.TestCase):
         self.assertEqual(epochs[3]["last_seen_at"], "2026-08-23T13:01:00+00:00")
         self.assertEqual(epochs[3]["last_observed_momentum_height"], 200)
 
+    def test_reward_share_events_store_pillar_name(self):
+        self.record({"z1alpha": make_pillar("Alpha", produced=1, expected=1)})
+        changed = make_pillar("Alpha", produced=2, expected=2)
+        changed["giveMomentumRewardPercentage"] = 100
+        self.record({"z1alpha": changed}, epoch=2)
+
+        events = self.database.get_events(event_type="reward_shares_changed")
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["details"]["name"], "Alpha")
+        self.assertEqual(events[0]["details"]["momentum"], {"old": 10, "new": 100})
+        self.assertNotIn("delegate", events[0]["details"])
+
+    def test_reward_share_events_without_name_are_backfilled(self):
+        self.record({"z1alpha": make_pillar("Alpha", produced=1, expected=1)})
+        with self.database._connect() as connection:
+            connection.execute(
+                "INSERT INTO events(event_type, owner_address, observed_at, "
+                "details_json) VALUES ('reward_shares_changed', 'z1alpha', ?, ?)",
+                (utc_now(), '{"momentum": {"old": 0, "new": 100}}'),
+            )
+            connection.execute(
+                "UPDATE schema_meta SET value = '9' "
+                "WHERE key = 'schema_version'"
+            )
+
+        events = Database(self.database.path).get_events(
+            event_type="reward_shares_changed"
+        )
+        self.assertEqual(events[0]["details"]["name"], "Alpha")
+        self.assertEqual(events[0]["details"]["momentum"], {"old": 0, "new": 100})
+
+    def test_reward_share_backfill_keeps_stored_names_and_unknown_owners(self):
+        self.record({"z1alpha": make_pillar("Alpha", produced=1, expected=1)})
+        with self.database._connect() as connection:
+            connection.executemany(
+                "INSERT INTO events(event_type, owner_address, observed_at, "
+                "details_json) VALUES ('reward_shares_changed', ?, ?, ?)",
+                [
+                    ("z1alpha", utc_now(), '{"name": "Old name"}'),
+                    ("z1unknown", utc_now(), '{"momentum": {"old": 1, "new": 2}}'),
+                ],
+            )
+            connection.execute(
+                "UPDATE schema_meta SET value = '9' "
+                "WHERE key = 'schema_version'"
+            )
+
+        events = Database(self.database.path).get_events(
+            event_type="reward_shares_changed"
+        )
+        details = {event["owner_address"]: event["details"] for event in events}
+        self.assertEqual(details["z1alpha"], {"name": "Old name"})
+        self.assertNotIn("name", details["z1unknown"])
+
+    def test_notification_message_id_column_is_added_to_old_databases(self):
+        legacy_path = Path(self.temp_dir.name) / "legacy-outbox.sqlite3"
+        connection = sqlite3.connect(legacy_path)
+        connection.executescript(
+            """
+            CREATE TABLE notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id INTEGER NOT NULL,
+                channel TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_attempt_at TEXT,
+                sent_at TEXT,
+                last_error TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE (event_id, channel)
+            );
+            """
+        )
+        connection.close()
+
+        Database(legacy_path)
+
+        connection = sqlite3.connect(legacy_path)
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(notifications)")
+        }
+        connection.close()
+        self.assertIn("external_message_id", columns)
+
     def test_epoch_observation_repair_is_not_repeated_at_current_schema(self):
         with patch("models.database._repair_epoch_observation_metadata") as repair:
             Database(self.database.path)

@@ -148,7 +148,16 @@ function eventDescription(event) {
     return (details.old_name || "—") + " → " + (details.new_name || "—");
   }
   if (event.event_type === "reward_shares_changed") {
-    return "Reward sharing percentages updated";
+    const name = details.name || event.owner_address || "Unknown pillar";
+    const percent = (value) => (value === null || value === undefined ? "—" : value + "%");
+    const changes = [];
+    if (details.momentum) {
+      changes.push("Momentum " + percent(details.momentum.old) + " → " + percent(details.momentum.new));
+    }
+    if (details.delegate) {
+      changes.push("Delegate " + percent(details.delegate.old) + " → " + percent(details.delegate.new));
+    }
+    return changes.length ? name + " · " + changes.join(" · ") : name;
   }
   if (event.event_type === "pillar_inactive") {
     const name = details.name || event.owner_address || "Unknown pillar";

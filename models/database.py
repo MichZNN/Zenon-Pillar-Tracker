@@ -9,7 +9,7 @@ from threading import Lock
 from typing import Any, Iterable, Mapping
 
 
-SCHEMA_VERSION = "9"
+SCHEMA_VERSION = "10"
 # Bump when the daily performance calculation changes so stored days are
 # rebuilt from the raw snapshots.
 PERFORMANCE_ROLLUP_VERSION = "1"
@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     sent_at TEXT,
     last_error TEXT,
     created_at TEXT NOT NULL,
+    external_message_id TEXT,
     UNIQUE (event_id, channel)
 );
 
@@ -370,6 +371,37 @@ def _string_values(value: Any) -> list[str]:
     ))
 
 
+def _backfill_reward_share_event_names(connection: sqlite3.Connection) -> int:
+    """Add the pillar name to reward share events stored without one.
+
+    The name at event time was never stored, so the current name is used.
+    Events of pillars missing from the pillars table are left as they are.
+    """
+    rows = connection.execute(
+        """
+        SELECT event.id, event.details_json, pillar.name
+        FROM events AS event
+        JOIN pillars AS pillar ON pillar.owner_address = event.owner_address
+        WHERE event.event_type = 'reward_shares_changed'
+        """
+    ).fetchall()
+    updated = 0
+    for event_id, details_json, name in rows:
+        try:
+            details = json.loads(details_json or "{}")
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(details, dict) or details.get("name") or not name:
+            continue
+        details["name"] = name
+        connection.execute(
+            "UPDATE events SET details_json = ? WHERE id = ?",
+            (_json(details), event_id),
+        )
+        updated += 1
+    return updated
+
+
 def _repair_epoch_observation_metadata(
     connection: sqlite3.Connection,
 ) -> None:
@@ -484,6 +516,16 @@ def initialize_database(database_path: str | Path) -> Path:
                 "PRAGMA table_info(pillar_subscriptions)"
             ).fetchall()
         }
+        notification_columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(notifications)"
+            ).fetchall()
+        }
+        if "external_message_id" not in notification_columns:
+            connection.execute(
+                "ALTER TABLE notifications ADD COLUMN external_message_id TEXT"
+            )
         if "discord_webhook" not in subscription_columns:
             connection.execute(
                 "ALTER TABLE pillar_subscriptions ADD COLUMN "
@@ -491,6 +533,7 @@ def initialize_database(database_path: str | Path) -> Path:
             )
         if previous_schema_version != SCHEMA_VERSION:
             _repair_epoch_observation_metadata(connection)
+            _backfill_reward_share_event_names(connection)
         rollup_version_row = connection.execute(
             "SELECT value FROM schema_meta "
             "WHERE key = 'performance_rollup_version'"
@@ -1733,7 +1776,7 @@ class Database:
                             epoch=epoch,
                             observed_at=observed_at,
                             momentum_height=momentum_height,
-                            details=share_changes,
+                            details={"name": name, **share_changes},
                             notification_channels=channels_for_event(
                                 owner_address,
                                 "reward_shares_changed",
@@ -1946,7 +1989,11 @@ class Database:
             )
             return cursor.rowcount == 1
 
-    def mark_notification_sent(self, notification_id: int) -> None:
+    def mark_notification_sent(
+        self,
+        notification_id: int,
+        external_message_id: Any = None,
+    ) -> None:
         sent_at = utc_now()
         with self._connect() as connection:
             notification = connection.execute(
@@ -1961,10 +2008,16 @@ class Database:
             connection.execute(
                 """
                 UPDATE notifications
-                SET status = 'sent', sent_at = ?, last_error = NULL
+                SET status = 'sent', sent_at = ?, last_error = NULL,
+                    external_message_id = COALESCE(?, external_message_id)
                 WHERE id = ?
                 """,
-                (sent_at, notification_id),
+                (
+                    sent_at,
+                    None if external_message_id is None
+                    else str(external_message_id),
+                    notification_id,
+                ),
             )
             if (
                 notification
@@ -2888,6 +2941,32 @@ class Database:
                     (row["sent_at"], row["epoch"]),
                 )
         return len(rows)
+
+    def get_event(self, event_id: int) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM events WHERE id = ?",
+                (int(event_id),),
+            ).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        item["details"] = _load_json(item.pop("details_json"), {})
+        return item
+
+    def get_event_notifications(self, event_id: int) -> list[dict[str, Any]]:
+        """Return the outbox rows of one event, including sent message IDs."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, channel, status, sent_at, external_message_id
+                FROM notifications
+                WHERE event_id = ?
+                ORDER BY id ASC
+                """,
+                (int(event_id),),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def get_events(
         self,
