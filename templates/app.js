@@ -23,10 +23,11 @@ function renderOverview(payload) {
   const epoch = payload.epoch;
   const node = payload.node;
   const counts = payload.pillar_counts || {};
-  $("#current-epoch").textContent = epoch ? formatEpoch(epoch.epoch) : "—";
-  $("#momentum-height").textContent = node?.last_momentum_height
-    ? formatNumber(node.last_momentum_height)
-    : "—";
+  const notAvailable = '<span class="hero-empty">No data</span>';
+  $("#current-epoch").innerHTML = epoch ? escapeHtml(formatEpoch(epoch.epoch)) : notAvailable;
+  $("#momentum-height").innerHTML = node?.last_momentum_height
+    ? escapeHtml(formatNumber(node.last_momentum_height))
+    : notAvailable;
   // Full text on desktop; a short relative time on mobile.
   $("#last-update").innerHTML = node?.last_success_at
     ? '<span class="desktop-only">Last successful update ' +
@@ -37,6 +38,8 @@ function renderOverview(payload) {
   $("#pillar-total").textContent = formatNumber(counts.total || 0);
   $("#pillar-active").textContent = formatNumber(counts.active || 0);
   $("#pillar-inactive").textContent = formatNumber(counts.inactive || 0);
+  // Pink only when something is actually inactive.
+  $("#pillar-inactive").closest(".metric-card")?.classList.toggle("is-zero", !counts.inactive);
   $("#footer-updated").textContent = payload.last_snapshot_at
     ? "Latest snapshot: " + formatDate(payload.last_snapshot_at)
     : "No snapshot yet";
