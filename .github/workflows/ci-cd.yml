@@ -12,9 +12,15 @@ permissions:
   contents: read
   packages: write
 
+# A pull request from development (or main) has just been tested by the
+# push to that branch, so its pull_request run skips the tests instead of
+# running the same commit twice. Pull requests from other branches are
+# tested as usual (see the "if" on both test jobs).
+
 jobs:
   test-windows:
     name: Tests (Windows)
+    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && (github.head_ref == 'development' || github.head_ref == 'main')) }}
     runs-on: windows-latest
     steps:
       - name: Check out source
@@ -37,14 +43,18 @@ jobs:
 
   test-debian-arm64:
     name: Tests (Debian ARM64 container)
-    # GitHub provides the Docker host; the code under test runs in the
-    # Debian ARM64 container below, through QEMU/binfmt.
-    runs-on: ubuntu-latest
+    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && (github.head_ref == 'development' || github.head_ref == 'main')) }}
+    # Public repository: a native ARM64 runner (free for public
+    # repositories), so the Debian ARM64 container runs without emulation.
+    # Private repository: the regular runner with QEMU emulation, which is
+    # slower but available on every plan.
+    runs-on: ${{ github.event.repository.private && 'ubuntu-latest' || 'ubuntu-24.04-arm' }}
     steps:
       - name: Check out source
         uses: actions/checkout@v6
 
       - name: Set up QEMU for ARM64
+        if: ${{ github.event.repository.private }}
         uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64
