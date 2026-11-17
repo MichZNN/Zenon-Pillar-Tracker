@@ -1614,7 +1614,6 @@ body.modal-open { overflow: hidden; }
 .two-factor-steps { color: var(--muted); font-size: .85rem; margin: 6px 0 12px; padding-left: 20px; }
 .two-factor-qr { background: #fff; border-radius: 12px; height: 200px; margin: 0 0 12px; padding: 8px; width: 200px; }
 .two-factor-qr svg { display: block; height: 100%; width: 100%; }
-.two-factor-secret-help code { color: var(--text); font-size: .85rem; letter-spacing: .04em; word-break: break-all; }
 .two-factor-inline-form { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .two-factor-inline-form input {
   background: rgba(21, 21, 21, .82);
@@ -1921,3 +1920,17 @@ button[hidden] { display: none !important; }
   .overview-grid .label-short { display: inline; }
 }
 .last-update-short .fa-rotate { font-size: .7em; margin-right: 6px; opacity: .8; vertical-align: .12em; }
+/* Room between a button icon and its label (the space in the HTML
+   collapses inside an inline-flex button). */
+.ghost-button { gap: 8px; }
+/* The authenticator key stays one piece, with a copy button next to it. */
+.two-factor-secret-help { margin-bottom: 6px; }
+.two-factor-secret-row { align-items: center; display: flex; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 14px; }
+.two-factor-secret-row code {
+  color: var(--text);
+  /* Scales down on narrow phones so the copy button still fits beside it. */
+  font-size: clamp(.68rem, 3.1vw, .8rem);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.two-factor-secret-row .icon-button { border: 0; flex: 0 0 auto; height: 32px; width: 32px; }

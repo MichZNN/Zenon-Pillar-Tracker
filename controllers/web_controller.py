@@ -27,7 +27,18 @@ from services.auth_service import (
     totp_uri,
     username_is_acceptable,
     verify_password,
+    verify_recovery_code,
     verify_totp,
+)
+from services.secret_box import (
+    SecretKeyError,
+    encryption_enabled,
+    is_encrypted,
+    key_count,
+    open_secret,
+    opens_with_primary_key,
+    reseal_secret,
+    seal_secret,
 )
 from services.settings_service import (
     DEFAULT_DATABASE_PATH,
@@ -703,7 +714,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 401 if login else 400,
             )
             return False
-        if TWO_FACTOR_THROTTLE.blocked(user_id):
+        if not TWO_FACTOR_THROTTLE.try_attempt(user_id):
             logger.warning("Two-factor attempts blocked for user %s", user_id)
             self._send_json(
                 {
@@ -713,20 +724,31 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 429,
             )
             return False
+        try:
+            secret = open_secret(credentials.get("totp_secret"))
+        except SecretKeyError as exc:
+            # Authenticator codes cannot be checked without the key; recovery
+            # codes below still work, so nobody is locked out.
+            logger.error("Two-factor secret unavailable for user %s: %s", user_id, exc)
+            secret = ""
         step = verify_totp(
-            str(credentials.get("totp_secret") or ""),
+            secret,
             value,
             last_step=credentials.get("totp_last_step"),
-        )
+        ) if secret else None
         if step is not None:
             self.database.record_totp_step(user_id, step)
             TWO_FACTOR_THROTTLE.reset(user_id)
             return True
-        if self.database.consume_recovery_code(user_id, hash_recovery_code(value)):
+        # Only something shaped like a recovery code (10 characters; TOTP
+        # codes have 6) is checked against the slow recovery hashes.
+        looks_like_recovery = len(value) == 10
+        if looks_like_recovery and self.database.consume_recovery_code(
+            user_id, lambda stored: verify_recovery_code(value, stored)
+        ):
             TWO_FACTOR_THROTTLE.reset(user_id)
             logger.info("Recovery code used by user %s", user_id)
             return True
-        TWO_FACTOR_THROTTLE.failed(user_id)
         logger.warning("Wrong two-factor code for user %s", user_id)
         self._send_json(
             {"error": "Invalid two-factor code", "two_factor_required": True},
@@ -738,6 +760,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return {
             "enabled": bool(user.get("two_factor_enabled")),
             "recovery_codes_left": self.database.recovery_codes_left(int(user["id"])),
+            "recovery_codes_outdated": self.database.recovery_codes_outdated(int(user["id"])),
             "trusted_devices": self.database.list_trusted_devices(int(user["id"])),
         }
 
@@ -751,13 +774,32 @@ class DashboardHandler(BaseHTTPRequestHandler):
             cookies=[self._expired_cookie(TRUSTED_DEVICE_COOKIE)],
         )
 
+    def _seal_or_refuse(self, secret: str) -> str:
+        """Encrypt a new secret, or refuse setup when that is not possible.
+
+        Refuses too when secrets are already encrypted but the key is gone,
+        so no plain secrets are mixed in until the key is back.
+        """
+        try:
+            if KEY_STATE["mismatch"]:
+                raise SecretKeyError("TOTP_ENCRYPTION_KEY does not match the stored secrets")
+            if not encryption_enabled() and self.database.has_encrypted_totp_secrets():
+                raise SecretKeyError("TOTP_ENCRYPTION_KEY is missing")
+            return seal_secret(secret) or secret
+        except SecretKeyError as exc:
+            logger.error("Two-factor setup refused: %s", exc)
+            raise ValueError(
+                "Two-factor authentication is unavailable right now; "
+                "contact the administrator"
+            ) from exc
+
     def _two_factor_setup(self, user: Mapping[str, Any]) -> None:
         if not self._require_csrf(user):
             return
         if user.get("two_factor_enabled"):
             raise ValueError("Two-factor authentication is already on")
         secret = generate_totp_secret()
-        self.database.set_pending_totp_secret(int(user["id"]), secret)
+        self.database.set_pending_totp_secret(int(user["id"]), self._seal_or_refuse(secret))
         self._send_json(
             {
                 "secret": secret,
@@ -773,16 +815,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if not self._require_csrf(user):
             return
         credentials = self.database.get_user_credentials(str(user["username"]))
-        pending = str((credentials or {}).get("totp_pending_secret") or "")
+        try:
+            pending = open_secret((credentials or {}).get("totp_pending_secret"))
+        except SecretKeyError as exc:
+            logger.error("Pending two-factor secret unavailable: %s", exc)
+            raise ValueError("Start the two-factor setup again") from exc
         if not pending:
             raise ValueError("Start the two-factor setup first")
         step = verify_totp(pending, payload.get("code"))
         if step is None:
             raise ValueError("That code is not correct. Check the time on your phone and try again.")
+        sealed = self._seal_or_refuse(pending)
         codes = generate_recovery_codes()
         self.database.enable_totp(
             int(user["id"]),
-            secret=pending,
+            secret=sealed,
             step=step,
             recovery_code_hashes=[hash_recovery_code(code) for code in codes],
         )
@@ -1432,6 +1479,20 @@ class TwoFactorThrottle:
         with self._lock:
             return len(self._recent(user_id)) >= self.max_failures
 
+    def try_attempt(self, user_id: int) -> bool:
+        """Reserve one attempt; False when the user is blocked.
+
+        Checking and counting happen under one lock, so parallel requests
+        cannot get more than ``max_failures`` guesses through. Every attempt
+        counts until a correct code calls ``reset``.
+        """
+        with self._lock:
+            recent = self._recent(user_id)
+            if len(recent) >= self.max_failures:
+                return False
+            recent.append(monotonic())
+            return True
+
     def failed(self, user_id: int) -> None:
         with self._lock:
             self._recent(user_id).append(monotonic())
@@ -1517,6 +1578,75 @@ class DashboardServer(ThreadingHTTPServer):
         )
 
 
+# Set at startup when the configured key cannot open the stored secrets.
+KEY_STATE = {"mismatch": False}
+
+
+def seal_stored_totp_secrets(database: Database) -> int:
+    """Check and encrypt the stored two-factor secrets at startup.
+
+    - Without TOTP_ENCRYPTION_KEY nothing changes; the log says whether the
+      secrets are plain (a warning) or already encrypted (an error, because
+      authenticator codes then fail and only recovery codes work).
+    - With the key, plain secrets are encrypted, and with several keys the
+      older ones are re-encrypted with the first key.
+    - An invalid key or a secret the key cannot open is logged as an error;
+      the web app still starts, so the dashboard stays up.
+
+    Returns the number of stored values that were (re-)encrypted.
+    """
+    try:
+        values = database.totp_secret_values()
+        encrypted = [value for value in values if is_encrypted(value[2])]
+        if not encryption_enabled():
+            if encrypted:
+                logger.error(
+                    "%s two-factor secret(s) are encrypted but TOTP_ENCRYPTION_KEY "
+                    "is not set: authenticator codes fail, recovery codes still work",
+                    len(encrypted),
+                )
+            else:
+                logger.warning(
+                    "TOTP_ENCRYPTION_KEY is not set; two-factor secrets are stored "
+                    "unencrypted. Create a key with tools/generate_totp_key.py."
+                )
+            return 0
+        rotate = key_count() > 1
+        updates: list[tuple[int, str, str, str]] = []
+        unreadable: list[int] = []
+        for user_id, column, stored in values:
+            try:
+                if not is_encrypted(stored):
+                    updates.append((user_id, column, stored, seal_secret(stored)))
+                elif rotate and not opens_with_primary_key(stored):
+                    updates.append((user_id, column, stored, reseal_secret(stored)))
+                else:
+                    open_secret(stored)
+            except SecretKeyError:
+                unreadable.append(user_id)
+        if unreadable:
+            # The key does not match what is stored: write nothing with it,
+            # and refuse new setups until the right key is back.
+            KEY_STATE["mismatch"] = True
+            logger.error(
+                "%s two-factor secret(s) cannot be decrypted with TOTP_ENCRYPTION_KEY "
+                "(key changed?): nothing is re-encrypted and new two-factor setups "
+                "are refused until the right key is set; those users need a "
+                "recovery code meanwhile. User ids: %s",
+                len(unreadable),
+                ", ".join(str(user_id) for user_id in sorted(set(unreadable))),
+            )
+            return 0
+        KEY_STATE["mismatch"] = False
+        replaced = database.replace_totp_values(updates) if updates else 0
+        if replaced:
+            logger.info("Encrypted or re-encrypted %s stored two-factor secret(s)", replaced)
+        return replaced
+    except SecretKeyError as exc:
+        logger.error("Two-factor encryption is not available: %s", exc)
+        return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Serve the Zenon Pillar Tracker dashboard and admin panel."
@@ -1577,6 +1707,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         runtime_config, database = load_runtime_database(database_path)
         configure_logging(runtime_config)
+        seal_stored_totp_secrets(database)
     except Exception as exc:
         # Keep failures that happen while opening the database/configuration
         # visible in the mounted default log and in Docker stderr.

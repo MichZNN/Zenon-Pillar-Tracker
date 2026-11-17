@@ -35,7 +35,11 @@
             <li>Enter the 6-digit code the app shows.</li>
           </ol>
           <div id="two-factor-qr" class="two-factor-qr" role="img" aria-label="QR code for your authenticator app"></div>
-          <p class="muted two-factor-secret-help">Can't scan it? Add the account manually with this key: <code id="two-factor-secret"></code></p>
+          <p class="muted two-factor-secret-help">Can't scan it? Add the account manually with this key:</p>
+          <div class="two-factor-secret-row">
+            <code id="two-factor-secret"></code>
+            <button id="copy-two-factor-secret" class="ghost-button icon-button" type="button" aria-label="Copy key" title="Copy key"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
+          </div>
           <form id="two-factor-enable-form" class="two-factor-inline-form">
             <input name="code" aria-label="6-digit code" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required>
             <button class="primary-button" type="submit"><i class="fa-solid fa-check" aria-hidden="true"></i> Turn on</button>

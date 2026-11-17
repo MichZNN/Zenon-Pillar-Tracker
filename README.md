@@ -372,8 +372,9 @@ portal menu. It uses standard time-based codes (TOTP, RFC 6238: SHA-1, 6
 digits, 30 seconds) that work with Google Authenticator, Microsoft
 Authenticator, 1Password, Aegis and similar apps; the QR code is generated in
 the browser (`static/vendor/qrcode-generator`, MIT licence). Turning it on
-shows ten one-time recovery codes for a lost phone; only their hashes are
-stored. After five wrong codes a user has to wait ten minutes. Turning it off
+shows ten one-time recovery codes for a lost phone; only salted PBKDF2 hashes
+of them are stored (codes from before that change keep working until used or
+replaced). After five wrong codes a user has to wait ten minutes. Turning it off
 needs the current password and a code. An administrator can reset a user's
 two-factor authentication from *Users*.
 
@@ -387,6 +388,50 @@ password. Trusted devices are listed under *My account* and can be forgotten
 there; they also end when two-factor authentication is turned off or reset,
 and when the password changes. Users without two-factor authentication never
 see the second step.
+
+The authenticator secret has to be readable by the server to check codes, so
+it is encrypted instead of hashed. Set `TOTP_ENCRYPTION_KEY` in `.env` to
+store it encrypted (Fernet: AES with an integrity check); the key stays out of
+the database, so a copy of the database alone does not reveal the secrets.
+Create a key and add the printed line to `.env`:
+
+```
+python tools/generate_totp_key.py
+```
+
+On a Docker deployment: `docker compose run --rm web python tools/generate_totp_key.py`.
+At its next start the web app encrypts the secrets that are already stored.
+Without the key the secrets are stored unencrypted and the web app logs a
+warning at startup. Keep a copy of the key: if it is lost or changed,
+authenticator codes stop working and users with two-factor authentication can
+only log in with a recovery code (an administrator can then reset their
+two-factor authentication). The web app logs an error at startup when stored
+secrets cannot be decrypted, and it keeps running with an invalid key so the
+dashboard stays up. New two-factor setups are refused while the key is
+missing, invalid, or does not open the stored secrets, and nothing is
+re-encrypted with a key that does not match.
+
+In Docker the key reaches the container through `env_file`, which is only
+read when the container is created: run the deployment again (or
+`docker compose up -d`). `docker compose restart` does not pick up a new key.
+
+Back up the database before the first start with the key, and do not roll
+back to a version without encryption afterwards: older versions cannot read
+encrypted secrets or the new recovery-code hashes.
+
+If the key is truly lost, set a new one, reset two-factor authentication for
+the users listed in the startup error (*Users*, "Reset two-factor
+authentication"; afterwards they log in with their password and can set up
+two-factor authentication again), and redeploy so the web app starts with no
+unreadable secrets.
+
+To rotate the key, put the new key first and the old one after it,
+comma-separated (`TOTP_ENCRYPTION_KEY=new,old`), and redeploy; the web app
+re-encrypts the stored secrets with the new key at startup. Then remove the
+old key and redeploy once more.
+
+Recovery codes created before salted hashing are marked as outdated under
+*My account*; creating new ones replaces them.
 
 Endpoints: `POST /api/auth/login` answers `two_factor_required` with a
 `challenge` when a code is needed; `POST /api/auth/login/verify` takes

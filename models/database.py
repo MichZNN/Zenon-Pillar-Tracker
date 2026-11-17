@@ -6,7 +6,7 @@ from secrets import token_urlsafe
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 
 SCHEMA_VERSION = "10"
@@ -1044,8 +1044,27 @@ class Database:
                 (_json(code_hashes), utc_now(), int(user_id)),
             )
 
-    def consume_recovery_code(self, user_id: int, code_hash: str) -> bool:
-        """Remove a recovery code after use; return whether it was valid."""
+    def consume_recovery_code(
+        self,
+        user_id: int,
+        matches: Callable[[str], bool],
+    ) -> bool:
+        """Remove the stored recovery code that ``matches``; return whether
+        one did. ``matches`` checks a typed code against one stored hash.
+
+        The slow hash checks run without a lock; only the final
+        compare-and-remove takes the write lock, so a burst of attempts
+        cannot hold up the collector or other requests.
+        """
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT recovery_codes_json FROM users WHERE id = ?",
+                (int(user_id),),
+            ).fetchone()
+        codes = _load_json(row["recovery_codes_json"] if row else None, []) or []
+        used = next((stored for stored in codes if matches(stored)), None)
+        if used is None:
+            return False
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
@@ -1053,14 +1072,66 @@ class Database:
                 (int(user_id),),
             ).fetchone()
             codes = _load_json(row["recovery_codes_json"] if row else None, []) or []
-            if code_hash not in codes:
+            if used not in codes:
+                # A concurrent request used the same code first.
                 return False
-            codes.remove(code_hash)
+            codes.remove(used)
             connection.execute(
                 "UPDATE users SET recovery_codes_json = ? WHERE id = ?",
                 (_json(codes), int(user_id)),
             )
             return True
+
+    def recovery_codes_outdated(self, user_id: int) -> bool:
+        """Whether some stored recovery codes still use the old unsalted hash."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT recovery_codes_json FROM users WHERE id = ?",
+                (int(user_id),),
+            ).fetchone()
+        codes = _load_json(row["recovery_codes_json"] if row else None, []) or []
+        return any("$" not in str(stored) for stored in codes)
+
+    def totp_secret_values(self) -> list[tuple[int, str, str]]:
+        """Return (user id, column, stored value) for every stored secret."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT id, totp_secret, totp_pending_secret FROM users "
+                "WHERE totp_secret IS NOT NULL OR totp_pending_secret IS NOT NULL"
+            ).fetchall()
+        return [
+            (int(row["id"]), column, str(row[column]))
+            for row in rows
+            for column in ("totp_secret", "totp_pending_secret")
+            if row[column]
+        ]
+
+    def has_encrypted_totp_secrets(self) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM users WHERE totp_secret LIKE 'enc:v1:%' "
+                "OR totp_pending_secret LIKE 'enc:v1:%' LIMIT 1"
+            ).fetchone()
+        return row is not None
+
+    def replace_totp_values(self, updates: list[tuple[int, str, str, str]]) -> int:
+        """Store new secret values: (user id, column, old value, new value).
+
+        A value is only replaced when it is still the old one, so a secret
+        changed by a request in the meantime is left alone.
+        """
+        replaced = 0
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            for user_id, column, old, new in updates:
+                if column not in {"totp_secret", "totp_pending_secret"}:
+                    raise ValueError(f"Unknown secret column: {column}")
+                cursor = connection.execute(
+                    f"UPDATE users SET {column} = ? WHERE id = ? AND {column} = ?",
+                    (new, int(user_id), old),
+                )
+                replaced += cursor.rowcount
+        return replaced
 
     def recovery_codes_left(self, user_id: int) -> int:
         with self._connect() as connection:

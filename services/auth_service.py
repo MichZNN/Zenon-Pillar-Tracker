@@ -160,5 +160,51 @@ def generate_recovery_codes(count: int = RECOVERY_CODE_COUNT) -> list[str]:
     return codes
 
 
+# Recovery codes carry about 50 bits of randomness. A salted, slow hash per
+# code makes guessing them from a copied database impractical, while checking
+# all ten codes on a login stays well under a second.
+RECOVERY_CODE_SCHEME = "pbkdf2_sha256"
+RECOVERY_CODE_ITERATIONS = 120_000
+
+
 def hash_recovery_code(code: object) -> str:
-    return hash_token(normalise_two_factor_code(code))
+    """Hash a recovery code for storage: ``scheme$iterations$salt$digest``."""
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        normalise_two_factor_code(code).encode("utf-8"),
+        salt,
+        RECOVERY_CODE_ITERATIONS,
+    )
+    return "$".join(
+        (
+            RECOVERY_CODE_SCHEME,
+            str(RECOVERY_CODE_ITERATIONS),
+            base64.urlsafe_b64encode(salt).decode("ascii").rstrip("="),
+            base64.urlsafe_b64encode(digest).decode("ascii").rstrip("="),
+        )
+    )
+
+
+def verify_recovery_code(code: object, stored: str) -> bool:
+    """Check a typed recovery code against one stored hash.
+
+    Codes created before salted hashing are plain SHA-256 hex digests; those
+    keep working until they are used or replaced.
+    """
+    value = normalise_two_factor_code(code)
+    if not value or not isinstance(stored, str):
+        return False
+    if "$" not in stored:
+        return hmac.compare_digest(hash_token(value), stored)
+    try:
+        scheme, iterations_text, salt_text, digest_text = stored.split("$", 3)
+        iterations = int(iterations_text)
+        if scheme != RECOVERY_CODE_SCHEME or not 10_000 <= iterations <= 1_000_000:
+            return False
+        salt = base64.urlsafe_b64decode(salt_text + "=" * (-len(salt_text) % 4))
+        expected = base64.urlsafe_b64decode(digest_text + "=" * (-len(digest_text) % 4))
+    except (ValueError, TypeError):
+        return False
+    actual = hashlib.pbkdf2_hmac("sha256", value.encode("utf-8"), salt, iterations)
+    return hmac.compare_digest(actual, expected)
