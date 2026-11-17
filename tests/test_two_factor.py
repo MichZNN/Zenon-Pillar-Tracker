@@ -123,6 +123,12 @@ class SecretBoxTestCase(unittest.TestCase):
 
 class TwoFactorWebTestCase(unittest.TestCase):
     def setUp(self):
+        # The slow recovery-code hash is tested on its own above. Here the
+        # minimum iteration count keeps the HTTP tests fast, also under the
+        # emulated ARM64 runner in CI (QEMU is many times slower).
+        iterations = patch("services.auth_service.RECOVERY_CODE_ITERATIONS", 10_000)
+        iterations.start()
+        self.addCleanup(iterations.stop)
         self.temp_dir = tempfile.TemporaryDirectory()
         self.database = Database(Path(self.temp_dir.name) / "tracker.sqlite3")
         self.admin = self.database.create_user(
@@ -175,7 +181,7 @@ class TwoFactorWebTestCase(unittest.TestCase):
             method=method,
         )
         try:
-            with urlopen(request, timeout=5) as response:
+            with urlopen(request, timeout=30) as response:
                 return response.status, json.loads(response.read()), response.headers
         except HTTPError as error:
             payload = json.loads(error.read())
