@@ -11,9 +11,9 @@
       </div>
       <p class="muted">Update your display name or change your password. Your current password is required when changing the password.</p>
       <form id="account-form" class="form-grid compact-form account-form" autocomplete="off">
-        <label>Display name<input name="display_name" maxlength="120" autocomplete="name" placeholder="How your name appears in the portal"></label>
-        <label>Current password<input name="current_password" type="password" autocomplete="off" placeholder="Required to change password"></label>
-        <label>New password<input name="new_password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" placeholder="At least 12 characters"></label>
+        <label class="row-start">Display name<input name="display_name" maxlength="120" autocomplete="name" placeholder="How your name appears in the portal"></label>
+        <label class="row-start">Current password<input name="current_password" type="password" autocomplete="off" placeholder="Required to change password"></label>
+        <label class="row-start">New password<input name="new_password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" placeholder="At least 12 characters"></label>
         <label>Repeat new password<input name="new_password_confirmation" type="password" minlength="12" maxlength="1024" autocomplete="new-password" placeholder="Repeat your new password"></label>
         <div class="form-actions full-width"><button class="primary-button" type="submit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save account</button></div>
       </form>
@@ -64,8 +64,8 @@
             <button id="forget-trusted-devices" class="ghost-button" type="button" hidden><i class="fa-solid fa-laptop" aria-hidden="true"></i> Forget all trusted devices</button>
           </div>
           <form id="two-factor-disable-form" class="form-grid compact-form">
-            <label>Current password<input name="password" type="password" autocomplete="current-password" placeholder="Needed to turn it off"></label>
-            <label>Authentication code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="16" placeholder="Code from your app or a recovery code" required></label>
+            <label class="row-start">Current password<input name="password" type="password" autocomplete="current-password" placeholder="Needed to turn it off"></label>
+            <label class="row-start">Authentication code<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="16" placeholder="Code from your app or a recovery code" required></label>
             <div class="form-actions full-width">
               <button id="two-factor-new-codes" class="ghost-button" type="button"><i class="fa-solid fa-key" aria-hidden="true"></i> New recovery codes</button>
               <button class="ghost-button danger-button" type="submit"><i class="fa-solid fa-shield" aria-hidden="true"></i> Turn off</button>

@@ -1934,3 +1934,26 @@ button[hidden] { display: none !important; }
   white-space: nowrap;
 }
 .two-factor-secret-row .icon-button { border: 0; flex: 0 0 auto; height: 32px; width: 32px; }
+
+/* ---------- My account: labels above fields, one topic per row ---------- */
+#account-modal .form-grid label { grid-template-columns: minmax(0, 1fr); row-gap: 6px; }
+/* A field marked row-start begins a new row in the left column; the next
+   field may sit beside it (New password + Repeat new password). */
+@media (min-width: 680px) {
+  #account-modal .form-grid .row-start { grid-column: 1; }
+}
+
+/* ---------- Header on sub pages: quiet Dashboard link ---------- */
+.history-header .header-action-link {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: .8rem;
+  font-weight: 500;
+  height: auto;
+  min-height: 28px;
+  padding: 4px 0;
+}
+.history-header .header-action-link i { color: var(--muted); font-size: .75rem; }
+.history-header .header-action-link:hover { background: none; color: var(--text); }
+.history-header .header-action-link:hover i { color: var(--text); }
