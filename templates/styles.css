@@ -1935,13 +1935,9 @@ button[hidden] { display: none !important; }
 }
 .two-factor-secret-row .icon-button { border: 0; flex: 0 0 auto; height: 32px; width: 32px; }
 
-/* ---------- My account: labels above fields, one topic per row ---------- */
+/* ---------- My account: labels above fields, one field per row ---------- */
+#account-modal .form-grid { grid-template-columns: minmax(0, 1fr); }
 #account-modal .form-grid label { grid-template-columns: minmax(0, 1fr); row-gap: 6px; }
-/* A field marked row-start begins a new row in the left column; the next
-   field may sit beside it (New password + Repeat new password). */
-@media (min-width: 680px) {
-  #account-modal .form-grid .row-start { grid-column: 1; }
-}
 
 /* ---------- Header on sub pages: quiet Dashboard link ---------- */
 .history-header .header-action-link {
